@@ -1,40 +1,9 @@
-# =========================
-# FRONTEND (Next.js / Node)
-# =========================
-frontend/node_modules/
-frontend/.next/
-frontend/out/
-frontend/build/
-frontend/.env*.local
-
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
+# ==============================================================================
+# ÆHub GLOBAL PROJECT ROOT .GITIGNORE
+# ==============================================================================
 
 # =========================
-# BACKEND (Python / FastAPI)
-# =========================
-# Ambienti virtuali
-backend/venv/
-backend/env/
-backend/.venv/
-
-# Cache di Python
-__pycache__/
-*.py[cod]
-*$py.class
-.pytest_cache/
-
-# File env backend
-backend/.env
-
-# =========================
-# OS & EDITOR
+# OS & EDITOR (Global)
 # =========================
 .DS_Store
 Thumbs.db
@@ -45,3 +14,66 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+# System & Package Manager Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# =========================
+# FRONTEND (Next.js / Node)
+# =========================
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/dist/
+frontend/.pnp
+frontend/.pnp.js
+frontend/*.tsbuildinfo
+frontend/.next-env.d.ts
+frontend/coverage/
+frontend/.vercel
+
+# Frontend Environment Secrets
+frontend/.env
+frontend/.env.local
+frontend/.env*.local
+
+# =========================
+# BACKEND (Python / FastAPI)
+# =========================
+# Python Cache Architectures
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+backend/.pytest_cache/
+
+# Virtual Environments Binds
+.venv/
+venv/
+backend/venv/
+backend/env/
+backend/.venv/
+
+# Backend Environment Secrets & Databases
+backend/.env
+backend/.env.*
+backend/*.db
+backend/*.sqlite3
+backend/downloads
+backend/temp_downloads
+
+
+# ==============================================================================
+# ÆHub ACADEMIC MODULE SPECIFIC (CRITICAL)
+# Prevents sensitive academic grades and session tokens from leaking to Git bounds
+# ==============================================================================
+backend/academic_cache.json
+backend/phoenix_debug.png
+backend/playwright_session/
