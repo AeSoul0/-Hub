@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Cloud, Play, GraduationCap, Activity, LayoutDashboard, Sun, Moon, Thermometer, Wind, Droplets, Mic, Terminal, Search, Download, Lock, CheckCircle2, Sunrise, Gauge, ThermometerSun, Umbrella, LogOut, Music, Pause, Disc3, SkipBack, SkipForward, Repeat, Upload } from "lucide-react"; 
+import { Cloud, Play, GraduationCap, Activity, LayoutDashboard, Sun, Moon, Thermometer, Wind, Droplets, Mic, Terminal, Search, Download, Lock, CheckCircle2, Sunrise, Gauge, ThermometerSun, Umbrella, LogOut, Music, Pause, Disc3, SkipBack, SkipForward, Repeat, Upload } from "lucide-react";
 import BentoWidget from '../components/BentoWidget';
 
 interface WeatherData {
@@ -400,9 +400,9 @@ export default function Home() {
               )}
 
               <div className="pt-4 mt-3 border-t border-slate-200/70 dark:border-white/10 grid grid-cols-3 gap-2 text-[10px] sm:text-[11px] font-bold uppercase tracking-widest text-slate-500 dark:text-cyan-600/70">                <div className="flex flex-col gap-3 items-start">
-                  <span className="flex items-center gap-2"><Thermometer className="w-3.5 h-3.5 text-cyan-600/60" /> {weather.tempMin}/{weather.tempMax}</span>
-                  <span className="flex items-center gap-2"><Wind className="w-3.5 h-3.5 text-cyan-600/60" /> {weather.wind}</span>
-                </div>
+                <span className="flex items-center gap-2"><Thermometer className="w-3.5 h-3.5 text-cyan-600/60" /> {weather.tempMin}/{weather.tempMax}</span>
+                <span className="flex items-center gap-2"><Wind className="w-3.5 h-3.5 text-cyan-600/60" /> {weather.wind}</span>
+              </div>
                 <div className="flex flex-col gap-3 items-start mx-auto">
                   <span className="flex items-center gap-2"><ThermometerSun className="w-3.5 h-3.5 text-cyan-600/60" /> Feels: {weather.feelsLike}</span>
                   <span className="flex items-center gap-2"><Droplets className="w-3.5 h-3.5 text-cyan-600/60" /> {weather.humidity}</span>
@@ -417,6 +417,7 @@ export default function Home() {
         </BentoWidget>
 
         {/* ACADEMIC CARD (WITH DISCONNECT FIXED SYMMETRY GRID & FAST ACTION HOVER PILL) */}
+        {/* ACADEMIC CARD (FIXED LAYOUT) */}
         <BentoWidget
           title="Academic"
           icon={GraduationCap}
@@ -428,33 +429,30 @@ export default function Home() {
               <div className="text-5xl font-[family-name:var(--font-quicksand)] font-semibold text-slate-900 dark:text-white">{academicData.gpa}</div>
               <div className="text-[11px] font-bold uppercase tracking-wider text-indigo-600/60 mt-1">Average GPA</div>
 
-              {/* FIXED SYMMETRY GRID: Using exact 3-column architecture mimicking the weather card layout alignment metrics */}
-              <div className="mt-auto pt-4 border-t border-slate-200/70 dark:border-white/10 grid grid-cols-3 gap-2 text-[10px] sm:text-[11px] font-bold uppercase tracking-widest text-slate-500 dark:text-indigo-400/60 items-center">
-                {/* Column 1: Aligned Start */}
-                <div className="flex flex-col justify-center items-start">
-                  <span>Exams: {academicData.exams}</span>
+              <div className="mt-auto pt-4 border-t border-slate-200/70 dark:border-white/10 flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-indigo-400/60">
+
+                {/* Dati (Exams / CFU) */}
+                <div className="flex gap-4">
+                  <div className="flex flex-col">
+                    <span className="text-[9px] text-slate-400 dark:text-indigo-400/40">Exams</span>
+                    <span className="text-slate-900 dark:text-white">16/23</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[9px] text-slate-400 dark:text-indigo-400/40">CFU</span>
+                    <span className="text-slate-900 dark:text-white">129/180</span>
+                  </div>
                 </div>
 
-                {/* Column 2: Centered in place */}
-                <div className="flex flex-col justify-center items-start mx-auto">
-                  <span>CFU: {academicData.cfu}</span>
-                </div>
-
-                {/* Column 3: Aligned End - Interactive Hybrid Status Toggle Button */}
-                <div className="flex flex-col justify-center items-end ml-auto">
-                  <button
-                    onClick={handleAcademicDisconnect}
-                    className="group/logout px-3 py-1.5 h-7 text-[10px] font-bold tracking-wider rounded-lg border border-slate-200/70 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-indigo-600 dark:text-indigo-400 hover:text-red-500 hover:bg-red-50 dark:hover:text-rose-400 dark:hover:bg-rose-500/10 dark:hover:border-rose-500/20 uppercase transition-all duration-100 ease-out flex items-center justify-center gap-1.5 cursor-pointer w-[92px]"
-                  >
-                    {/* Default Synced Layout view layers */}
-                    <CheckCircle2 className="w-3.5 h-3.5 block group-hover/logout:hidden transition-none" />
-                    <span className="block group-hover/logout:hidden tracking-widest transition-none">Synced</span>
-
-                    {/* Active hover overlay morphing state views */}
-                    <LogOut className="w-3.5 h-3.5 hidden group-hover/logout:block transition-none" />
-                    <span className="hidden group-hover/logout:block tracking-widest transition-none">Reset</span>
-                  </button>
-                </div>
+                {/* Bottone - Larghezza dinamica */}
+                <button
+                  onClick={handleAcademicDisconnect}
+                  className="group/logout px-3 py-1.5 h-7 text-[10px] font-bold tracking-wider rounded-lg border border-indigo-500/30 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-indigo-600 dark:text-indigo-400 hover:text-red-500 hover:bg-red-50 dark:hover:text-rose-400 dark:hover:bg-rose-500/10 hover:border-red-500/30 dark:hover:border-rose-500/20 uppercase transition-colors duration-75 ease-out flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+                >
+                  <CheckCircle2 className="w-3 h-3 block group-hover/logout:hidden transition-none" />
+                  <LogOut className="w-3 h-3 hidden group-hover/logout:block transition-none" />
+                  <span className="block group-hover/logout:hidden tracking-widest transition-colors duration-75">Synced</span>
+                  <span className="hidden group-hover/logout:block tracking-widest transition-colors duration-75">Reset</span>
+                </button>
               </div>
             </div>
           ) : (
@@ -462,10 +460,9 @@ export default function Home() {
               <p className="text-[10px] uppercase font-bold tracking-widest text-slate-400 dark:text-indigo-400/60 mt-2 text-center leading-relaxed">
                 Action Required:<br />Manual SPID Authentication
               </p>
-
               <button
                 onClick={handleSpidSync}
-                className="mt-auto w-full bg-slate-100 hover:bg-indigo-50 dark:bg-indigo-500/10 dark:hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400 text-[10px] font-bold uppercase tracking-[0.2em] py-3 rounded-lg transition-colors border border-slate-200 dark:border-indigo-500/20 flex items-center justify-center gap-2"
+                className="mt-auto w-full bg-slate-100 hover:bg-indigo-50 dark:bg-indigo-500/10 dark:hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400 text-[10px] font-bold uppercase tracking-[0.2em] py-3 rounded-lg transition-colors border border-indigo-500/20 flex items-center justify-center gap-2"
               >
                 <Lock className="w-3.5 h-3.5" />
                 INITIATE SYNC
@@ -482,16 +479,16 @@ export default function Home() {
         >
           <div className="flex flex-col h-full mt-2 justify-between">
             <form onSubmit={handleMediaDownload} className="relative flex items-center group/search mt-auto mb-3">
-              <Search className="absolute left-2.5 w-3.5 h-3.5 text-slate-400 dark:text-rose-500/50 group-hover/search:text-rose-600 dark:group-hover/search:text-rose-400 transition-colors" />
+              <Search className="absolute left-2.5 w-3.5 h-3.5 text-slate-400 dark:text-rose-500/50 group-hover/search:text-rose-600 dark:group-hover/search:text-rose-400 transition-colors duration-300 group-hover/search:duration-75" />
               <input
                 value={mediaQuery}
                 onChange={(e) => setMediaQuery(e.target.value)}
                 disabled={mediaStatus !== "idle"}
                 type="text"
                 placeholder="Artist - Title..."
-                className="w-full bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-rose-500/20 rounded-lg py-2 pl-8 pr-10 text-[11px] font-bold text-slate-800 dark:text-rose-50 placeholder-slate-400 dark:placeholder-rose-700/60 focus:outline-none focus:border-rose-400 transition-colors disabled:opacity-50"
+                className="w-full bg-slate-50 dark:bg-slate-900/40 border border-rose-500/30 dark:border-rose-500/20 rounded-lg py-2 pl-8 pr-10 text-[11px] font-bold text-slate-800 dark:text-rose-50 placeholder-slate-400 dark:placeholder-rose-700/60 focus:outline-none focus:border-rose-500 transition-colors duration-300 focus:duration-75 disabled:opacity-50"
               />
-              <button disabled={mediaStatus !== "idle" || !mediaQuery} type="submit" className="absolute right-1.5 p-1.5 rounded-md bg-slate-200 hover:bg-rose-100 dark:bg-rose-500/10 dark:hover:bg-rose-500/20 text-slate-500 hover:text-rose-600 dark:text-rose-400 disabled:opacity-50 transition-colors">
+              <button disabled={mediaStatus !== "idle" || !mediaQuery} type="submit" className="absolute right-1.5 p-1.5 rounded-md bg-slate-200 hover:bg-rose-100 dark:bg-rose-500/10 dark:hover:bg-rose-500/20 text-slate-500 hover:text-rose-600 dark:text-rose-400 disabled:opacity-50 transition-colors duration-300 hover:duration-75">
                 <Download className="w-3.5 h-3.5" />
               </button>
             </form>
@@ -526,19 +523,19 @@ export default function Home() {
           colSpan={2}
         >
           <div className="flex flex-col justify-end h-full gap-4 mt-2">
-            <div className="flex items-center justify-between bg-white/50 dark:bg-white/[0.02] border border-slate-200/70 dark:border-white/10 rounded-2xl p-3.5 backdrop-blur-lg transition-colors duration-300 ease-out">              <div className="flex items-center gap-4">
-                <div className="relative flex items-center justify-center w-8 h-8 rounded-full bg-cyan-500/10 border border-cyan-500/20 shadow-[0_0_15px_rgba(6,182,212,0.1)]">
-                  <div className="absolute inset-0 rounded-full bg-cyan-500/20 animate-ping opacity-50" />
-                  <Activity className="w-4 h-4 text-cyan-600 dark:text-cyan-400 animate-pulse" />
-                </div>
-                <div className="flex items-end gap-1 h-5">
-                  <div className="w-[3px] bg-cyan-600/40 dark:bg-cyan-500/50 rounded-full animate-[wave-pulse_1s_ease-in-out_infinite]" style={{ animationDelay: '0.1s' }} />
-                  <div className="w-[3px] bg-cyan-600/80 dark:bg-cyan-400 rounded-full animate-[wave-pulse_1.2s_ease-in-out_infinite]" style={{ animationDelay: '0.4s' }} />
-                  <div className="w-[3px] bg-cyan-500 dark:bg-cyan-300 rounded-full animate-[wave-pulse_0.9s_ease-in-out_infinite]" style={{ animationDelay: '0.2s' }} />
-                  <div className="w-[3px] bg-cyan-600/60 dark:bg-cyan-500/70 rounded-full animate-[wave-pulse_1.1s_ease-in-out_infinite]" style={{ animationDelay: '0.6s' }} />
-                  <div className="w-[3px] bg-cyan-400 dark:bg-cyan-200 rounded-full animate-[wave-pulse_1.3s_ease-in-out_infinite]" style={{ animationDelay: '0.3s' }} />
-                </div>
+            <div className="flex items-center justify-between bg-white/50 dark:bg-white/[0.02] border border-cyan-500/30 dark:border-white/10 rounded-2xl p-3.5 backdrop-blur-lg transition-colors duration-300 hover:duration-75 ease-out">              <div className="flex items-center gap-4">
+              <div className="relative flex items-center justify-center w-8 h-8 rounded-full bg-cyan-500/10 border border-cyan-500/20 shadow-[0_0_15px_rgba(6,182,212,0.1)]">
+                <div className="absolute inset-0 rounded-full bg-cyan-500/20 animate-ping opacity-50" />
+                <Activity className="w-4 h-4 text-cyan-600 dark:text-cyan-400 animate-pulse" />
               </div>
+              <div className="flex items-end gap-1 h-5">
+                <div className="w-[3px] bg-cyan-600/40 dark:bg-cyan-500/50 rounded-full animate-[wave-pulse_1s_ease-in-out_infinite]" style={{ animationDelay: '0.1s' }} />
+                <div className="w-[3px] bg-cyan-600/80 dark:bg-cyan-400 rounded-full animate-[wave-pulse_1.2s_ease-in-out_infinite]" style={{ animationDelay: '0.4s' }} />
+                <div className="w-[3px] bg-cyan-500 dark:bg-cyan-300 rounded-full animate-[wave-pulse_0.9s_ease-in-out_infinite]" style={{ animationDelay: '0.2s' }} />
+                <div className="w-[3px] bg-cyan-600/60 dark:bg-cyan-500/70 rounded-full animate-[wave-pulse_1.1s_ease-in-out_infinite]" style={{ animationDelay: '0.6s' }} />
+                <div className="w-[3px] bg-cyan-400 dark:bg-cyan-200 rounded-full animate-[wave-pulse_1.3s_ease-in-out_infinite]" style={{ animationDelay: '0.3s' }} />
+              </div>
+            </div>
               <span className="text-[10px] font-bold tracking-[0.2em] text-cyan-700 dark:text-cyan-400 animate-[agent-linked-pulse_2s_ease-in-out_infinite]">LINK_ACTIVE</span>
             </div>
 
@@ -548,7 +545,7 @@ export default function Home() {
                 type="text"
                 disabled
                 placeholder="Awaiting vocal/text directive..."
-                className="w-full bg-white dark:bg-[#0A101A]/40 border border-slate-200/70 dark:border-white/10 rounded-xl py-3 pl-9 pr-12 text-xs font-bold text-slate-800 dark:text-cyan-50 placeholder-slate-400/80 dark:placeholder-cyan-700 focus:outline-none cursor-not-allowed shadow-[inset_0_2px_10px_rgba(0,0,0,0.02)] transition-colors duration-300 ease-out"
+                className="w-full bg-white dark:bg-[#0A101A]/40 border border-cyan-500/30 dark:border-white/10 rounded-xl py-3 pl-9 pr-12 text-xs font-bold text-slate-800 dark:text-cyan-50 placeholder-slate-400/80 dark:placeholder-cyan-700 focus:outline-none cursor-not-allowed shadow-[inset_0_2px_10px_rgba(0,0,0,0.02)] transition-colors duration-300 ease-out"
               />
               <button disabled className="absolute right-2.5 p-2 rounded-lg bg-slate-100 dark:bg-cyan-500/10 text-slate-400 dark:text-cyan-500/60 cursor-not-allowed border border-slate-200/80 dark:border-transparent transition-all duration-300 ease-out">
                 <Mic className="w-4 h-4" />
@@ -590,15 +587,15 @@ export default function Home() {
             <input type="file" accept="audio/*" id="audio-file-uploader" className="hidden" onChange={handleAudioFileChange} />
 
             {!audioTrack ? (
-              /* STATO VUOTO (Design Premium: nessuno sfarfallio di sfondo, si illumina solo il tratto) */
+              /* STATO VUOTO: Risolto lag e match tonale in Light Mode */
               <label
                 htmlFor="audio-file-uploader"
-                className="mt-auto mb-auto flex flex-col items-center justify-center gap-3 p-4 border-2 border-dashed border-slate-200 dark:border-violet-500/20 rounded-xl cursor-pointer hover:border-violet-500/60 dark:hover:border-violet-400/50 bg-transparent transition-colors duration-300 group"
+                className="mt-auto mb-auto flex flex-col items-center justify-center gap-3 p-4 border-2 border-dashed border-violet-500/30 dark:border-violet-500/20 rounded-xl cursor-pointer hover:border-violet-500 dark:hover:border-violet-400/50 bg-transparent transition-colors duration-300 hover:duration-75 group"
               >
-                <div className="w-10 h-10 rounded-full bg-slate-50 dark:bg-violet-500/10 flex items-center justify-center text-slate-400 dark:text-violet-400 group-hover:text-violet-600 dark:group-hover:text-violet-300 transition-colors duration-300">
-                  <Music className="w-5 h-5 transition-transform duration-300 group-hover:-translate-y-0.5" />
+                <div className="w-10 h-10 rounded-full bg-slate-50 dark:bg-violet-500/10 flex items-center justify-center text-slate-400 dark:text-violet-400 group-hover:text-violet-600 dark:group-hover:text-violet-300 transition-colors duration-300 hover:duration-75">
+                  <Music className="w-5 h-5 transition-transform duration-300 hover:duration-75 group-hover:-translate-y-0.5" />
                 </div>
-                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-violet-400/60 group-hover:text-violet-600 dark:group-hover:text-violet-300 text-center leading-relaxed transition-colors duration-300">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-violet-400/60 group-hover:text-violet-600 dark:group-hover:text-violet-300 text-center leading-relaxed transition-colors duration-300 hover:duration-75">
                   Trascina il file qui<br />o Clicca per caricare
                 </span>
               </label>
@@ -666,8 +663,8 @@ export default function Home() {
                   <button
                     onClick={toggleLoop}
                     className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer border ${isLooping
-                        ? 'text-violet-600 dark:text-violet-400 bg-violet-500/10 border-violet-500/30 shadow-[0_0_12px_rgba(139,92,246,0.2)]'
-                        : 'text-slate-400 hover:text-slate-600 dark:text-violet-400/40 dark:hover:text-violet-400/70 border-slate-200 dark:border-violet-500/10 bg-slate-50 dark:bg-slate-900/20'
+                      ? 'text-violet-600 dark:text-violet-400 bg-violet-500/10 border-violet-500/30 shadow-[0_0_12px_rgba(139,92,246,0.2)]'
+                      : 'text-slate-400 hover:text-slate-600 dark:text-violet-400/40 dark:hover:text-violet-400/70 border-violet-500/30 dark:border-violet-500/10 bg-slate-50 dark:bg-slate-900/20'
                       }`}
                     title={isLooping ? "Disattiva Loop" : "Attiva Loop"}
                   >
@@ -689,10 +686,10 @@ export default function Home() {
                     <SkipForward className="w-5 h-5 fill-current" />
                   </button>
 
-                  {/* 5. Tasto Cambia File (Risolto lo sfarfallio bianco su hover) */}
+                  {/* 5. Tasto Cambia File */}
                   <label
                     htmlFor="audio-file-uploader"
-                    className="w-9 h-9 rounded-xl flex items-center justify-center border text-slate-400 hover:text-slate-600 dark:text-violet-400/40 dark:hover:text-violet-400/70 border-slate-200 dark:border-violet-500/10 bg-slate-50 dark:bg-slate-900/20 hover:bg-slate-100 dark:hover:bg-slate-900/40 transition-colors duration-200 cursor-pointer shadow-none group"
+                    className="w-9 h-9 rounded-xl flex items-center justify-center border text-slate-400 hover:text-slate-600 dark:text-violet-400/40 dark:hover:text-violet-400/70 border-violet-500/30 dark:border-violet-500/10 bg-slate-50 dark:bg-slate-900/20 hover:bg-slate-100 dark:hover:bg-slate-900/40 transition-colors duration-300 hover:duration-75 cursor-pointer shadow-none group"
                     title="Cambia traccia audio"
                   >
                     <Upload className="w-4 h-4 transition-colors group-hover:text-violet-600 dark:group-hover:text-violet-400" />

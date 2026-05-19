@@ -31,15 +31,16 @@ export default function BentoWidget({
     const colors = THEME_COLORS[colorKey];
     const colClass = colSpan === 2 ? "md:col-span-2" : "";
 
-    // Core physics config: strictly bound hardware acceleration parameters 
-    const baseClasses = `relative overflow-hidden group transition-all duration-300 ease-out hover:-translate-y-2 z-0 antialiased transform-gpu will-change-transform rounded-[2rem] p-6 flex flex-col ${colClass} ${colors.shadow}`;
+    // Aggiunto hover:duration-75: animazione d'ingresso istantanea, uscita morbida a 300ms
+    const baseClasses = `relative overflow-hidden group transition-all duration-300 hover:duration-75 ease-out hover:-translate-y-2 z-0 antialiased transform-gpu will-change-transform rounded-[2rem] p-6 flex flex-col ${colClass} ${colors.shadow}`;
 
     // Solid layout background mappings override backdrop configurations inside Light Mode environments to fix render issues
     const sharedBg = "bg-white dark:bg-[#0A101A]/60 dark:backdrop-blur-2xl shadow-[0_8px_30px_-10px_rgba(0,0,0,0.04)] dark:shadow-none";
 
+    // Modificati i bordi per allinearsi alle nuove fondamenta cromatiche in modo dinamico
     const borderClasses = variant === "default"
         ? `border ${colors.borderBase} ${colors.borderHover}`
-        : `border-2 border-dashed border-slate-300 hover:border-cyan-400/60 dark:border-white/10 dark:hover:border-cyan-400/40`;
+        : `border-2 border-dashed ${colors.borderBase} ${colors.borderHover}`;
 
     const layoutClasses = variant === "default"
         ? "justify-between"
@@ -48,9 +49,9 @@ export default function BentoWidget({
     if (variant === "slot") {
         return (
             <div className={`${baseClasses} ${sharedBg} ${borderClasses} ${layoutClasses}`}>
-                <div className="pointer-events-none absolute -top-6 -right-6 w-32 h-32 rounded-full blur-2xl transition-opacity duration-300 ease-out -z-10 opacity-0 group-hover:opacity-100 var(--colors-glow)" style={{ backgroundColor: 'transparent', backgroundImage: 'radial-gradient(circle, ' + colors.glow.split(' ')[0] + ' 0%, transparent 70%)' }} />
-                <Icon className={`w-6 h-6 mb-4 transition-opacity duration-300 ease-out opacity-60 group-hover:opacity-100 ${colors.accent}`} />
-                <p className={`text-[10px] font-bold uppercase tracking-[0.2em] transition-opacity duration-300 ease-out opacity-60 group-hover:opacity-100 ${colors.accent}`}>
+                <div className="pointer-events-none absolute -top-6 -right-6 w-32 h-32 rounded-full blur-2xl transition-opacity duration-300 group-hover:duration-75 ease-out -z-10 opacity-0 group-hover:opacity-100 var(--colors-glow)" style={{ backgroundColor: 'transparent', backgroundImage: 'radial-gradient(circle, ' + colors.glow.split(' ')[0] + ' 0%, transparent 70%)' }} />
+                <Icon className={`w-6 h-6 mb-4 transition-opacity duration-300 group-hover:duration-75 ease-out opacity-60 group-hover:opacity-100 ${colors.accent}`} />
+                <p className={`text-[10px] font-bold uppercase tracking-[0.2em] transition-opacity duration-300 group-hover:duration-75 ease-out opacity-60 group-hover:opacity-100 ${colors.accent}`}>
                     {title}
                 </p>
             </div>
@@ -59,13 +60,13 @@ export default function BentoWidget({
 
     return (
         <div className={`${baseClasses} ${sharedBg} ${borderClasses} ${layoutClasses}`}>
-            <div className={`pointer-events-none absolute -top-6 -right-6 w-32 h-32 rounded-full blur-2xl transition-opacity duration-300 ease-out -z-10 opacity-0 group-hover:opacity-100 ${colors.glow}`} />
+            <div className={`pointer-events-none absolute -top-6 -right-6 w-32 h-32 rounded-full blur-2xl transition-opacity duration-300 group-hover:duration-75 ease-out -z-10 opacity-0 group-hover:opacity-100 ${colors.glow}`} />
 
             <div className="flex justify-between items-start">
-                <span className={`text-[12px] font-bold uppercase tracking-[0.15em] transition-opacity duration-300 ease-out opacity-60 group-hover:opacity-100 ${colors.accent}`}>
+                <span className={`text-[12px] font-bold uppercase tracking-[0.15em] transition-opacity duration-300 group-hover:duration-75 ease-out opacity-60 group-hover:opacity-100 ${colors.accent}`}>
                     {title}
                 </span>
-                <Icon className={`w-6 h-6 transition-opacity duration-300 ease-out opacity-60 group-hover:opacity-100 ${colors.accent}`} />
+                <Icon className={`w-6 h-6 transition-opacity duration-300 group-hover:duration-75 ease-out opacity-60 group-hover:opacity-100 ${colors.accent}`} />
             </div>
 
             <div className="mt-auto">
@@ -74,7 +75,7 @@ export default function BentoWidget({
                 ) : (
                     <>
                         {mainText && (
-                            <div className={`${textSize} font-[family-name:var(--font-quicksand)] font-semibold tracking-tight text-slate-900 dark:text-white mb-1 transition-colors duration-300 ease-out`}>
+                            <div className={`${textSize} font-[family-name:var(--font-quicksand)] font-semibold tracking-tight text-slate-900 dark:text-white mb-1 transition-colors duration-300 group-hover:duration-75 ease-out`}>
                                 {mainText}
                             </div>
                         )}
@@ -84,10 +85,10 @@ export default function BentoWidget({
                                     <span className="text-sm font-semibold text-slate-500 dark:text-slate-300 transition-colors duration-300 ease-out">{subTextLeft}</span>
                                 )}
                                 {subTextLeft && subTextRight && (
-                                    <span className={`w-1.5 h-1.5 rounded-full opacity-50 group-hover:opacity-100 transition-opacity duration-300 ease-out ${colors.dot}`}></span>
+                                    <span className={`w-1.5 h-1.5 rounded-full opacity-50 group-hover:opacity-100 transition-opacity duration-300 group-hover:duration-75 ease-out ${colors.dot}`}></span>
                                 )}
                                 {subTextRight && (
-                                    <span className={`text-[11px] font-bold uppercase tracking-wider transition-opacity duration-300 ease-out opacity-60 group-hover:opacity-100 ${colors.accent}`}>{subTextRight}</span>
+                                    <span className={`text-[11px] font-bold uppercase tracking-wider transition-opacity duration-300 group-hover:duration-75 ease-out opacity-60 group-hover:opacity-100 ${colors.accent}`}>{subTextRight}</span>
                                 )}
                             </div>
                         )}
