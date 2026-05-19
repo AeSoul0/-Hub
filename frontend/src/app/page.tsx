@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Cloud, Play, GraduationCap, Activity, LayoutDashboard, Sun, Moon, Thermometer, Wind, Droplets, Mic, Terminal, Search, Download, Lock, CheckCircle2, Sunrise, Gauge, ThermometerSun, Umbrella, LogOut } from "lucide-react";
+import { Cloud, Play, GraduationCap, Activity, LayoutDashboard, Sun, Moon, Thermometer, Wind, Droplets, Mic, Terminal, Search, Download, Lock, CheckCircle2, Sunrise, Gauge, ThermometerSun, Umbrella, LogOut, Music, Pause, Disc3, SkipBack, SkipForward, Repeat, Upload } from "lucide-react"; 
 import BentoWidget from '../components/BentoWidget';
 
 interface WeatherData {
@@ -32,6 +32,119 @@ export default function Home() {
   const [academicLogged, setAcademicLogged] = useState(false);
   const [academicLoading, setAcademicLoading] = useState(false);
   const [academicData, setAcademicData] = useState({ gpa: 0, exams: 0, cfu: 0 });
+
+  // --- REAL AUDIO PLAYER STATES & HANDLERS ---
+  const [audioTrack, setAudioTrack] = useState<{ title: string; artist: string; url: string } | null>(null);
+  const [audioPlaying, setAudioPlaying] = useState(false);
+  const [audioInstance, setAudioInstance] = useState<HTMLAudioElement | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isLooping, setIsLooping] = useState(false);
+
+  // Stati per la timeline temporale e barra di progressione
+  const [progress, setProgress] = useState(0);
+  const [currentTime, setCurrentTime] = useState("0:00");
+  const [duration, setDuration] = useState("0:00");
+
+  const formatTime = (timeInSeconds: number) => {
+    if (isNaN(timeInSeconds)) return "0:00";
+    const m = Math.floor(timeInSeconds / 60);
+    const s = Math.floor(timeInSeconds % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const processAudioFile = (file: File) => {
+    if (!file.type.startsWith('audio/')) return;
+
+    if (audioInstance) {
+      audioInstance.pause();
+      audioInstance.removeAttribute('src'); // Rilascia le risorse di memoria del browser
+    }
+    if (audioTrack?.url) URL.revokeObjectURL(audioTrack.url);
+
+    const url = URL.createObjectURL(file);
+    const newAudio = new Audio(url);
+
+    // Configura la proprietà loop nativa dell'oggetto Audio HTML5
+    newAudio.loop = isLooping;
+
+    // Rimuove l'estensione finale dal nome del file (.mp3, .wav, ecc.)
+    const cleanFileName = file.name.replace(/\.[^/.]+$/, "");
+
+    // Prova a separare Artista e Titolo se è presente il trattino "-"
+    let extractedArtist = "Unknown Artist";
+    let extractedTitle = cleanFileName;
+
+    if (cleanFileName.includes("-")) {
+      const parts = cleanFileName.split("-");
+      extractedArtist = parts[0].trim();
+      // Unisce il resto nel caso ci fossero più trattini nel titolo
+      extractedTitle = parts.slice(1).join("-").trim();
+    }
+
+    // Eventi di ascolto asincroni per tracciare la riproduzione in tempo reale
+    newAudio.addEventListener('loadedmetadata', () => setDuration(formatTime(newAudio.duration)));
+    newAudio.addEventListener('timeupdate', () => {
+      setCurrentTime(formatTime(newAudio.currentTime));
+      setProgress((newAudio.currentTime / newAudio.duration) * 100);
+    });
+    newAudio.addEventListener('ended', () => {
+      if (!newAudio.loop) {
+        setAudioPlaying(false);
+        setProgress(100);
+      }
+    });
+
+    setAudioTrack({ title: extractedTitle, artist: extractedArtist, url });
+    setAudioPlaying(false);
+    setProgress(0);
+    setCurrentTime("0:00");
+    setDuration("0:00");
+    setAudioInstance(newAudio);
+  };
+
+  const handleAudioFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) processAudioFile(file);
+  };
+
+  // Drag & Drop Handlers globali per il perimetro del widget
+  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); };
+  const handleDragLeave = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); };
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault(); e.stopPropagation(); setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) processAudioFile(file);
+  };
+
+  // Controlli del player audio
+  const toggleAudioPlayback = () => {
+    if (!audioInstance) return;
+    if (audioPlaying) { audioInstance.pause(); setAudioPlaying(false); }
+    else { audioInstance.play().catch(console.error); setAudioPlaying(true); }
+  };
+  const skipBackward = () => { if (audioInstance) audioInstance.currentTime = Math.max(0, audioInstance.currentTime - 10); };
+  const skipForward = () => { if (audioInstance) audioInstance.currentTime = Math.min(audioInstance.duration, audioInstance.currentTime + 10); };
+
+  const toggleLoop = () => {
+    const nextLoop = !isLooping;
+    if (audioInstance) audioInstance.loop = nextLoop;
+    setIsLooping(nextLoop);
+  };
+
+  // Gestore del click sulla barra temporale (Salto istantaneo ultra-reattivo)
+  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!audioInstance || isNaN(audioInstance.duration)) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    let percent = (e.clientX - rect.left) / rect.width;
+    percent = Math.max(0, Math.min(1, percent));
+
+    const newTime = percent * audioInstance.duration;
+
+    audioInstance.currentTime = newTime;
+    setProgress(percent * 100);
+    setCurrentTime(formatTime(newTime));
+  };
 
   useEffect(() => {
     setIsDarkMode(document.documentElement.classList.contains('dark'));
@@ -286,8 +399,7 @@ export default function Home() {
                 </div>
               )}
 
-              <div className="pt-4 mt-3 border-t border-slate-200/80 dark:border-cyan-500/10 grid grid-cols-3 gap-2 text-[10px] sm:text-[11px] font-bold uppercase tracking-widest text-slate-500 dark:text-cyan-600/70">
-                <div className="flex flex-col gap-3 items-start">
+              <div className="pt-4 mt-3 border-t border-slate-200/70 dark:border-white/10 grid grid-cols-3 gap-2 text-[10px] sm:text-[11px] font-bold uppercase tracking-widest text-slate-500 dark:text-cyan-600/70">                <div className="flex flex-col gap-3 items-start">
                   <span className="flex items-center gap-2"><Thermometer className="w-3.5 h-3.5 text-cyan-600/60" /> {weather.tempMin}/{weather.tempMax}</span>
                   <span className="flex items-center gap-2"><Wind className="w-3.5 h-3.5 text-cyan-600/60" /> {weather.wind}</span>
                 </div>
@@ -317,8 +429,7 @@ export default function Home() {
               <div className="text-[11px] font-bold uppercase tracking-wider text-indigo-600/60 mt-1">Average GPA</div>
 
               {/* FIXED SYMMETRY GRID: Using exact 3-column architecture mimicking the weather card layout alignment metrics */}
-              <div className="mt-auto pt-4 border-t border-slate-200/80 dark:border-indigo-500/10 grid grid-cols-3 gap-2 text-[10px] sm:text-[11px] font-bold uppercase tracking-widest text-slate-500 dark:text-indigo-400/60 items-center">
-
+              <div className="mt-auto pt-4 border-t border-slate-200/70 dark:border-white/10 grid grid-cols-3 gap-2 text-[10px] sm:text-[11px] font-bold uppercase tracking-widest text-slate-500 dark:text-indigo-400/60 items-center">
                 {/* Column 1: Aligned Start */}
                 <div className="flex flex-col justify-center items-start">
                   <span>Exams: {academicData.exams}</span>
@@ -333,7 +444,7 @@ export default function Home() {
                 <div className="flex flex-col justify-center items-end ml-auto">
                   <button
                     onClick={handleAcademicDisconnect}
-                    className="group/logout px-3 py-1.5 h-7 text-[10px] font-bold tracking-wider rounded-lg border border-indigo-500/10 dark:border-indigo-500/5 bg-indigo-500/[0.02] dark:bg-indigo-500/[0.01] text-indigo-600 dark:text-indigo-400 hover:text-red-500 hover:bg-red-500/10 hover:border-red-500/20 dark:hover:text-rose-400 dark:hover:bg-rose-500/10 dark:hover:border-rose-500/20 uppercase transition-all duration-100 ease-out flex items-center justify-center gap-1.5 cursor-pointer w-[92px]"
+                    className="group/logout px-3 py-1.5 h-7 text-[10px] font-bold tracking-wider rounded-lg border border-slate-200/70 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-indigo-600 dark:text-indigo-400 hover:text-red-500 hover:bg-red-50 dark:hover:text-rose-400 dark:hover:bg-rose-500/10 dark:hover:border-rose-500/20 uppercase transition-all duration-100 ease-out flex items-center justify-center gap-1.5 cursor-pointer w-[92px]"
                   >
                     {/* Default Synced Layout view layers */}
                     <CheckCircle2 className="w-3.5 h-3.5 block group-hover/logout:hidden transition-none" />
@@ -365,7 +476,7 @@ export default function Home() {
 
         {/* MEDIA SYNC CARD */}
         <BentoWidget
-          title="Mp3"
+          title="Mp3 - Extractor"
           icon={Play}
           colorKey="rose"
         >
@@ -415,8 +526,7 @@ export default function Home() {
           colSpan={2}
         >
           <div className="flex flex-col justify-end h-full gap-4 mt-2">
-            <div className="flex items-center justify-between bg-white dark:bg-cyan-950/20 border border-slate-200/80 dark:border-cyan-500/10 rounded-2xl p-3.5 backdrop-blur-lg transition-colors duration-300 ease-out">
-              <div className="flex items-center gap-4">
+            <div className="flex items-center justify-between bg-white/50 dark:bg-white/[0.02] border border-slate-200/70 dark:border-white/10 rounded-2xl p-3.5 backdrop-blur-lg transition-colors duration-300 ease-out">              <div className="flex items-center gap-4">
                 <div className="relative flex items-center justify-center w-8 h-8 rounded-full bg-cyan-500/10 border border-cyan-500/20 shadow-[0_0_15px_rgba(6,182,212,0.1)]">
                   <div className="absolute inset-0 rounded-full bg-cyan-500/20 animate-ping opacity-50" />
                   <Activity className="w-4 h-4 text-cyan-600 dark:text-cyan-400 animate-pulse" />
@@ -438,7 +548,7 @@ export default function Home() {
                 type="text"
                 disabled
                 placeholder="Awaiting vocal/text directive..."
-                className="w-full bg-white dark:bg-slate-900/40 border border-slate-200/80 dark:border-cyan-500/10 rounded-xl py-3 pl-9 pr-12 text-xs font-bold text-slate-800 dark:text-cyan-50 placeholder-slate-400/80 dark:placeholder-cyan-700 focus:outline-none cursor-not-allowed shadow-[inset_0_2px_10px_rgba(0,0,0,0.02)] transition-colors duration-300 ease-out"
+                className="w-full bg-white dark:bg-[#0A101A]/40 border border-slate-200/70 dark:border-white/10 rounded-xl py-3 pl-9 pr-12 text-xs font-bold text-slate-800 dark:text-cyan-50 placeholder-slate-400/80 dark:placeholder-cyan-700 focus:outline-none cursor-not-allowed shadow-[inset_0_2px_10px_rgba(0,0,0,0.02)] transition-colors duration-300 ease-out"
               />
               <button disabled className="absolute right-2.5 p-2 rounded-lg bg-slate-100 dark:bg-cyan-500/10 text-slate-400 dark:text-cyan-500/60 cursor-not-allowed border border-slate-200/80 dark:border-transparent transition-all duration-300 ease-out">
                 <Mic className="w-4 h-4" />
@@ -447,12 +557,152 @@ export default function Home() {
           </div>
         </BentoWidget>
 
+        {/* REAL AUDIO PLAYER WIDGET - SYMMETRIC BENTO EDITION */}
         <BentoWidget
-          variant="slot"
-          title={<>Module<br />Beta</>}
-          icon={LayoutDashboard}
-          colorKey="cyan"
-        />
+          title="Audio_Player"
+          icon={Music}
+          colorKey="violet"
+        >
+          {/* Stile CSS Inline per l'effetto telegiornale infinito hardware-accelerated */}
+          <style dangerouslySetInnerHTML={{
+            __html: `
+            @keyframes newsTicker {
+              0% { transform: translate3d(0, 0, 0); }
+              100% { transform: translate3d(-50%, 0, 0); }
+            }
+            .animate-news-ticker {
+              display: inline-block;
+              white-space: nowrap;
+              animation: newsTicker 12s linear infinite;
+            }
+            .animate-news-ticker:hover {
+              animation-play-state: paused;
+            }
+          `}} />
+
+          {/* Area Sensibile al Drag & Drop */}
+          <div
+            className={`flex flex-col h-full mt-2 justify-between transition-all duration-300 rounded-xl ${isDragging ? 'bg-violet-500/10 scale-[1.02] ring-2 ring-violet-500/50 p-2 -m-2' : ''}`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            <input type="file" accept="audio/*" id="audio-file-uploader" className="hidden" onChange={handleAudioFileChange} />
+
+            {!audioTrack ? (
+              /* STATO VUOTO (Design Premium: nessuno sfarfallio di sfondo, si illumina solo il tratto) */
+              <label
+                htmlFor="audio-file-uploader"
+                className="mt-auto mb-auto flex flex-col items-center justify-center gap-3 p-4 border-2 border-dashed border-slate-200 dark:border-violet-500/20 rounded-xl cursor-pointer hover:border-violet-500/60 dark:hover:border-violet-400/50 bg-transparent transition-colors duration-300 group"
+              >
+                <div className="w-10 h-10 rounded-full bg-slate-50 dark:bg-violet-500/10 flex items-center justify-center text-slate-400 dark:text-violet-400 group-hover:text-violet-600 dark:group-hover:text-violet-300 transition-colors duration-300">
+                  <Music className="w-5 h-5 transition-transform duration-300 group-hover:-translate-y-0.5" />
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-violet-400/60 group-hover:text-violet-600 dark:group-hover:text-violet-300 text-center leading-relaxed transition-colors duration-300">
+                  Trascina il file qui<br />o Clicca per caricare
+                </span>
+              </label>
+            ) : (
+              /* STATO PLAYER ATTIVO */
+              <div className="flex flex-col h-full justify-between mt-1">
+
+                {/* Info Traccia e Copertina */}
+                <div className="flex items-center gap-3">
+                  <div className="relative w-14 h-14 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-600 shadow-lg flex items-center justify-center flex-shrink-0 overflow-hidden select-none">
+                    <Disc3 className={`w-8 h-8 text-white/90 transition-transform ${audioPlaying ? 'animate-[spin_4s_linear_infinite]' : ''}`} />
+                  </div>
+
+                  {/* Sezione Titolo e Artista con logica Telegiornale (Marquee) */}
+                  <div className="flex flex-col min-w-0 flex-1 overflow-hidden">
+                    {audioTrack.title.length > 22 ? (
+                      /* Titolo scorrevole stile Telegiornale se lungo */
+                      <div className="w-full overflow-hidden whitespace-nowrap relative after:absolute after:right-0 after:top-0 after:h-full after:w-4 after:bg-gradient-to-l after:from-white dark:after:from-[#0A101A]/10 after:to-transparent">
+                        <div className="animate-news-ticker">
+                          <span className="text-sm font-bold text-slate-800 dark:text-white pr-8">{audioTrack.title}</span>
+                          <span className="text-sm font-bold text-slate-800 dark:text-white pr-8">{audioTrack.title}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Titolo statico se corto */
+                      <span className="text-sm font-bold text-slate-800 dark:text-white truncate">{audioTrack.title}</span>
+                    )}
+
+                    {/* Sottotitolo con il nome dell'Artista (trasparente ma leggibile) */}
+                    <span className="text-[11px] font-medium text-slate-500/70 dark:text-violet-300/40 truncate mt-0.5 leading-none block">
+                      {audioTrack.artist}
+                    </span>
+
+                    <span className="text-[9px] font-semibold text-slate-400 dark:text-violet-400/30 uppercase tracking-widest mt-1.5 flex items-center gap-1.5">
+                      <span className={`w-1.5 h-1.5 rounded-full ${audioPlaying ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400/60'}`}></span>
+                      {isLooping ? "In Ripetizione" : "Riproduzione Locale"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Timeline e Barra di progressione cliccabile */}
+                <div className="flex flex-col gap-1.5 mt-4">
+                  <div className="flex justify-between text-[9px] font-bold text-slate-500 dark:text-violet-400/80 font-mono tracking-wider select-none">
+                    <span>{currentTime}</span>
+                    <span>{duration}</span>
+                  </div>
+
+                  <div
+                    className="relative w-full h-2.5 bg-slate-200 dark:bg-violet-950/60 rounded-full cursor-pointer group/bar flex items-center"
+                    onClick={handleSeek}
+                  >
+                    <div
+                      className="absolute left-0 h-full bg-violet-600 dark:bg-violet-500 rounded-full pointer-events-none transition-all duration-75 ease-out"
+                      style={{ width: `${progress}%` }}
+                    >
+                      <div className="absolute -right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-md opacity-0 group-hover/bar:opacity-100 transition-opacity"></div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Deck Controlli Perfettamente Simmetrico (5 Colonne Bilanciate) */}
+                <div className="flex items-center justify-between gap-2 mt-auto pt-4 pb-1 w-full px-1">
+
+                  {/* 1. Tasto Loop */}
+                  <button
+                    onClick={toggleLoop}
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer border ${isLooping
+                        ? 'text-violet-600 dark:text-violet-400 bg-violet-500/10 border-violet-500/30 shadow-[0_0_12px_rgba(139,92,246,0.2)]'
+                        : 'text-slate-400 hover:text-slate-600 dark:text-violet-400/40 dark:hover:text-violet-400/70 border-slate-200 dark:border-violet-500/10 bg-slate-50 dark:bg-slate-900/20'
+                      }`}
+                    title={isLooping ? "Disattiva Loop" : "Attiva Loop"}
+                  >
+                    <Repeat className={`w-4 h-4 ${isLooping ? 'stroke-[2.5px]' : ''}`} />
+                  </button>
+
+                  {/* 2. Simbolo Pulito Indietro -10s */}
+                  <button onClick={skipBackward} className="p-2 text-slate-400 hover:text-violet-600 dark:text-violet-400/60 dark:hover:text-violet-300 transition-colors cursor-pointer">
+                    <SkipBack className="w-5 h-5 fill-current" />
+                  </button>
+
+                  {/* 3. Pulsante Centrale Play/Pausa */}
+                  <button onClick={toggleAudioPlayback} className="w-12 h-12 rounded-full bg-violet-600 text-white flex items-center justify-center shadow-[0_0_20px_rgba(139,92,246,0.3)] hover:bg-violet-700 hover:scale-105 transition-all duration-300 cursor-pointer flex-shrink-0">
+                    {audioPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-1" />}
+                  </button>
+
+                  {/* 4. Simbolo Pulito Avanti +10s */}
+                  <button onClick={skipForward} className="p-2 text-slate-400 hover:text-violet-600 dark:text-violet-400/60 dark:hover:text-violet-300 transition-colors cursor-pointer">
+                    <SkipForward className="w-5 h-5 fill-current" />
+                  </button>
+
+                  {/* 5. Tasto Cambia File (Risolto lo sfarfallio bianco su hover) */}
+                  <label
+                    htmlFor="audio-file-uploader"
+                    className="w-9 h-9 rounded-xl flex items-center justify-center border text-slate-400 hover:text-slate-600 dark:text-violet-400/40 dark:hover:text-violet-400/70 border-slate-200 dark:border-violet-500/10 bg-slate-50 dark:bg-slate-900/20 hover:bg-slate-100 dark:hover:bg-slate-900/40 transition-colors duration-200 cursor-pointer shadow-none group"
+                    title="Cambia traccia audio"
+                  >
+                    <Upload className="w-4 h-4 transition-colors group-hover:text-violet-600 dark:group-hover:text-violet-400" />
+                  </label>
+                </div>
+
+              </div>
+            )}
+          </div>
+        </BentoWidget>
 
       </main>
     </div>

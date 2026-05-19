@@ -31,8 +31,8 @@ export default function RootLayout({
       className={`${nunito.variable} ${quicksand.variable} h-full antialiased dark`}
     >
       <head>
-        {/* Anti-Flash Engine */}
         <script
+          suppressHydrationWarning
           dangerouslySetInnerHTML={{
             __html: `
               try {
@@ -46,9 +46,6 @@ export default function RootLayout({
           }}
         />
       </head>
-      {/* Definitive Light Mode Background changed to #F8FAFC (Silver-White) 
-        This is a pure slate tone that replaces the previous weak grey-blue.
-      */}
       <body className="min-h-full flex flex-col bg-[#F8FAFC] dark:bg-[#030508] transition-colors duration-300 ease-out text-slate-950 dark:text-cyan-50 font-[family-name:var(--font-nunito)]">
         {children}
       </body>

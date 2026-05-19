@@ -1,30 +1,59 @@
-// Architectural design tokens dictionary providing unified layout style bounds
-export const THEME_COLORS = {
+export type ColorKey = 'cyan' | 'indigo' | 'rose' | 'emerald' | 'amber' | 'violet';
+
+export const THEME_COLORS: Record<ColorKey, {
+    borderBase: string;
+    borderHover: string;
+    shadow: string;
+    glow: string;
+    accent: string;
+    dot: string;
+}> = {
     cyan: {
-        glow: "bg-cyan-400/20 dark:bg-cyan-400/20",
+        borderBase: "border-slate-200/70 dark:border-white/[0.08]",
+        borderHover: "hover:border-cyan-300 dark:hover:border-cyan-400/40",
+        shadow: "hover:shadow-[0_8px_30px_rgb(6,182,212,0.12)] dark:hover:shadow-[0_0_30px_-5px_rgba(6,182,212,0.15)]",
+        glow: "bg-cyan-400/20 dark:bg-cyan-500/15",
         accent: "text-cyan-600 dark:text-cyan-400",
-        dot: "bg-cyan-500 dark:bg-cyan-400",
-        shadow: "hover:shadow-[0_15px_30px_-10px_rgba(6,182,212,0.15)] dark:hover:shadow-[0_0_30px_-5px_rgba(6,182,212,0.25)]",
-        // 10% opacity color foundations eliminate Chrome's color-mixing lag calculations on transition states
-        borderBase: "border-cyan-400/10 dark:border-white/5",
-        borderHover: "hover:border-cyan-400/60 dark:hover:border-cyan-400/40"
+        dot: "bg-cyan-500 dark:bg-cyan-400"
     },
     indigo: {
-        glow: "bg-indigo-400/20 dark:bg-indigo-400/20",
+        borderBase: "border-slate-200/70 dark:border-white/[0.08]",
+        borderHover: "hover:border-indigo-300 dark:hover:border-indigo-400/40",
+        shadow: "hover:shadow-[0_8px_30px_rgb(99,102,241,0.12)] dark:hover:shadow-[0_0_30px_-5px_rgba(99,102,241,0.15)]",
+        glow: "bg-indigo-400/20 dark:bg-indigo-500/15",
         accent: "text-indigo-600 dark:text-indigo-400",
-        dot: "bg-indigo-500 dark:bg-indigo-400",
-        shadow: "hover:shadow-[0_15px_30px_-10px_rgba(99,102,241,0.15)] dark:hover:shadow-[0_0_30px_-5px_rgba(99,102,241,0.25)]",
-        borderBase: "border-indigo-400/10 dark:border-white/5",
-        borderHover: "hover:border-indigo-400/60 dark:hover:border-indigo-400/40"
+        dot: "bg-indigo-500 dark:bg-indigo-400"
     },
     rose: {
-        glow: "bg-rose-400/20 dark:bg-rose-400/20",
+        borderBase: "border-slate-200/70 dark:border-white/[0.08]",
+        borderHover: "hover:border-rose-300 dark:hover:border-rose-400/40",
+        shadow: "hover:shadow-[0_8px_30px_rgb(244,63,94,0.12)] dark:hover:shadow-[0_0_30px_-5px_rgba(244,63,94,0.15)]",
+        glow: "bg-rose-400/20 dark:bg-rose-500/15",
         accent: "text-rose-600 dark:text-rose-400",
-        dot: "bg-rose-500 dark:bg-rose-400",
-        shadow: "hover:shadow-[0_15px_30px_-10px_rgba(244,63,94,0.15)] dark:hover:shadow-[0_0_30px_-5px_rgba(244,63,94,0.25)]",
-        borderBase: "border-rose-400/10 dark:border-white/5",
-        borderHover: "hover:border-rose-400/60 dark:hover:border-rose-400/40"
+        dot: "bg-rose-500 dark:bg-rose-400"
+    },
+    violet: {
+        borderBase: "border-slate-200/70 dark:border-white/[0.08]",
+        borderHover: "hover:border-violet-300 dark:hover:border-violet-400/40",
+        shadow: "hover:shadow-[0_8px_30px_rgb(139,92,246,0.12)] dark:hover:shadow-[0_0_30px_-5px_rgba(139,92,246,0.15)]",
+        glow: "bg-violet-400/20 dark:bg-violet-500/15",
+        accent: "text-violet-600 dark:text-violet-400",
+        dot: "bg-violet-500 dark:bg-violet-400"
+    },
+    emerald: {
+        borderBase: "border-slate-200/70 dark:border-white/[0.08]",
+        borderHover: "hover:border-emerald-300 dark:hover:border-emerald-400/40",
+        shadow: "hover:shadow-[0_8px_30px_rgb(16,185,129,0.12)] dark:hover:shadow-[0_0_30px_-5px_rgba(16,185,129,0.15)]",
+        glow: "bg-emerald-400/20 dark:bg-emerald-500/15",
+        accent: "text-emerald-600 dark:text-emerald-400",
+        dot: "bg-emerald-500 dark:bg-emerald-400"
+    },
+    amber: {
+        borderBase: "border-slate-200/70 dark:border-white/[0.08]",
+        borderHover: "hover:border-amber-300 dark:hover:border-amber-400/40",
+        shadow: "hover:shadow-[0_8px_30px_rgb(245,158,11,0.12)] dark:hover:shadow-[0_0_30px_-5px_rgba(245,158,11,0.15)]",
+        glow: "bg-amber-400/20 dark:bg-amber-500/15",
+        accent: "text-amber-600 dark:text-amber-400",
+        dot: "bg-amber-500 dark:bg-amber-400"
     }
 };
-
-export type ColorKey = keyof typeof THEME_COLORS;

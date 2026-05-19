@@ -21,21 +21,23 @@ def download_media(req: MediaRequest):
     os.makedirs("temp_downloads", exist_ok=True)
     
     ydl_opts = {
-        'format': 'bestaudio/best', # Cattura la traccia audio sorgente con la qualità più alta possibile
+        'format': 'bestaudio/best',
         'outtmpl': 'temp_downloads/%(title)s.%(ext)s',
+        
+        # ECCO IL TUO PERCORSO INSERITO CORRETTAMENTE:
+        'ffmpeg_location': 'C:/Users/samue/AppData/Local/Microsoft/WinGet/Links',
+        
         'postprocessors': [
             {
-                # Converte rigorosamente in MP3
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
-                'preferredquality': '320', # Qualità massima assoluta per il formato MP3
+                'preferredquality': '320',
             },
             {
-                # Aggiunge i metadati al file (Titolo, Artista, ecc.) per i lettori musicali
                 'key': 'FFmpegMetadata',
             }
         ],
-        'default_search': 'ytsearch1', # Trova automaticamente il primo risultato
+        'default_search': 'ytsearch1',
         'quiet': True,
         'no_warnings': True
     }
