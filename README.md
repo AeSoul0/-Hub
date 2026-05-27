@@ -1,4 +1,4 @@
-# ÆHub — AeSouls Digital Hub
+# ÆHub — AeSoul0 Digital Hub
 
 > **ÆHub** is a futuristic **Holographic / Bento Grid** digital dashboard designed to centralize intelligent services, academic synchronization, and multimedia utilities inside a modern, reactive, and highly modular ecosystem.
 
@@ -377,4 +377,4 @@ This project is under copyright.
 
 # 👤 Author
 
-**AeSouls**
+**AeSoul0**
