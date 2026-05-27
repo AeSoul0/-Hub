@@ -121,9 +121,12 @@
   * {
     @apply border-border outline-ring/50;
   }
+
+  /* Background utility execution is removed from the CSS layer to prevent instantaneous variable repaints from overriding the layout DOM transitions */
   body {
-    @apply bg-background text-foreground;
+    @apply text-foreground;
   }
+
   html {
     @apply font-sans;
   }
