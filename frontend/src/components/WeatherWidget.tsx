@@ -1,30 +1,32 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Cloud, Umbrella, Thermometer, Wind, ThermometerSun, Droplets, Sunrise, Gauge } from "lucide-react";
-import BentoWidget from "./BentoWidget";
+import {
+    Cloud,
+    Umbrella,
+    Thermometer,
+    Wind,
+    ThermometerSun,
+    Droplets,
+    Sunrise,
+    Gauge
+} from "lucide-react";
 
-interface WeatherData {
-    city: string;
-    temperature: string;
-    condition: string;
-    tempMax: string;
-    tempMin: string;
-    wind: string;
-    humidity: string;
-    feelsLike: string;
-    sunrise: string;
-    pressure: string;
-    willRain: boolean;
-}
+import BentoWidget from "./BentoWidget";
+import { useAppStore, WeatherData } from "../store/index";
 
 export default function WeatherWidget() {
+    const setWeatherData = useAppStore((state) => state.setWeatherData);
+
     const [weather, setWeather] = useState<WeatherData | null>(null);
 
     useEffect(() => {
         async function fetchWeather() {
             try {
-                const res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=41.9028&longitude=12.4964&current=temperature_2m,relative_humidity_2m,apparent_temperature,surface_pressure,weather_code,wind_speed_10m&hourly=weather_code&daily=temperature_2m_max,temperature_2m_min,sunrise&timezone=auto");
+                const res = await fetch(
+                    "https://api.open-meteo.com/v1/forecast?latitude=41.9028&longitude=12.4964&current=temperature_2m,relative_humidity_2m,apparent_temperature,surface_pressure,weather_code,wind_speed_10m&hourly=weather_code&daily=temperature_2m_max,temperature_2m_min,sunrise&timezone=auto"
+                );
+
                 const data = await res.json();
 
                 const getCondition = (code: number) => {
@@ -36,8 +38,13 @@ export default function WeatherWidget() {
                     return "Clear";
                 };
 
+                const condition = getCondition(data.current.weather_code);
+
                 const currentHour = new Date().getHours();
-                const startIndex = data.hourly.time.findIndex((t: string) => new Date(t).getHours() === currentHour);
+                const startIndex = data.hourly.time.findIndex(
+                    (t: string) => new Date(t).getHours() === currentHour
+                );
+
                 let rainExpected = false;
 
                 if (startIndex !== -1) {
@@ -50,12 +57,17 @@ export default function WeatherWidget() {
                     }
                 }
 
-                const sunriseTime = new Date(data.daily.sunrise[0]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const sunriseTime = new Date(
+                    data.daily.sunrise[0]
+                ).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit"
+                });
 
-                setWeather({
+                const weatherState: WeatherData = {
                     city: "Rome",
                     temperature: `${Math.round(data.current.temperature_2m)}°`,
-                    condition: getCondition(data.current.weather_code),
+                    condition,
                     tempMax: `${Math.round(data.daily.temperature_2m_max[0])}°`,
                     tempMin: `${Math.round(data.daily.temperature_2m_min[0])}°`,
                     wind: `${Math.round(data.current.wind_speed_10m)} km/h`,
@@ -64,16 +76,20 @@ export default function WeatherWidget() {
                     pressure: `${Math.round(data.current.surface_pressure)} hPa`,
                     sunrise: sunriseTime,
                     willRain: rainExpected
-                });
+                };
+
+                setWeather(weatherState);
+                setWeatherData(weatherState); // 🔥 ORA OGGETTO COMPLETO
             } catch (err) {
                 console.error("Telemetry fetch fault:", err);
             }
         }
 
         fetchWeather();
-        const telemetryInterval = setInterval(fetchWeather, 30000);
-        return () => clearInterval(telemetryInterval);
-    }, []);
+        const interval = setInterval(fetchWeather, 30000);
+
+        return () => clearInterval(interval);
+    }, [setWeatherData]);
 
     return (
         <BentoWidget
@@ -95,18 +111,39 @@ export default function WeatherWidget() {
                             Rain Expected
                         </div>
                     )}
-                    <div className="pt-4 mt-3 border-t border-slate-200/70 dark:border-white/10 grid grid-cols-3 gap-2 text-[10px] sm:text-[11px] font-bold uppercase tracking-widest text-slate-500 dark:text-cyan-600/70">
-                        <div className="flex flex-col gap-3 items-start">
-                            <span className="flex items-center gap-2"><Thermometer className="w-3.5 h-3.5 text-cyan-600/60" /> {weather.tempMin}/{weather.tempMax}</span>
-                            <span className="flex items-center gap-2"><Wind className="w-3.5 h-3.5 text-cyan-600/60" /> {weather.wind}</span>
+
+                    <div className="pt-4 mt-3 border-t grid grid-cols-3 gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-cyan-600/70">
+                        <div className="flex flex-col gap-3">
+                            <span className="flex items-center gap-2">
+                                <Thermometer className="w-3.5 h-3.5" />
+                                {weather.tempMin}/{weather.tempMax}
+                            </span>
+                            <span className="flex items-center gap-2">
+                                <Wind className="w-3.5 h-3.5" />
+                                {weather.wind}
+                            </span>
                         </div>
-                        <div className="flex flex-col gap-3 items-start mx-auto">
-                            <span className="flex items-center gap-2"><ThermometerSun className="w-3.5 h-3.5 text-cyan-600/60" /> Feels: {weather.feelsLike}</span>
-                            <span className="flex items-center gap-2"><Droplets className="w-3.5 h-3.5 text-cyan-600/60" /> {weather.humidity}</span>
+
+                        <div className="flex flex-col gap-3">
+                            <span className="flex items-center gap-2">
+                                <ThermometerSun className="w-3.5 h-3.5" />
+                                Feels {weather.feelsLike}
+                            </span>
+                            <span className="flex items-center gap-2">
+                                <Droplets className="w-3.5 h-3.5" />
+                                {weather.humidity}
+                            </span>
                         </div>
-                        <div className="flex flex-col gap-3 items-start ml-auto">
-                            <span className="flex items-center gap-2"><Sunrise className="w-3.5 h-3.5 text-cyan-600/60" /> Rise: {weather.sunrise}</span>
-                            <span className="flex items-center gap-2"><Gauge className="w-3.5 h-3.5 text-cyan-600/60" /> {weather.pressure}</span>
+
+                        <div className="flex flex-col gap-3">
+                            <span className="flex items-center gap-2">
+                                <Sunrise className="w-3.5 h-3.5" />
+                                {weather.sunrise}
+                            </span>
+                            <span className="flex items-center gap-2">
+                                <Gauge className="w-3.5 h-3.5" />
+                                {weather.pressure}
+                            </span>
                         </div>
                     </div>
                 </div>

@@ -1,10 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Music, Disc3, Repeat, SkipBack, Pause, Play, SkipForward, Upload } from "lucide-react";
 import BentoWidget from "./BentoWidget";
+import { useAppStore } from '../store'; // Import the centralized global state
 
 export default function AudioPlayerWidget() {
+    // ==============================================================================
+    // GLOBAL STATE HOOKS
+    // ==============================================================================
+    const setMusicPlayerData = useAppStore((state) => state.setMusicPlayerData);
+
+    // ==============================================================================
+    // LOCAL COMPONENT STATE
+    // ==============================================================================
     const [audioTrack, setAudioTrack] = useState<{ title: string; artist: string; url: string } | null>(null);
     const [audioPlaying, setAudioPlaying] = useState(false);
     const [audioInstance, setAudioInstance] = useState<HTMLAudioElement | null>(null);
@@ -14,6 +23,27 @@ export default function AudioPlayerWidget() {
     const [currentTime, setCurrentTime] = useState("0:00");
     const [duration, setDuration] = useState("0:00");
 
+    // ==============================================================================
+    // CONTEXT SYNCHRONIZATION
+    // Automatically synchronizes the internal component state with the global store
+    // so that the Atom Orchestrator is aware of the playback status.
+    // ==============================================================================
+    useEffect(() => {
+        if (!audioTrack) {
+            setMusicPlayerData("No audio track currently playing.");
+            return;
+        }
+
+        const status = audioPlaying
+            ? `Playing: ${audioTrack.title} by ${audioTrack.artist}`
+            : `Paused: ${audioTrack.title} by ${audioTrack.artist}`;
+
+        setMusicPlayerData(status);
+    }, [audioTrack, audioPlaying, setMusicPlayerData]);
+
+    // ==============================================================================
+    // AUDIO PROCESSING LOGIC
+    // ==============================================================================
     const formatTime = (timeInSeconds: number) => {
         if (isNaN(timeInSeconds)) return "0:00";
         const m = Math.floor(timeInSeconds / 60);
@@ -102,6 +132,9 @@ export default function AudioPlayerWidget() {
         setCurrentTime(formatTime(newTime));
     };
 
+    // ==============================================================================
+    // RENDERER
+    // ==============================================================================
     return (
         <BentoWidget title="Audio_Player" icon={Music} colorKey="violet">
             <div
