@@ -6,12 +6,7 @@
 
 ## 🎯 Project Purpose and Problem Solved
 
-This project eliminates the fragmentation and repetitive nature of accessing academic information systems. AeSoul Hub automates login workflows and data retrieval processes while maintaining persistent browser sessions, ensuring fast responses and avoiding the typical bottlenecks of traditional web scraping approaches.
-
-## 👥 Target Audience
-
-* Students and researchers who need to monitor their academic status.
-* Developers interested in scalable browser automation patterns.
+This project want to be a advanced dashboard to automate everyday task and have a general and fast look of the main information we need to see/know.
 
 ---
 
@@ -19,7 +14,7 @@ This project eliminates the fragmentation and repetitive nature of accessing aca
 
 * **Headless Academic Automation:** Automated login, logout, and academic status retrieval using Playwright.
 * **Session Persistence:** Advanced management of browser cache, cookies, and local storage (`playwright_session/`) enabling instant access without re-authentication.
-* **Task Orchestration:** Dedicated module (`orchestrator.py`) for coordinating complex operations and asynchronous workflows.
+* **Task Orchestration:** Dedicated module (`orchestrator.py`) for coordinating complex operations and asynchronous workflows with ai and in the future agent.
 * **Media Management:** Upload, download, and processing of multimedia assets (`media.py`).
 * **Responsive Interface:** Modern frontend built with Next.js (App Router).
 * **Containerized Infrastructure:** Reproducible deployment using Docker and Docker Compose.
@@ -137,13 +132,13 @@ docker-compose up --build -d
 ### Frontend
 
 ```text
-http://localhost:3000
+http://localhost:2003
 ```
 
 ### Backend API
 
 ```text
-http://localhost:8000
+http://localhost:3002
 ```
 
 ---
@@ -448,7 +443,7 @@ backend/database.py
 ---
 # 🗺 Roadmap
 
-* [ ] Add email/push notification system for academic updates.
+* [ ] integrated some agent to expand/automate ai and task(web search, add avento to calendar, ...etc.)
 * [ ] Create an administrative dashboard for automation monitoring.
 * [ ] Implement observability with Prometheus and Grafana.
 
@@ -456,13 +451,6 @@ backend/database.py
 
 # 📄 License
 
-**To be defined.**
-
-Possible options:
-
-* MIT
-* Apache 2.0
-* GPL v3
 * Proprietary
 
 ---
@@ -483,7 +471,7 @@ Possible options:
 ## Immediate Priorities
 
 1. Implement an automated testing suite.
-2. Migrate to PostgreSQL for concurrent environments.
-3. Introduce secure secret management.
-4. Add centralized monitoring and logging.
-5. Implement asynchronous queues for Playwright.
+2. Introduce secure secret management.
+3. Add centralized monitoring and logging.
+4. Start implement agent.
+
