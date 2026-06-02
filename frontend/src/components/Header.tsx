@@ -8,7 +8,7 @@ export default function Header() {
 
     // Fetches the backend connection status on component mount
     useEffect(() => {
-        fetch("http://192.168.1.216:3002")
+        fetch("http://127.0.0.1:3002")
             .then((res) => res.json())
             .then((data) => setBackendStatus(data.status))
             .catch(() => setBackendStatus("Offline"));
@@ -24,8 +24,14 @@ export default function Header() {
 
             <div className="flex items-center gap-5">
                 <div className="flex items-center gap-2 text-[10px] font-bold tracking-[0.2em] uppercase bg-cyan-950/20 backdrop-blur-md px-4 py-2 rounded-full border border-cyan-500/10 shadow-sm transition-colors duration-300">
-                    <Activity className={`w-3.5 h-3.5 ${backendStatus === "Online" ? "text-cyan-400 animate-pulse" : "text-cyan-500"}`} />
-                    <span className={backendStatus === "Online" ? "text-cyan-300/80" : "text-cyan-500"}>
+                    <Activity
+                        className={`w-3.5 h-3.5 ${backendStatus === "Online" ? "text-cyan-400 animate-pulse" : "text-cyan-500"}`}
+                    />
+                    <span
+                        className={
+                            backendStatus === "Online" ? "text-cyan-300/80" : "text-cyan-500"
+                        }
+                    >
                         SYS : Online {backendStatus}
                     </span>
                 </div>

@@ -1,0 +1,31 @@
+# ==============================================================================
+# BACKEND CODE QUALITY CONFIGURATION (RUFF)
+# Enforces strict coding standards, modern Python idioms, and automatic formatting
+# ==============================================================================
+
+[tool.ruff]
+# Set the target Python version to ensure compatibility
+target-version = "py310"
+
+# Enforce a generous but strict line length for readability
+line-length = 100
+
+[tool.ruff.lint]
+# Select rule sets: 
+# E = pycodestyle (errors)
+# F = pyflakes (logical errors like unused variables)
+# B = flake8-bugbear (common bugs and design issues)
+# I = isort (import sorting)
+select = ["E", "F", "B", "I"]
+
+# Ignore specific rules that conflict with FastAPI patterns or artisanal design
+ignore = [
+    "E501", # Line too long (handled by the formatter)
+    "B008", # Do not perform function calls in argument defaults (needed for FastAPI Depends/Form)
+]
+
+[tool.ruff.format]
+# Utilize double quotes consistently across the codebase
+quote-style = "double"
+# Indent with spaces for absolute cross-editor consistency
+indent-style = "space"

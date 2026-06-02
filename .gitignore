@@ -47,12 +47,14 @@ frontend/.env*.local
 # =========================
 # BACKEND (Python / FastAPI)
 # =========================
-# Python Cache Architectures
+# Python Cache & Tooling Architectures
 **/__pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
 backend/.pytest_cache/
+.ruff_cache/
+backend/.ruff_cache/
 
 # Virtual Environments Binds
 .venv/
@@ -61,19 +63,35 @@ backend/venv/
 backend/env/
 backend/.venv/
 
-# Backend Environment Secrets & Databases
+# Backend Environment Secrets & Database
 backend/.env
 backend/.env.*
 backend/*.db
 backend/*.sqlite3
-backend/downloads
-backend/temp_downloads
+# Ignore SQLite WAL mode temporary files
+backend/*.db-wal
+backend/*.db-shm
 
+# ==============================================================================
+# ÆHub MEDIA & AUDIO CACHE
+# ==============================================================================
+backend/downloads/
+backend/temp_downloads/
+backend/audio_cache/
+backend/temp_input.webm
+
+# ==============================================================================
+# ÆHub GOOGLE AGENT SECRETS (CRITICAL)
+# Prevents Google Cloud API credentials and persistent OAuth tokens from leaking
+# ==============================================================================
+backend/credentials.json
+backend/token.json
 
 # ==============================================================================
 # ÆHub ACADEMIC MODULE SPECIFIC (CRITICAL)
 # Prevents sensitive academic grades and session tokens from leaking to Git bounds
 # ==============================================================================
 backend/academic_cache.json
+backend/chat_history.json
 backend/phoenix_debug.png
-backend/playwright_session/
+backend/playwright_sessions/

@@ -1,0 +1,30 @@
+# ==============================================================================
+# BACKEND CORE IMAGE (PLAYWRIGHT BASE)
+# Utilizing the official Microsoft Playwright image to guarantee headless Chromium stability
+# ==============================================================================
+FROM mcr.microsoft.com/playwright/python:v1.40.0-jammy
+
+# WORKDIR ASSIGNMENT: Establish the execution path within the container
+WORKDIR /app
+
+# SYSTEM DEPENDENCIES: Install FFmpeg for advanced audio transcoding (yt-dlp core requirement)
+# Running cleanups immediately to reduce the final image layer size
+RUN apt-get update && \
+    apt-get install -y ffmpeg && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# DEPENDENCY INJECTION: Copy requirements first to leverage Docker's aggressive layer caching
+COPY requirements.txt .
+
+# PACKAGE INSTALLATION: Install Python modules required by the orchestration nodes
+RUN pip install --no-cache-dir -r requirements.txt
+
+# SOURCE CODE SYNCHRONIZATION: Copy the entire backend source tree into the container
+COPY . .
+
+# PORT EXPOSURE: Expose the standard FastAPI listener port
+EXPOSE 3002
+
+# EXECUTION ENTRYPOINT: Boot the Uvicorn ASGI server bridging the FastAPI application
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "3002"]

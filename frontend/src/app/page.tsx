@@ -11,46 +11,45 @@ import BentoWidget from "../components/BentoWidget";
 import { LayoutDashboard } from "lucide-react";
 
 export default function Home() {
-  const [isDarkMode, setIsDarkMode] = useState(true);
+    const [isDarkMode, setIsDarkMode] = useState(true);
 
-  useEffect(() => {
-    setIsDarkMode(document.documentElement.classList.contains("dark"));
-  }, []);
+    useEffect(() => {
+        setIsDarkMode(document.documentElement.classList.contains("dark"));
+    }, []);
 
-  const toggleTheme = () => {
-    const updateDOM = () => {
-      const isDark = document.documentElement.classList.contains("dark");
+    const toggleTheme = () => {
+        const updateDOM = () => {
+            const isDark = document.documentElement.classList.contains("dark");
 
-      if (isDark) {
-        document.documentElement.classList.remove("dark");
-        localStorage.setItem("theme", "light");
-        setIsDarkMode(false);
-      } else {
-        document.documentElement.classList.add("dark");
-        localStorage.setItem("theme", "dark");
-        setIsDarkMode(true);
-      }
+            if (isDark) {
+                document.documentElement.classList.remove("dark");
+                localStorage.setItem("theme", "light");
+                setIsDarkMode(false);
+            } else {
+                document.documentElement.classList.add("dark");
+                localStorage.setItem("theme", "dark");
+                setIsDarkMode(true);
+            }
+        };
+
+        if (document.startViewTransition) {
+            document.startViewTransition(updateDOM);
+        } else {
+            updateDOM();
+        }
     };
 
-    if (document.startViewTransition) {
-      document.startViewTransition(updateDOM);
-    } else {
-      updateDOM();
-    }
-  };
+    return (
+        <div className="min-h-screen text-slate-800 dark:text-cyan-50 p-4 sm:p-6 font-[family-name:var(--font-geist-sans)] relative overflow-x-hidden">
+            {/* Background layers */}
+            <div className="fixed inset-0 holographic-space pointer-events-none -z-20" />
+            <div className="fixed top-0 left-0 w-full h-[200vh] depth-mesh pointer-events-none -z-20 opacity-50" />
 
-  return (
-    <div className="min-h-screen text-slate-800 dark:text-cyan-50 p-4 sm:p-6 font-[family-name:var(--font-geist-sans)] relative overflow-x-hidden">
+            <Header {...({ isDarkMode, toggleTheme } as any)} />
 
-      {/* Background layers */}
-      <div className="fixed inset-0 holographic-space pointer-events-none -z-20" />
-      <div className="fixed top-0 left-0 w-full h-[200vh] depth-mesh pointer-events-none -z-20 opacity-50" />
-
-      <Header {...({ isDarkMode, toggleTheme } as any)} />
-
-      {/* MAIN RESPONSIVE GRID */}
-      <main
-        className="
+            {/* MAIN RESPONSIVE GRID */}
+            <main
+                className="
           max-w-6xl mx-auto
           grid gap-4 sm:gap-6
           grid-cols-1
@@ -60,21 +59,27 @@ export default function Home() {
           items-stretch
           relative z-10
         "
-      >
-        <WeatherWidget />
-        <AcademicWidget />
-        <Yt_To_Mp3_Widget />
+            >
+                <WeatherWidget />
+                <AcademicWidget />
+                <Yt_To_Mp3_Widget />
 
-        <BentoWidget
-          variant="slot"
-          title={<>Module<br />Alpha</>}
-          icon={LayoutDashboard}
-          colorKey="cyan"
-        />
+                <BentoWidget
+                    variant="slot"
+                    title={
+                        <>
+                            Module
+                            <br />
+                            Alpha
+                        </>
+                    }
+                    icon={LayoutDashboard}
+                    colorKey="cyan"
+                />
 
-        <CoreOrchestratorWidget />
-        <AudioPlayerWidget />
-      </main>
-    </div>
-  );
+                <CoreOrchestratorWidget />
+                <AudioPlayerWidget />
+            </main>
+        </div>
+    );
 }

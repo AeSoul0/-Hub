@@ -9,7 +9,7 @@ import {
     ThermometerSun,
     Droplets,
     Sunrise,
-    Gauge
+    Gauge,
 } from "lucide-react";
 
 import BentoWidget from "./BentoWidget";
@@ -57,11 +57,9 @@ export default function WeatherWidget() {
                     }
                 }
 
-                const sunriseTime = new Date(
-                    data.daily.sunrise[0]
-                ).toLocaleTimeString([], {
+                const sunriseTime = new Date(data.daily.sunrise[0]).toLocaleTimeString([], {
                     hour: "2-digit",
-                    minute: "2-digit"
+                    minute: "2-digit",
                 });
 
                 const weatherState: WeatherData = {
@@ -75,7 +73,7 @@ export default function WeatherWidget() {
                     feelsLike: `${Math.round(data.current.apparent_temperature)}°`,
                     pressure: `${Math.round(data.current.surface_pressure)} hPa`,
                     sunrise: sunriseTime,
-                    willRain: rainExpected
+                    willRain: rainExpected,
                 };
 
                 setWeather(weatherState);

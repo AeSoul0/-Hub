@@ -6,7 +6,8 @@
     "dev": "next dev -p 2003 -H 0.0.0.0",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\""
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
@@ -29,6 +30,7 @@
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
+    "prettier": "^3.8.3",
     "tailwindcss": "^4",
     "typescript": "^5.9.3"
   }

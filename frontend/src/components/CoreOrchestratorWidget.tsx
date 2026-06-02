@@ -3,21 +3,40 @@
 import { useState, useRef } from "react";
 import { Terminal, Activity, Mic, Square, Loader2, Cpu, Wifi } from "lucide-react";
 import BentoWidget from "./BentoWidget";
-import { useAppStore } from "../store/index"; // Import the Global State memory
+import { useAppStore } from "../store/index";
 
 // ==============================================================================
-// SYSTEM PROMPT & BEHAVIORAL DIRECTIVES
+// ENVIRONMENT & AUTHENTICATION CONFIGURATION
 // ==============================================================================
-const ATOM_SYSTEM_PROMPT = `You are Atom, the voice assistant of AeHub. 
-CRITICAL DIRECTIVE: You are speaking aloud. You MUST be radically concise and sound like a normal, direct human.
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:3002";
+const API_SECRET_KEY = process.env.NEXT_PUBLIC_AEHUB_KEY || "";
 
-1. EXTREME BREVITY: Answer in 1 short sentence whenever possible. Never exceed 2 short sentences. Go straight to the core answer immediately.
-2. NO ROBOTIC JARGON: Never describe yourself as a "highly advanced artificial intelligence", "architecture", or "cognitive engine". If asked who you are, just say "I'm Atom, your AeHub assistant."
-3. NO SYMBOLS/MARKDOWN: No asterisks, brackets, hashes, or code. Speak naturally.
-4. NATURAL CONVERSATION: Do not use filler words, robotic transitions, or overly polite greetings. Just deliver the answer cleanly and quickly.`;
+/**
+ * Generates and retrieves persistent session identifiers and security headers.
+ * Ensures multi-tenant isolation and passes the required API firewall checks
+ * enforced by the backend global middleware.
+ */
+const getAuthHeaders = (): Record<string, string> => {
+    let sessionId = "default-session";
+    if (typeof window !== "undefined") {
+        sessionId = localStorage.getItem("aehub_session_id") || "";
+        if (!sessionId) {
+            // Cryptographically secure UUID generation with standard fallback for older browsers
+            sessionId =
+                typeof crypto !== "undefined" && crypto.randomUUID
+                    ? crypto.randomUUID()
+                    : Math.random().toString(36).substring(2, 15);
+            localStorage.setItem("aehub_session_id", sessionId);
+        }
+    }
+    return {
+        "X-AeHub-Key": API_SECRET_KEY,
+        "X-Session-ID": sessionId,
+    };
+};
 
 export default function CoreOrchestratorWidget() {
-    // Operation handling states for tracking microphone telemetry, keyboard queries and backend states
+    // Operation handling states for tracking telemetry, hardware access, and backend nodes
     const [isListening, setIsListening] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const [inputText, setInputText] = useState("");
@@ -31,7 +50,7 @@ export default function CoreOrchestratorWidget() {
     const liveMusicData = useAppStore((state) => state.musicPlayerData);
     const liveAcademicData = useAppStore((state) => state.academicData);
 
-    // Hook bindings targeting capture hardware resources through standard browser capabilities
+    // Hook bindings targeting hardware resources through standard browser capabilities
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<BlobPart[]>([]);
 
@@ -41,11 +60,11 @@ export default function CoreOrchestratorWidget() {
     const getLiveSystemContext = () => {
         // Compiles the live system dashboard state into a JSON payload for context injection
         const dashboardState = {
-            systemTime: new Date().toLocaleTimeString('it-IT'),
+            systemTime: new Date().toLocaleTimeString("it-IT"),
             weatherWidgetTelemetry: liveWeatherData,
             mediaConverterTelemetry: liveMediaStatus,
             musicPlayerTelemetry: liveMusicData,
-            academicModuleTelemetry: liveAcademicData
+            academicModuleTelemetry: liveAcademicData,
         };
         return JSON.stringify(dashboardState, null, 2);
     };
@@ -57,9 +76,7 @@ export default function CoreOrchestratorWidget() {
         try {
             setInputText("Initializing input matrix...");
 
-            // ===============================
-            // SAFE MEDIA DEVICE CHECK
-            // ===============================
+            // SAFE MEDIA DEVICE CHECK: Verify browser API support
             if (
                 typeof navigator === "undefined" ||
                 !navigator.mediaDevices ||
@@ -69,11 +86,9 @@ export default function CoreOrchestratorWidget() {
                 return;
             }
 
-            const stream = await navigator.mediaDevices.getUserMedia({
-                audio: true,
-            });
-
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             const mediaRecorder = new MediaRecorder(stream);
+
             mediaRecorderRef.current = mediaRecorder;
             audioChunksRef.current = [];
 
@@ -84,10 +99,9 @@ export default function CoreOrchestratorWidget() {
             };
 
             mediaRecorder.onstop = async () => {
+                // Terminate hardware tracks to release system resources
                 stream.getTracks().forEach((track) => track.stop());
-                const audioBlob = new Blob(audioChunksRef.current, {
-                    type: "audio/webm",
-                });
+                const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
                 await sendVoiceToBackend(audioBlob);
             };
 
@@ -113,12 +127,15 @@ export default function CoreOrchestratorWidget() {
         try {
             const formData = new FormData();
             formData.append("file", blob, "voice_command.webm");
-            formData.append("system_prompt", ATOM_SYSTEM_PROMPT);
-            // Injecting the live Dashboard UI Context into the API transmission packet
+
+            // SECURITY NOTE: 'system_prompt' injection removed to prevent client-side hijacking.
+            // Only contextual UI telemetry is forwarded to the backend parser.
             formData.append("ui_context", getLiveSystemContext());
 
-            const res = await fetch("http://192.168.1.216:3002/api/orchestrator/listen", {
+            // TRANSMISSION: Secure POST request wrapped with authentication headers
+            const res = await fetch(`${API_BASE_URL}/api/orchestrator/listen`, {
                 method: "POST",
+                headers: getAuthHeaders(),
                 body: formData,
             });
 
@@ -144,12 +161,13 @@ export default function CoreOrchestratorWidget() {
         try {
             const formData = new FormData();
             formData.append("text", text);
-            formData.append("system_prompt", ATOM_SYSTEM_PROMPT);
+
             // Injecting the live Dashboard UI Context into the API transmission packet
             formData.append("ui_context", getLiveSystemContext());
 
-            const res = await fetch("http://127.0.0.1:3002/api/orchestrator/ask", {
+            const res = await fetch(`${API_BASE_URL}/api/orchestrator/ask`, {
                 method: "POST",
+                headers: getAuthHeaders(),
                 body: formData,
             });
 
@@ -164,7 +182,12 @@ export default function CoreOrchestratorWidget() {
     // ARCHITECTURAL RESPONSE RECOVERY LAYERS
     // ==============================================================================
     const handleBackendResponse = async (res: Response) => {
-        if (!res.ok) throw new Error("Backend orchestration node returned an error response");
+        // Evaluate response structure and handle security rejections gracefully
+        if (!res.ok) {
+            if (res.status === 401) throw new Error("401 Unauthorized - Invalid API Security Key");
+            throw new Error("Backend orchestration node returned an error response");
+        }
+
         const data = await res.json();
 
         // Wipe the input bar to maintain a clean, minimalist HUD interface layout
@@ -185,13 +208,12 @@ export default function CoreOrchestratorWidget() {
     };
 
     // ==============================================================================
-    // HUD RENDERER
+    // HUD RENDERING SHELL
     // ==============================================================================
     return (
         <BentoWidget title="ATOM_CORE" icon={Terminal} colorKey="cyan" colSpan={2}>
-            {/* HUD Framework Main Shell Layout */}
+            {/* Main Framework Container Array */}
             <div className="relative flex flex-col justify-between h-full w-full mt-2 rounded-xl overflow-hidden bg-gradient-to-br from-[#020813] to-[#0a1122] border border-cyan-900/50 p-4 shadow-[inset_0_0_40px_rgba(6,182,212,0.03)]">
-
                 {/* Decorative Hologram Grid Overlay Matrix */}
                 <div className="absolute inset-0 bg-[linear-gradient(rgba(6,182,212,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(6,182,212,0.05)_1px,transparent_1px)] bg-[size:16px_16px] pointer-events-none opacity-50" />
 
@@ -207,53 +229,75 @@ export default function CoreOrchestratorWidget() {
                     </div>
                 </div>
 
-                {/* Central Orchestrator Interface Array */}
+                {/* Central Orchestrator Interface Field */}
                 <div className="relative flex flex-col gap-4 z-10 w-full mt-auto">
-
                     {/* Centered Telemetry Status Field */}
                     <div className="flex items-center justify-center gap-6 bg-[#040d1a]/80 border border-cyan-500/20 rounded-lg p-3 backdrop-blur-md transition-all duration-300">
                         <div className="flex items-center gap-4">
                             {/* System Status Visual Beacon */}
-                            <div className={`relative flex items-center justify-center w-8 h-8 rounded-md border transition-all duration-300 
-                                ${isProcessing ? 'bg-amber-500/10 border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.2)]' :
-                                    isListening ? 'bg-red-500/10 border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.3)]' :
-                                        'bg-cyan-500/10 border-cyan-500/30 shadow-[0_0_15px_rgba(6,182,212,0.1)]'}`}>
-
-                                <div className={`absolute inset-0 rounded-md animate-ping opacity-40 
-                                    ${isListening ? 'bg-red-500/30' : isProcessing ? 'bg-amber-500/30' : 'bg-cyan-500/20'}`} />
+                            <div
+                                className={`relative flex items-center justify-center w-8 h-8 rounded-md border transition-all duration-300 
+                                ${
+                                    isProcessing
+                                        ? "bg-amber-500/10 border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.2)]"
+                                        : isListening
+                                          ? "bg-red-500/10 border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.3)]"
+                                          : "bg-cyan-500/10 border-cyan-500/30 shadow-[0_0_15px_rgba(6,182,212,0.1)]"
+                                }`}
+                            >
+                                <div
+                                    className={`absolute inset-0 rounded-md animate-ping opacity-40 
+                                    ${isListening ? "bg-red-500/30" : isProcessing ? "bg-amber-500/30" : "bg-cyan-500/20"}`}
+                                />
 
                                 {isProcessing ? (
                                     <Loader2 className="w-4 h-4 text-amber-500 animate-spin" />
                                 ) : (
-                                    <Activity className={`w-4 h-4 animate-pulse ${isListening ? 'text-red-500' : 'text-cyan-400'}`} />
+                                    <Activity
+                                        className={`w-4 h-4 animate-pulse ${isListening ? "text-red-500" : "text-cyan-400"}`}
+                                    />
                                 )}
                             </div>
 
                             {/* Soundwave Telemetry Simulation Fields */}
                             <div className="flex items-end gap-[2px] h-5 to-indigo-500">
                                 {[0.1, 0.4, 0.2, 0.6, 0.3, 0.5].map((delay, i) => (
-                                    <div key={i}
+                                    <div
+                                        key={i}
                                         className={`w-[3px] rounded-sm animate-[wave-pulse_1s_ease-in-out_infinite] 
-                                         ${isListening ? 'bg-red-500 shadow-[0_0_5px_rgba(239,68,68,0.5)]' : 'bg-cyan-500/70 shadow-[0_0_5px_rgba(6,182,212,0.3)]'}`}
-                                        style={{ animationDelay: `${delay}s`, animationDuration: `${0.8 + delay}s` }}
+                                         ${isListening ? "bg-red-500 shadow-[0_0_5px_rgba(239,68,68,0.5)]" : "bg-cyan-500/70 shadow-[0_0_5px_rgba(6,182,212,0.3)]"}`}
+                                        style={{
+                                            animationDelay: `${delay}s`,
+                                            animationDuration: `${0.8 + delay}s`,
+                                        }}
                                     />
                                 ))}
                             </div>
                         </div>
 
                         {/* Midline Symmetry Anchor Row */}
-                        <div className={`w-[1px] h-6 transition-colors duration-300 ${isProcessing ? 'bg-amber-500/30' : isListening ? 'bg-red-500/30' : 'bg-cyan-500/30'}`} />
+                        <div
+                            className={`w-[1px] h-6 transition-colors duration-300 ${isProcessing ? "bg-amber-500/30" : isListening ? "bg-red-500/30" : "bg-cyan-500/30"}`}
+                        />
 
                         {/* Rigid Telemetry Metric Display */}
-                        <span className={`font-mono text-[10px] font-bold tracking-[0.2em] transition-colors duration-300 animate-[pulse_2s_ease-in-out_infinite] w-[130px] text-center
-                            ${isProcessing ? 'text-amber-500' : isListening ? 'text-red-500' : 'text-cyan-400'}`}>
-                            {isProcessing ? "ANALYZING_DATA" : isListening ? "RECORDING_AUDIO" : "SYSTEM_STANDBY"}
+                        <span
+                            className={`font-mono text-[10px] font-bold tracking-[0.2em] transition-colors duration-300 animate-[pulse_2s_ease-in-out_infinite] w-[130px] text-center
+                            ${isProcessing ? "text-amber-500" : isListening ? "text-red-500" : "text-cyan-400"}`}
+                        >
+                            {isProcessing
+                                ? "ANALYZING_DATA"
+                                : isListening
+                                  ? "RECORDING_AUDIO"
+                                  : "SYSTEM_STANDBY"}
                         </span>
                     </div>
 
                     {/* Integrated Keyboard-Vocal Console Box Layout */}
                     <div className="relative flex items-center group/input w-full">
-                        <span className="absolute left-4 top-1/2 -translate-y-1/2 font-mono font-bold text-sm text-cyan-500/60 group-hover/input:text-cyan-400 transition-colors duration-300">$&gt;</span>
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 font-mono font-bold text-sm text-cyan-500/60 group-hover/input:text-cyan-400 transition-colors duration-300">
+                            $&gt;
+                        </span>
                         <input
                             type="text"
                             value={inputText}
@@ -269,13 +313,19 @@ export default function CoreOrchestratorWidget() {
                             onClick={handleMicToggle}
                             disabled={isProcessing}
                             className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-md cursor-pointer border transition-all duration-300 ease-out 
-                                ${isProcessing ? 'opacity-50 cursor-not-allowed bg-[#0a1526] text-cyan-800 border-transparent' :
-                                    isListening
-                                        ? 'bg-red-500/20 text-red-400 border-red-500/50 hover:bg-red-500/30 hover:scale-95 shadow-[0_0_10px_rgba(239,68,68,0.2)]'
-                                        : 'bg-cyan-900/20 text-cyan-500 hover:bg-cyan-800/40 hover:text-cyan-300 border-cyan-800/50 hover:border-cyan-500/50'
+                                ${
+                                    isProcessing
+                                        ? "opacity-50 cursor-not-allowed bg-[#0a1526] text-cyan-800 border-transparent"
+                                        : isListening
+                                          ? "bg-red-500/20 text-red-400 border-red-500/50 hover:bg-red-500/30 hover:scale-95 shadow-[0_0_10px_rgba(239,68,68,0.2)]"
+                                          : "bg-cyan-900/20 text-cyan-500 hover:bg-cyan-800/40 hover:text-cyan-300 border-cyan-800/50 hover:border-cyan-500/50"
                                 }`}
                         >
-                            {isListening ? <Square className="w-4 h-4 fill-current" /> : <Mic className="w-4 h-4" />}
+                            {isListening ? (
+                                <Square className="w-4 h-4 fill-current" />
+                            ) : (
+                                <Mic className="w-4 h-4" />
+                            )}
                         </button>
                     </div>
                 </div>

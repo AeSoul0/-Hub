@@ -1,0 +1,26 @@
+# ==============================================================================
+# FRONTEND INTERFACE IMAGE
+# Utilizing a lightweight Node.js Alpine base for optimal compilation speeds
+# ==============================================================================
+FROM node:18-alpine
+
+# WORKDIR ASSIGNMENT: Establish the execution path within the container
+WORKDIR /app
+
+# DEPENDENCY INJECTION: Copy package manifests to leverage build caching
+COPY package.json package-lock.json* ./
+
+# PACKAGE INSTALLATION: Install Node dependencies
+RUN npm install
+
+# SOURCE CODE SYNCHRONIZATION: Copy the Next.js frontend ecosystem
+COPY . .
+
+# ARTIFACT COMPILATION: Build the Next.js optimized production bundle
+RUN npm run build
+
+# PORT EXPOSURE: Expose the standard Next.js listener port
+EXPOSE 3000
+
+# EXECUTION ENTRYPOINT: Initialize the production-ready Node server
+CMD ["npm", "start"]

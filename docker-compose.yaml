@@ -1,0 +1,51 @@
+# ==============================================================================
+# MULTI-CONTAINER ORCHESTRATION MANIFEST
+# Defines the isolated network topology and persistent storage volumes
+# ==============================================================================
+version: '3.8'
+
+services:
+  # ---------------------------------------------------------
+  # BACKEND SERVICE NODE (FastAPI + AI Orchestrator)
+  # ---------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: aehub-backend
+    ports:
+      - "3002:3002"
+    volumes:
+      # PERSISTENT STORAGE: Map local directories to prevent data loss on container restarts
+      - ./backend/hub.db:/app/hub.db
+      - ./backend/audio_cache:/app/audio_cache
+      - ./backend/temp_downloads:/app/temp_downloads
+      - ./backend/playwright_sessions:/app/playwright_sessions
+    env_file:
+      - ./backend/.env
+    restart: unless-stopped
+    networks:
+      - aehub-network
+
+  # ---------------------------------------------------------
+  # FRONTEND SERVICE NODE (Next.js Dashboard)
+  # ---------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: aehub-frontend
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./frontend/.env.local
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - aehub-network
+
+# Define a private software-defined network for secure inter-container communication
+networks:
+  aehub-network:
+    driver: bridge
