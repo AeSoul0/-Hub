@@ -1,7 +1,5 @@
 # ÆHub — AeSoul Digital Hub
 
----
-
 # 📖 Overview
 
 **ÆHub** is an advanced full-stack platform for orchestrating and automating interactions with academic portals. By leveraging a headless browser engine, the system enables extraction, synchronization, and management of university data and multimedia assets within a unified, centralized dashboard.
