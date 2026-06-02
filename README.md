@@ -1,7 +1,5 @@
 # ÆHub — AeSoul Digital Hub
 
-**ÆHub** is a futuristic holographic bento-grid digital dashboard designed to centralize intelligent services, academic synchronization, and multimedia utilities within a modern, reactive, and highly modular ecosystem.
-
 ---
 
 # 📖 Overview
