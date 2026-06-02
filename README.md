@@ -1,380 +1,493 @@
-# ÆHub — AeSoul0 Digital Hub
+# ÆHub — AeSoul Digital Hub
 
-> **ÆHub** is a futuristic **Holographic / Bento Grid** digital dashboard designed to centralize intelligent services, academic synchronization, and multimedia utilities inside a modern, reactive, and highly modular ecosystem.
-
-The architecture is fully decoupled:
-
-* ⚡ **High-performance asynchronous backend** built with **Python + FastAPI**
-* 🧩 **Reactive frontend** powered by **Next.js + React + TypeScript**
-
-The platform provides:
-
-* 🌦️ Real-time weather telemetry
-* 🎓 Secure academic data synchronization through assisted browser automation
-* 🎵 High-fidelity MP3 extraction and conversion
-* 🌙 Dynamic Dark / Light mode interface with futuristic UI design
+**ÆHub** is a futuristic holographic bento-grid digital dashboard designed to centralize intelligent services, academic synchronization, and multimedia utilities within a modern, reactive, and highly modular ecosystem.
 
 ---
 
-# 🏗️ System Architecture
+# 📖 Overview
 
-ÆHub is divided into two independent macro-modules communicating through **REST APIs**.
+**ÆHub** is an advanced full-stack platform for orchestrating and automating interactions with academic portals. By leveraging a headless browser engine, the system enables extraction, synchronization, and management of university data and multimedia assets within a unified, centralized dashboard.
 
----
+## 🎯 Project Purpose and Problem Solved
 
-# ⚙️ Technology Stack
+This project eliminates the fragmentation and repetitive nature of accessing academic information systems. AeSoul Hub automates login workflows and data retrieval processes while maintaining persistent browser sessions, ensuring fast responses and avoiding the typical bottlenecks of traditional web scraping approaches.
 
-## 🔹 Backend — API Server
+## 👥 Target Audience
 
-| Technology                | Description                                |
-| ------------------------- | ------------------------------------------ |
-| **FastAPI**               | Asynchronous framework for API management  |
-| **Uvicorn**               | High-performance ASGI server               |
-| **Playwright (Chromium)** | Browser automation for SPID authentication |
-| **yt-dlp**                | Audio extraction from web sources          |
-| **FFmpeg**                | High-quality MP3 conversion                |
-| **Pydantic**              | Typed HTTP payload validation              |
+* Students and researchers who need to monitor their academic status.
+* Developers interested in scalable browser automation patterns.
 
 ---
 
-## 🔹 Frontend — Dashboard UI
+## ✨ Features
 
-| Technology          | Description                      |
-| ------------------- | -------------------------------- |
-| **Next.js 16**      | React framework using App Router |
-| **React 19**        | Reactive UI rendering            |
-| **TypeScript**      | Advanced static typing           |
-| **Tailwind CSS v4** | Utility-first styling framework  |
-| **Radix UI**        | Accessible UI primitives         |
-| **Lucide React**    | Dynamic vector icon library      |
+* **Headless Academic Automation:** Automated login, logout, and academic status retrieval using Playwright.
+* **Session Persistence:** Advanced management of browser cache, cookies, and local storage (`playwright_session/`) enabling instant access without re-authentication.
+* **Task Orchestration:** Dedicated module (`orchestrator.py`) for coordinating complex operations and asynchronous workflows.
+* **Media Management:** Upload, download, and processing of multimedia assets (`media.py`).
+* **Responsive Interface:** Modern frontend built with Next.js (App Router).
+* **Containerized Infrastructure:** Reproducible deployment using Docker and Docker Compose.
 
 ---
 
-# 🧠 Core Features
+## 🏗 Architecture
 
-## 🌦️ Atmosphere — Local Weather System
+The architecture follows a **decoupled client-server pattern**. The frontend acts as a presentation layer and API proxy, while the backend handles business logic, browser orchestration, and data access.
 
-A reactive weather widget that periodically fetches data from **Open-Meteo APIs** including:
+```mermaid
+graph TD
+    Client[Browser / Client] -->|HTTP| NextJS[Next.js Frontend]
+    NextJS -->|REST API| Backend[Python Backend]
 
-* Current temperature
-* Daily minimum / maximum
-* Feels-like temperature
-* Humidity
-* Atmospheric pressure
-* Wind speed
-* Rain prediction indicators
+    subgraph Backend Services
+        Backend --> AcademicRouter[Academic Router]
+        Backend --> MediaRouter[Media Router]
+        Backend --> Orchestrator[Orchestrator]
 
-Automatic refresh every **30 seconds**.
+        Orchestrator --> Playwright[Playwright Engine]
+        AcademicRouter --> Playwright
 
----
+        Playwright <-->|Read / Write| SessionCache[(Playwright Session Storage)]
 
-## 🎓 Academic — University Synchronization
+        AcademicRouter --> Database[(Database)]
+        MediaRouter --> Database
+    end
+```
 
-An intelligent synchronization system for the **Infostud / Phoenix** student portal.
-
-### Features:
-
-* SPID login through a real Chromium browser
-* Automatic authenticated session detection
-* Academic graph parsing
-* Automatic extraction of:
-
-  * 📊 Weighted GPA
-  * 🎯 Earned credits (CFU)
-  * ✅ Passed exams
-
-Data is persisted locally through server-side cache storage.
 
 ---
 
-## 🎵 MP3 Sync — Media Extraction Engine
 
-Advanced audio extraction and conversion module.
+# 📂 Project Structure
 
-### Pipeline:
+The repository is organized as a **monorepo**, with a clear separation between frontend and backend components.
 
-1. Automatic media search
-2. Original audio stream extraction
-3. FFmpeg conversion
-4. MP3 encoding at **320kbps**
-5. ID3 metadata injection
-6. Direct client-side download
-
-### UI States:
-
-* `idle`
-* `searching`
-* `downloading`
-* `done`
-
----
-
-## 🧩 Core Orchestrator
-
-Diagnostic section enhanced with:
-
-* Animated CSS spectrum analyzer
-* API traffic simulation
-* Pulse network effects
-* Real-time server status indicators
-
----
-
-## 🌙 Theme Controller
-
-Dark / Light mode management system featuring:
-
-* Instant theme switching
-* Theme persistence
-* Temporary CSS transition disabling
-* Flicker-free theme transitions
-
----
-
-# 🔌 API Endpoints
-
-Backend runs by default on:
-
-```txt
-http://127.0.0.1:3002
+```text
+aesoul-hub/
+├── backend/                 # Python backend
+│   ├── routers/             # API controllers
+│   │   ├── academic.py      # Academic data management
+│   │   ├── media.py         # File and asset processing
+│   │   └── orchestrator.py  # Workflow and queue management
+│   ├── playwright_session/  # Persistent browser profile storage
+│   ├── database.py          # ORM and database connection
+│   ├── main.py              # Application entry point
+│   ├── pyproject.toml       # Python dependencies
+│   └── dockerfile           # Backend container image
+│
+├── frontend/                # Next.js frontend
+│   ├── src/app/             # App Router and API Routes
+│   ├── public/              # Static assets
+│   ├── components.json      # UI configuration
+│   ├── next.config.js       # Next.js configuration
+│   ├── package.json         # Node.js dependencies
+│   └── dockerfile           # Frontend container image
+│
+└── docker-compose.yaml      # Stack orchestration
 ```
 
 ---
 
-# 🔹 Core Routes
+# 💻 Technologies Used
 
-| Method | Endpoint | Description      |
-| ------ | -------- | ---------------- |
-| `GET`  | `/`      | Server heartbeat |
+| Category   | Technology              | Purpose                                      |
+| ---------- | ----------------------- | -------------------------------------------- |
+| Frontend   | Next.js (React)         | User interface, SSR, and API proxy           |
+| Backend    | Python (FastAPI*)       | REST APIs, business logic, and orchestration |
+| Automation | Playwright              | Browser automation and web scraping          |
+| Database   | SQLite / PostgreSQL     | Data persistence and logging                 |
+| DevOps     | Docker & Docker Compose | Containerization and deployment              |
 
-### Response:
+> *FastAPI inferred from the presence of `routers/` and `main.py`.
+
+---
+
+# ⚙️ Requirements
+
+### Supported Operating Systems
+
+* Linux (Ubuntu/Debian recommended)
+* macOS
+* Windows (preferably via WSL2)
+
+### Required Software
+
+* Docker 24.0+
+* Docker Compose 2.0+
+
+---
+
+# 🚀 Installation
+
+## 1. Clone the Repository
+
+```bash
+git clone https://github.com/your-org/aesoul-hub.git
+cd aesoul-hub
+```
+
+## 2. Environment Configuration
+
+Create the required `.env` files following the examples provided in the documentation.
+
+## 3. Start with Docker
+
+```bash
+docker-compose up --build -d
+```
+
+## 4. Verify Services
+
+### Frontend
+
+```text
+http://localhost:3000
+```
+
+### Backend API
+
+```text
+http://localhost:8000
+```
+
+---
+
+# 🛠 Configuration
+
+Environment variables control the application's behavior.
+
+| Variable            | Description                       | Required | Example                          |
+| ------------------- | --------------------------------- | -------- | -------------------------------- |
+| DATABASE_URL        | Database connection string        | ✅        | postgresql://user@db:5432/aesoul |
+| PLAYWRIGHT_HEADLESS | Runs the browser in headless mode | ❌        | true                             |
+| API_SECRET_KEY      | JWT token secret key              | ✅        | super-secret-token               |
+| NEXT_PUBLIC_API_URL | Backend URL used by the frontend  | ✅        | http://localhost:8000            |
+
+---
+
+# 🔌 API Reference
+
+## Academic Authentication
+
+### POST `/api/academic/login`
+
+Starts an authenticated session using Playwright.
+
+#### Payload
 
 ```json
 {
-  "status": "Online"
+  "username": "student_id",
+  "password": "password"
 }
 ```
 
----
+#### Purpose
 
-# 🎓 Academic Module — `/api/academic`
-
-## `GET /status`
-
-Checks local session validity using:
-
-```txt
-academic_cache.json
-```
+* Performs automated authentication
+* Saves the browser session
 
 ---
 
-## `POST /login`
+### POST `/api/academic/logout`
 
-Launches Chromium in non-headless mode and waits for:
+#### Purpose
 
-1. Manual SPID login
-2. Navigation to `#/grafico`
-
-Then:
-
-* captures the DOM
-* extracts academic data
-* stores local cache
-
-### Extracted Data:
-
-* Weighted GPA
-* Earned credits (CFU)
-* Passed exams
+* Invalidates the current session
+* Removes persistent cookies and session data
 
 ---
 
-## `POST /logout`
+### GET `/api/academic/status`
 
-Deletes:
-
-```txt
-academic_cache.json
-```
-
-Immediately invalidating the session.
-
----
-
-# 🎵 Media Module — `/api/media`
-
-## `POST /download`
-
-### Payload:
+#### Response
 
 ```json
 {
-  "query": "Artist - Title"
+  "status": "active",
+  "grades": []
 }
 ```
 
-### Process:
+#### Purpose
 
-* automatic search
-* audio extraction
-* MP3 320kbps conversion
-* downloadable binary response
+Retrieves the user's current academic status.
 
-### Response Headers:
+---
 
-```txt
-Content-Disposition: attachment
+# 🗄 Database
+
+Persistence management is centralized in:
+
+```text
+backend/database.py
+```
+
+## Inferred Schema
+
+### Users
+
+Stores:
+
+* User identifiers
+* Preferences
+* Authentication information
+
+### MediaAssets
+
+Tracks:
+
+* Uploaded files
+* Processing operations
+* Associated metadata
+
+### SyncLogs
+
+Records:
+
+* Synchronization events
+* Automation execution results
+* Errors and operational logs
+
+---
+
+# 🧪 Testing
+
+A structured testing suite is currently not available.
+
+## Recommendations
+
+### Unit Testing
+
+Use:
+
+```text
+pytest
+```
+
+to validate:
+
+* Routers
+* Services
+* Business logic
+
+### End-to-End Testing
+
+Use:
+
+```text
+Playwright Test
+```
+
+to validate:
+
+* React user interface
+* Authentication workflows
+* Scraping and automation processes
+
+---
+
+# 📦 Deployment
+
+The project is already prepared for containerized environments.
+
+## Production Best Practices
+
+### Persistent Sessions
+
+Ensure that:
+
+```text
+backend/playwright_session/
+```
+
+is mounted as a persistent volume and excluded from Git version control.
+
+### Reverse Proxy
+
+Configure:
+
+* NGINX
+* Traefik
+
+for:
+
+* HTTPS
+* Load balancing
+* Security
+
+### Headless Mode
+
+Set:
+
+```env
+PLAYWRIGHT_HEADLESS=true
+```
+
+in server environments.
+
+---
+
+# 🛡 Security
+
+## Session Isolation
+
+The directory:
+
+```text
+playwright_session/
+```
+
+contains:
+
+* Cookies
+* Tokens
+* Temporary credentials
+
+Access should be restricted at the filesystem level.
+
+### Secret Management
+
+Never store:
+
+* Academic credentials
+* Tokens
+* API keys
+
+inside the repository.
+
+### Secure Communications
+
+Always use:
+
+```text
+HTTPS/TLS
+```
+
+between:
+
+* Frontend
+* Backend
+* Academic portals
+
+---
+
+# 📈 Performance and Scalability
+
+## Current Optimizations
+
+Caching Playwright data in:
+
+```text
+playwright_session/Default/
+```
+
+reduces:
+
+* Repeated logins
+* Static resource loading
+* Response times
+
+## Limitations
+
+Each Playwright browser instance consumes a significant amount of RAM.
+
+### Recommended Evolution
+
+Implement:
+
+* Redis
+* Celery
+* Dedicated workers
+
+to distribute workloads managed by:
+
+```text
+orchestrator.py
 ```
 
 ---
 
-# 📦 Local Installation
+# 🚨 Troubleshooting
 
-# 🔧 Requirements
+## Issue: Academic Login Timeout
 
-Make sure the following are installed:
+### Possible Causes
 
-* Python **3.10+**
-* Node.js **18+**
-* npm / yarn / pnpm
-* FFmpeg configured inside the system `PATH`
+* CAPTCHA introduced by the target portal
+* Changes to the target DOM structure
 
----
+### Solution
 
-# 🚀 Backend Setup
+Run with:
 
-## 1. Enter backend directory
+```env
+PLAYWRIGHT_HEADLESS=false
+```
 
-```bash
-cd backend
+and perform visual debugging of the automation process.
+
+Also check logs located in:
+
+```text
+playwright_session/Default/LOG
 ```
 
 ---
 
-## 2. Install Python dependencies
+## Issue: Database Locked
 
-```bash
-pip install fastapi uvicorn yt_dlp playwright pydantic
+### Possible Cause
+
+High concurrency on SQLite.
+
+### Solution
+
+Migrate to PostgreSQL by updating the configuration in:
+
+```text
+backend/database.py
 ```
 
 ---
+# 🗺 Roadmap
 
-## 3. Install Chromium for Playwright
-
-```bash
-playwright install chromium
-```
-
----
-
-## 4. Start the server
-
-```bash
-python main.py
-```
-
-Backend available at:
-
-```txt
-http://127.0.0.1:3002
-```
+* [ ] Add email/push notification system for academic updates.
+* [ ] Create an administrative dashboard for automation monitoring.
+* [ ] Implement observability with Prometheus and Grafana.
 
 ---
 
-# 💻 Frontend Setup
+# 📄 License
 
-## 1. Enter frontend directory
+**To be defined.**
 
-```bash
-cd frontend
-```
+Possible options:
 
----
-
-## 2. Install dependencies
-
-```bash
-npm install
-```
+* MIT
+* Apache 2.0
+* GPL v3
+* Proprietary
 
 ---
 
-## 3. Start Next.js
+# 📊 Current Project Status
 
-```bash
-npm run dev
-```
+| Area              | Assessment        |
+| ----------------- | ----------------- |
+| Architecture      | Good              |
+| Code Organization | Good              |
+| Security          | Needs Improvement |
+| Testing           | Insufficient      |
+| Scalability       | Moderate          |
+| Deployment        | Good              |
+| Observability     | Limited           |
+| Overall Maturity  | 70/100            |
 
-Frontend available at:
+## Immediate Priorities
 
-```txt
-http://localhost:2003
-```
-
----
-
-# 🧬 Design Philosophy
-
-ÆHub adopts a visual language inspired by:
-
-* **Holographic UI**
-* **Glassmorphism**
-* **Bento Grid Layouts**
-* **Soft Neon Glow**
-* **Reactive Motion Systems**
-
-The interface is designed to simulate an advanced digital control center while maintaining:
-
-* high performance
-* readability
-* modularity
-* fluid animations
-
----
-
-# 📁 Project Structure
-
-```txt
-ÆHub/
-│
-├── backend/
-│   ├── routers/
-│   ├── services/
-│   ├── cache/
-│   ├── main.py
-│   └── academic_cache.json
-│
-├── frontend/
-│   ├── app/
-│   ├── components/
-│   ├── lib/
-│   ├── public/
-│   └── styles/
-│
-└── README.md
-```
-
----
-
-# 🔮 Future Roadmap
-
-* 🔐 Native account system
-* ☁️ Multi-device cloud sync
-* 📊 Advanced academic analytics
-* 🤖 Integrated AI assistant
-* 🎧 Real-time audio streaming
-* 📱 Progressive Web App (PWA)
-* 🛰️ WebSocket telemetry system
-
----
-
-# 📜 License
-
-This project is under copyright.
-
----
-
-# 👤 Author
-
-**AeSoul0**
+1. Implement an automated testing suite.
+2. Migrate to PostgreSQL for concurrent environments.
+3. Introduce secure secret management.
+4. Add centralized monitoring and logging.
+5. Implement asynchronous queues for Playwright.
