@@ -94,4 +94,4 @@ backend/token.json
 backend/academic_cache.json
 backend/chat_history.json
 backend/phoenix_debug.png
-backend/playwright_sessions/
+backend/playwright_session

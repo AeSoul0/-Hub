@@ -11,11 +11,12 @@ import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from litellm import RateLimitError, acompletion
 
 # Import the centralized relational persistence controller
 import database
+from event_bus import event_bus
 from routers import academic, media, orchestrator
 
 load_dotenv()
@@ -93,6 +94,37 @@ app.include_router(academic.router)
 app.include_router(orchestrator.router)
 
 
+# =====================================================================
+# SERVER-SENT EVENTS (SSE) EVENT BUS STREAM
+# =====================================================================
+async def sse_event_generator(session_id: str, request: Request):
+    """
+    Generator that pulls messages from the EventBus and yields them
+    in standard Server-Sent Events (SSE) format.
+    """
+    queue = event_bus.subscribe(session_id)
+    try:
+        while True:
+            # Check if the client has disconnected
+            if await request.is_disconnected():
+                break
+            
+            message = await queue.get()
+            yield f"data: {message}\n\n"
+    finally:
+        event_bus.unsubscribe(session_id, queue)
+
+
+@app.get("/api/events")
+async def get_events_stream(request: Request):
+    """
+    SSE endpoint for streaming real-time logs and agent states to the frontend.
+    """
+    # Prefer query parameter for EventSource compatibility, fallback to header
+    session_id = request.query_params.get("session_id") or request.headers.get("x-session-id", "default-session")
+    return StreamingResponse(sse_event_generator(session_id, request), media_type="text/event-stream")
+
+
 # Initialize database storage schemas during the application startup lifecycle
 @app.on_event("startup")
 def startup_db():
@@ -151,9 +183,9 @@ async def process_text_to_audio(text: str):
     to Base64, and purges system assets from disk to preserve a zero-byte leak footprint.
     """
     try:
-        os.makedirs("audio_cache", exist_ok=True)
+        os.makedirs("workspace/audio_cache", exist_ok=True)
 
-        file_path = os.path.join("audio_cache", f"response_{int(datetime.now().timestamp())}.mp3")
+        file_path = os.path.join("workspace/audio_cache", f"response_{int(datetime.now().timestamp())}.mp3")
 
         communicate = edge_tts.Communicate(text, "it-IT-ElsaNeural")
         await communicate.save(file_path)

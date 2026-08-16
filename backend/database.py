@@ -1,7 +1,9 @@
+import os
 import sqlite3
 
 # CONSTANT: Name of the local database file. SQLite will automatically create it.
-DB_FILE = "hub.db"
+os.makedirs("workspace", exist_ok=True)
+DB_FILE = "workspace/hub.db"
 
 
 def init_db():

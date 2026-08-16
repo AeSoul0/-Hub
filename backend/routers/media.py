@@ -23,12 +23,12 @@ def download_media(req: MediaRequest, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=400, detail="Please provide an Artist and Title")
 
     # Create an isolated runtime directory for processing temporary downloads
-    os.makedirs("temp_downloads", exist_ok=True)
+    os.makedirs("workspace/temp_downloads", exist_ok=True)
 
     # Configuration suite for the yt-dlp extraction engine
     ydl_opts = {
         "format": "bestaudio/best",
-        "outtmpl": "temp_downloads/%(title)s.%(ext)s",
+        "outtmpl": "workspace/temp_downloads/%(title)s.%(ext)s",
         # NOTE: Explicit 'ffmpeg_location' removed to enforce cross-platform compatibility.
         # The engine will automatically locate the FFmpeg binary within the operating system's PATH.
         "postprocessors": [
