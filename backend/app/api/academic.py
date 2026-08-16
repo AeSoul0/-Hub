@@ -7,8 +7,8 @@ from fastapi import APIRouter, Header, HTTPException, BackgroundTasks
 from playwright.async_api import async_playwright
 from pydantic import BaseModel
 
-import database
-from event_bus import event_bus
+from app.core import database
+from app.core.event_bus import event_bus
 
 router = APIRouter(prefix="/api/academic", tags=["academic"])
 

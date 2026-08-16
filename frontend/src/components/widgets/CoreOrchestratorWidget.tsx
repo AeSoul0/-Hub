@@ -2,8 +2,8 @@
 
 import { useState, useRef } from "react";
 import { Terminal, Activity, Mic, Square, Loader2, Cpu, Wifi } from "lucide-react";
-import BentoWidget from "./BentoWidget";
-import { useAppStore } from "../store/index";
+import BentoWidget from "@/components/widgets/BentoWidget";
+import { useAppStore } from "../../store/index";
 
 // ==============================================================================
 // ENVIRONMENT & AUTHENTICATION CONFIGURATION
@@ -333,3 +333,4 @@ export default function CoreOrchestratorWidget() {
         </BentoWidget>
     );
 }
+

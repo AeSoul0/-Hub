@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Play, Search, Download, Activity, CheckCircle2 } from "lucide-react";
-import BentoWidget from "./BentoWidget";
+import BentoWidget from "@/components/widgets/BentoWidget";
 
 // ==============================================================================
 // ENVIRONMENT & AUTHENTICATION CONFIGURATION
@@ -157,3 +157,4 @@ export default function MediaSyncWidget() {
         </BentoWidget>
     );
 }
+

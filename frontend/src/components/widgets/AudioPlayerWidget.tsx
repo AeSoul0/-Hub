@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { Music, Disc3, Repeat, SkipBack, Pause, Play, SkipForward, Upload } from "lucide-react";
-import BentoWidget from "./BentoWidget";
-import { useAppStore } from "../store"; // Import the centralized global state
+import BentoWidget from "@/components/widgets/BentoWidget";
+import { useAppStore } from "../../store"; // Import the centralized global state
 
 export default function AudioPlayerWidget() {
     // ==============================================================================
@@ -295,3 +295,4 @@ export default function AudioPlayerWidget() {
         </BentoWidget>
     );
 }
+

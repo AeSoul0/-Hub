@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import BentoWidget from "./BentoWidget";
+import BentoWidget from "@/components/widgets/BentoWidget";
 import { GraduationCap, LogIn, RefreshCcw } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 
@@ -241,3 +241,4 @@ export default function AcademicWidget() {
         </BentoWidget>
     );
 }
+

@@ -6,7 +6,7 @@ import edge_tts
 from dotenv import load_dotenv
 from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
 from groq import AsyncGroq
-import database
+from app.core import database
 
 load_dotenv()
 
@@ -116,6 +116,37 @@ async def execute_slash_command(cmd: str, session_id: str):
     return {"transcription": reply_text, "audio_base64": base64_audio}
 
 
+import json
+from duckduckgo_search import DDGS
+from app.core.event_bus import event_bus
+
+def perform_web_search(query: str) -> str:
+    try:
+        results = DDGS().text(query, max_results=3)
+        return json.dumps(results, ensure_ascii=False) if results else "No results found."
+    except Exception as e:
+        return f"Error during web search: {str(e)}"
+
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "perform_web_search",
+            "description": "Cerca informazioni su internet in tempo reale. Usa questo tool per rispondere a domande su notizie recenti, meteo, o informazioni non presenti nel tuo contesto.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "La query di ricerca da inviare al motore di ricerca (sii specifico e conciso).",
+                    }
+                },
+                "required": ["query"],
+            },
+        },
+    }
+]
+
 # ==============================================================================
 # MAIN PROCESSING CORE
 # ==============================================================================
@@ -124,9 +155,9 @@ async def generate_ai_response(
     user_intent: str, system_prompt: str, ui_context: str, session_id: str
 ):
     """
-    Main cognitive assembly processor. Now securely isolated per user session.
+    Main cognitive assembly processor. Now securely isolated per user session
+    and equipped with Tool Calling for Agentic behavior.
     """
-    # Fetch user-specific settings from the SQLite database
     session_config = database.get_settings(session_id)
 
     messages = [{"role": "system", "content": system_prompt}]
@@ -146,26 +177,64 @@ async def generate_ai_response(
             }
         )
 
-    # Ingest historical context safely isolated by session ID
     historical_context = database.get_recent_chat(session_id, limit=5)
     messages.extend(historical_context)
 
     messages.append({"role": "user", "content": user_intent})
 
-    completion = await groq_client.chat.completions.create(
-        model="openai/gpt-oss-120b",
-        messages=messages,
-        temperature=session_config["temperature"],
-        top_p=1,
-        max_completion_tokens=session_config["max_tokens"],
-        stream=False,
-    )
-    raw_response = completion.choices[0].message.content
+    # The Agent Loop
+    MAX_ITERATIONS = 5
+    raw_response = ""
+    
+    for _ in range(MAX_ITERATIONS):
+        completion = await groq_client.chat.completions.create(
+            model="llama3-groq-70b-8192-tool-use-preview",
+            messages=messages,
+            temperature=session_config["temperature"],
+            top_p=1,
+            max_tokens=session_config["max_tokens"],
+            stream=False,
+            tools=TOOLS,
+            tool_choice="auto",
+        )
+        
+        response_message = completion.choices[0].message
+        
+        # Se il modello decide di usare un tool
+        if response_message.tool_calls:
+            # Aggiungi la risposta del modello (con i tool_calls) ai messaggi
+            messages.append(response_message)
+            
+            for tool_call in response_message.tool_calls:
+                if tool_call.function.name == "perform_web_search":
+                    try:
+                        args = json.loads(tool_call.function.arguments)
+                        query = args.get("query", "")
+                        
+                        # Pubblica l'evento sul Terminal Log del frontend!
+                        await event_bus.publish(session_id, "log", f"[Web Search] Sto cercando: {query}")
+                        
+                        result = perform_web_search(query)
+                    except Exception as e:
+                        result = str(e)
+                    
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "name": tool_call.function.name,
+                        "content": result
+                    })
+            # Il loop continua, il modello riceve il risultato del tool e formula la risposta
+        else:
+            raw_response = response_message.content
+            break
+
+    if not raw_response:
+        raw_response = "Scusa, si è verificato un errore durante l'elaborazione dei tool."
 
     clean_response = clean_text_for_speech(raw_response)
     base64_audio = await generate_voice_base64(clean_response)
 
-    # Persist data securely under the specific user's partition
     database.save_chat(session_id, user_intent, clean_response)
 
     return {"transcription": clean_response, "audio_base64": base64_audio}

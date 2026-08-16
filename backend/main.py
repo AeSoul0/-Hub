@@ -15,9 +15,10 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from litellm import RateLimitError, acompletion
 
 # Import the centralized relational persistence controller
-import database
-from event_bus import event_bus
-from routers import academic, media, orchestrator
+from app.core import database
+from app.core.event_bus import event_bus
+from app.api import academic, media
+from app.agents import orchestrator
 
 load_dotenv()
 
@@ -129,7 +130,7 @@ async def get_events_stream(request: Request):
 @app.on_event("startup")
 def startup_db():
     database.init_db()
-    print("🟢 Centralized SQLite Database Schema Initialized")
+    print("[OK] Centralized SQLite Database Schema Initialized")
 
 
 # =====================================================================
@@ -216,12 +217,12 @@ async def websocket_endpoint(websocket: WebSocket):
     # SECURITY ANCHOR: Validate token passed via query parameters (e.g. ?token=...)
     client_token = websocket.query_params.get("token")
     if client_token != AEHUB_SECRET_KEY:
-        print("🔴 Unauthorized WebSocket connection attempt blocked.")
+        print("[ERROR] Unauthorized WebSocket connection attempt blocked.")
         await websocket.close(code=1008)  # 1008 corresponds to Policy Violation
         return
 
     await websocket.accept()
-    print("🟢 Client connection established on WebSocket node")
+    print("[OK] Client connection established on WebSocket node")
 
     api_key = os.getenv("OPENROUTER_API_KEY")
     session_id = websocket.query_params.get("session_id", "default-session")

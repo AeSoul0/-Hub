@@ -1,5 +1,5 @@
 import React from "react";
-import { THEME_COLORS, ColorKey } from "../lib/theme";
+import { THEME_COLORS, ColorKey } from "../../lib/theme";
 
 interface BentoWidgetProps {
     variant?: "default" | "slot";
@@ -10,6 +10,7 @@ interface BentoWidgetProps {
     subTextRight?: string;
     colorKey: ColorKey;
     colSpan?: number;
+    rowSpan?: number;
     textSize?: string;
     isLoading?: boolean;
     children?: React.ReactNode;
@@ -24,15 +25,17 @@ export default function BentoWidget({
     subTextRight,
     colorKey,
     colSpan = 1,
+    rowSpan = 1,
     textSize = "text-5xl",
     isLoading = false,
     children,
 }: BentoWidgetProps) {
     const colors = THEME_COLORS[colorKey];
     const colClass = colSpan === 2 ? "md:col-span-2" : "";
+    const rowClass = rowSpan === 2 ? "md:row-span-2" : "";
 
     // Restored clean transition-all for smooth transform and color handling without experimental hacks
-    const baseClasses = `relative overflow-hidden group transition-all duration-150 hover:duration-75 ease-out hover:-translate-y-2 z-0 antialiased transform-gpu rounded-[2rem] p-6 flex flex-col ${colClass} ${colors.shadow}`;
+    const baseClasses = `relative overflow-hidden group transition-all duration-150 hover:duration-75 ease-out hover:-translate-y-2 z-0 antialiased transform-gpu rounded-[2.5rem] p-6 flex flex-col h-full w-full ${colClass} ${rowClass} ${colors.shadow}`;
 
     // Cleaned compositing layer maintaining high aesthetic fidelity and standard backdrop-blur values
     const sharedBg =
@@ -134,3 +137,4 @@ export default function BentoWidget({
         </div>
     );
 }
+

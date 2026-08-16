@@ -12,8 +12,8 @@ import {
     Gauge,
 } from "lucide-react";
 
-import BentoWidget from "./BentoWidget";
-import { useAppStore, WeatherData } from "../store/index";
+import BentoWidget from "@/components/widgets/BentoWidget";
+import { useAppStore, WeatherData } from "../../store/index";
 
 export default function WeatherWidget() {
     const setWeatherData = useAppStore((state) => state.setWeatherData);
@@ -149,3 +149,4 @@ export default function WeatherWidget() {
         </BentoWidget>
     );
 }
+

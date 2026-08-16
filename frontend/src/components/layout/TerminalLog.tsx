@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Terminal } from "lucide-react";
-import BentoWidget from "./BentoWidget";
+import BentoWidget from "@/components/widgets/BentoWidget";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:3002";
 
@@ -58,8 +58,9 @@ export default function TerminalLog() {
         };
 
         eventSource.onerror = (err) => {
-            console.error("EventSource failed:", err);
-            // Reconnection is handled automatically by EventSource, but we can log it
+            console.warn("EventSource connection lost or failed. Reconnecting...");
+            // Reconnection is handled automatically by EventSource.
+            // We use console.warn instead of console.error to avoid Next.js dev overlay triggering.
         };
 
         return () => {
@@ -109,3 +110,4 @@ export default function TerminalLog() {
         </BentoWidget>
     );
 }
+
