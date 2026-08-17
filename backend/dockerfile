@@ -10,7 +10,7 @@ WORKDIR /app
 # SYSTEM DEPENDENCIES: Install FFmpeg for advanced audio transcoding (yt-dlp core requirement)
 # Running cleanups immediately to reduce the final image layer size
 RUN apt-get update && \
-    apt-get install -y ffmpeg && \
+    apt-get install -y ffmpeg build-essential python3-dev && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
