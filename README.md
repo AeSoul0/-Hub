@@ -1531,3 +1531,7 @@ Until a license is explicitly added to the repository, reuse, modification, and 
 ÆHub is an active engineering project focused on evolving from a full-stack automation dashboard into a more capable, secure, and extensible agent platform.
 
 The current architecture already provides the core building blocks for tool-using agents, persistent memory, delegated research, sandboxed execution, and real-time orchestration. The next major engineering priorities are **production-grade security, evaluation, observability, RAG, and scalable execution infrastructure**.
+
+---
+
+**© 2026 Samuele (AeSoul0). All rights reserved.**
