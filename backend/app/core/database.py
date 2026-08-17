@@ -1,49 +1,52 @@
 import os
-import sqlite3
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from urllib.parse import urlparse
 
-# CONSTANT: Name of the local database file. SQLite will automatically create it.
-os.makedirs("workspace", exist_ok=True)
-DB_FILE = "workspace/hub.db"
+# POSTGRES_URL is injected by docker-compose or environment
+POSTGRES_URL = os.getenv("POSTGRES_URL", "postgresql://aehub_user:aehub_pass@localhost:5432/aehub_db")
 
+def get_connection():
+    """Establishes a connection to the PostgreSQL database."""
+    return psycopg2.connect(POSTGRES_URL)
 
 def init_db():
     """
-    Initializes the SQLite database and creates the necessary schemas
+    Initializes the PostgreSQL database and creates the necessary schemas
     if they do not already exist. Enables thread-safe data separation.
     """
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.cursor()
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            # TABLE: Chat history isolated by session_id
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS chats (
+                    id SERIAL PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    user_text TEXT NOT NULL,
+                    ai_text TEXT NOT NULL
+                )
+            """)
 
-        # TABLE: Chat history isolated by session_id
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS chats (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT NOT NULL,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                user_text TEXT NOT NULL,
-                ai_text TEXT NOT NULL
-            )
-        """)
+            # TABLE: Academic data isolated by session_id
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS academic (
+                    session_id TEXT PRIMARY KEY,
+                    gpa REAL,
+                    cfu INTEGER,
+                    exams INTEGER
+                )
+            """)
 
-        # TABLE: Academic data isolated by session_id
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS academic (
-                session_id TEXT PRIMARY KEY,
-                gpa REAL,
-                cfu INTEGER,
-                exams INTEGER
-            )
-        """)
-
-        # TABLE: LLM Runtime configurations isolated by session_id
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS settings (
-                session_id TEXT PRIMARY KEY,
-                temperature REAL DEFAULT 0.75,
-                max_tokens INTEGER DEFAULT 300,
-                deep_mode INTEGER DEFAULT 0
-            )
-        """)
+            # TABLE: LLM Runtime configurations isolated by session_id
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS settings (
+                    session_id TEXT PRIMARY KEY,
+                    temperature REAL DEFAULT 0.75,
+                    max_tokens INTEGER DEFAULT 300,
+                    deep_mode BOOLEAN DEFAULT FALSE
+                )
+            """)
         conn.commit()
 
 
@@ -54,17 +57,17 @@ def init_db():
 
 def get_settings(session_id: str) -> dict:
     """Retrieves session-specific configurations or fallback defaults."""
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT temperature, max_tokens, deep_mode FROM settings WHERE session_id = ?",
-            (session_id,),
-        )
-        row = cursor.fetchone()
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT temperature, max_tokens, deep_mode FROM settings WHERE session_id = %s",
+                (session_id,),
+            )
+            row = cursor.fetchone()
 
-        if row:
-            return {"temperature": row[0], "max_tokens": row[1], "deep_mode": bool(row[2])}
-        return {"temperature": 0.75, "max_tokens": 300, "deep_mode": False}
+            if row:
+                return {"temperature": row[0], "max_tokens": row[1], "deep_mode": bool(row[2])}
+            return {"temperature": 0.75, "max_tokens": 300, "deep_mode": False}
 
 
 def update_settings(
@@ -74,21 +77,21 @@ def update_settings(
     current = get_settings(session_id)
     temp = temperature if temperature is not None else current["temperature"]
     mt = max_tokens if max_tokens is not None else current["max_tokens"]
-    dm = int(deep_mode) if deep_mode is not None else int(current["deep_mode"])
+    dm = bool(deep_mode) if deep_mode is not None else current["deep_mode"]
 
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            INSERT INTO settings (session_id, temperature, max_tokens, deep_mode)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(session_id) DO UPDATE SET
-                temperature=excluded.temperature,
-                max_tokens=excluded.max_tokens,
-                deep_mode=excluded.deep_mode
-        """,
-            (session_id, temp, mt, dm),
-        )
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO settings (session_id, temperature, max_tokens, deep_mode)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (session_id) DO UPDATE SET
+                    temperature = EXCLUDED.temperature,
+                    max_tokens = EXCLUDED.max_tokens,
+                    deep_mode = EXCLUDED.deep_mode
+                """,
+                (session_id, temp, mt, dm),
+            )
         conn.commit()
 
 
@@ -99,45 +102,49 @@ def update_settings(
 
 def save_chat(session_id: str, user_text: str, ai_text: str):
     """Safely commits dialogue interactions to the session's ledger slice."""
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            INSERT INTO chats (session_id, user_text, ai_text)
-            VALUES (?, ?, ?)
-        """,
-            (session_id, user_text, ai_text),
-        )
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO chats (session_id, user_text, ai_text)
+                VALUES (%s, %s, %s)
+                """,
+                (session_id, user_text, ai_text),
+            )
         conn.commit()
 
 
 def get_recent_chat(session_id: str, limit: int = 5) -> list:
     """Extracts short-term historical context specifically filtered by the user's session."""
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT user_text, ai_text FROM chats
-            WHERE session_id = ?
-            ORDER BY timestamp ASC
-        """,
-            (session_id,),
-        )
-        rows = cursor.fetchall()
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT user_text, ai_text FROM (
+                    SELECT user_text, ai_text, timestamp 
+                    FROM chats
+                    WHERE session_id = %s
+                    ORDER BY timestamp DESC
+                    LIMIT %s
+                ) sub
+                ORDER BY timestamp ASC
+                """,
+                (session_id, limit),
+            )
+            rows = cursor.fetchall()
 
-        recent = rows[-limit:] if rows else []
-        messages = []
-        for user_text, ai_text in recent:
-            messages.append({"role": "user", "content": user_text})
-            messages.append({"role": "assistant", "content": ai_text})
-        return messages
+            messages = []
+            for user_text, ai_text in rows:
+                messages.append({"role": "user", "content": user_text})
+                messages.append({"role": "assistant", "content": ai_text})
+            return messages
 
 
 def clear_chat(session_id: str):
     """Purges the dialogue history exclusively for the requesting session."""
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM chats WHERE session_id = ?", (session_id,))
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("DELETE FROM chats WHERE session_id = %s", (session_id,))
         conn.commit()
 
 
@@ -148,16 +155,16 @@ def clear_chat(session_id: str):
 
 def get_academic_data(session_id: str) -> dict:
     """
-    Retrieves session-specific academic metrics from the SQLite persistence layer.
+    Retrieves session-specific academic metrics from the PostgreSQL persistence layer.
     Returns a dictionary of metrics if found, otherwise returns None.
     """
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT gpa, cfu, exams FROM academic WHERE session_id = ?", (session_id,))
-        row = cursor.fetchone()
-        if row:
-            return {"gpa": row[0], "cfu": row[1], "exams": row[2]}
-        return None
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT gpa, cfu, exams FROM academic WHERE session_id = %s", (session_id,))
+            row = cursor.fetchone()
+            if row:
+                return {"gpa": row[0], "cfu": row[1], "exams": row[2]}
+            return None
 
 
 def save_academic_data(session_id: str, gpa: float, cfu: int, exams: int):
@@ -165,19 +172,19 @@ def save_academic_data(session_id: str, gpa: float, cfu: int, exams: int):
     Upserts academic synchronization metrics into the database for the given
     session identifier, preventing multi-tenant data cross-contamination.
     """
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            INSERT INTO academic (session_id, gpa, cfu, exams)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(session_id) DO UPDATE SET
-                gpa=excluded.gpa,
-                cfu=excluded.cfu,
-                exams=excluded.exams
-        """,
-            (session_id, gpa, cfu, exams),
-        )
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO academic (session_id, gpa, cfu, exams)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (session_id) DO UPDATE SET
+                    gpa = EXCLUDED.gpa,
+                    cfu = EXCLUDED.cfu,
+                    exams = EXCLUDED.exams
+                """,
+                (session_id, gpa, cfu, exams),
+            )
         conn.commit()
 
 
@@ -185,7 +192,7 @@ def clear_academic_data(session_id: str):
     """
     Purges the cached academic database record row exclusively for the specified session.
     """
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM academic WHERE session_id = ?", (session_id,))
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("DELETE FROM academic WHERE session_id = %s", (session_id,))
         conn.commit()

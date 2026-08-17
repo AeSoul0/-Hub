@@ -73,12 +73,15 @@ backend/*.db-wal
 backend/*.db-shm
 
 # ==============================================================================
-# ÆHub MEDIA & AUDIO CACHE
+# ÆHub MEDIA & AUDIO CACHE & RUNTIME WORKSPACE
 # ==============================================================================
 backend/downloads/
 backend/temp_downloads/
 backend/audio_cache/
 backend/temp_input.webm
+backend/workspace/
+backend/hub.db
+data/
 
 # ==============================================================================
 # ÆHub GOOGLE AGENT SECRETS (CRITICAL)
@@ -95,3 +98,4 @@ backend/academic_cache.json
 backend/chat_history.json
 backend/phoenix_debug.png
 backend/playwright_session
+backend/playwright_sessions

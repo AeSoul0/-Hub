@@ -17,12 +17,16 @@ services:
       - "3002:3002"
     volumes:
       # PERSISTENT STORAGE: Map local directories to prevent data loss on container restarts
-      - ./backend/hub.db:/app/hub.db
       - ./backend/audio_cache:/app/audio_cache
       - ./backend/temp_downloads:/app/temp_downloads
-      - ./backend/playwright_sessions:/app/playwright_sessions
     env_file:
       - ./backend/.env
+    environment:
+      - POSTGRES_URL=postgresql://aehub_user:aehub_pass@postgres:5432/aehub_db
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - postgres
+      - redis
     restart: unless-stopped
     networks:
       - aehub-network
@@ -42,6 +46,38 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
+    networks:
+      - aehub-network
+
+  # ---------------------------------------------------------
+  # DATABASE (PostgreSQL)
+  # ---------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: aehub-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aehub_user
+      POSTGRES_PASSWORD: aehub_pass
+      POSTGRES_DB: aehub_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    networks:
+      - aehub-network
+
+  # ---------------------------------------------------------
+  # CACHE & EVENT BUS (Redis)
+  # ---------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: aehub-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./data/redis:/data
     networks:
       - aehub-network
 
