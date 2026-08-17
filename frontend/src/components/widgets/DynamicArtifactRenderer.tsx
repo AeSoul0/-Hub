@@ -60,7 +60,13 @@ export function DynamicArtifactRenderer({ artifact }: DynamicArtifactRendererPro
     case "yt_mp3":
       return <YtToMp3Widget />;
     case "bento":
-      return <BentoWidget items={artifact.data.items} />;
+      return (
+        <BentoWidget title="Bento Data" icon={Loader2} colorKey="indigo">
+          <div className="p-4 text-sm text-slate-300">
+            {JSON.stringify(artifact.data?.items)}
+          </div>
+        </BentoWidget>
+      );
     case "orchestrator":
       return <CoreOrchestratorWidget />;
     default:

@@ -5,7 +5,12 @@ import { Music, Disc3, Repeat, SkipBack, Pause, Play, SkipForward, Upload } from
 import BentoWidget from "@/components/widgets/BentoWidget";
 import { useAppStore } from "../../store"; // Import the centralized global state
 
-export default function AudioPlayerWidget() {
+interface AudioPlayerProps {
+    src?: string;
+    title?: string;
+}
+
+export default function AudioPlayerWidget({ src, title }: AudioPlayerProps = {}) {
     // ==============================================================================
     // GLOBAL STATE HOOKS
     // ==============================================================================
@@ -54,6 +59,34 @@ export default function AudioPlayerWidget() {
         const s = Math.floor(timeInSeconds % 60);
         return `${m}:${s.toString().padStart(2, "0")}`;
     };
+
+    useEffect(() => {
+        if (src && !audioInstance) {
+            const newAudio = new Audio(src);
+            newAudio.loop = isLooping;
+
+            newAudio.addEventListener("loadedmetadata", () =>
+                setDuration(formatTime(newAudio.duration))
+            );
+            newAudio.addEventListener("timeupdate", () => {
+                setCurrentTime(formatTime(newAudio.currentTime));
+                setProgress((newAudio.currentTime / newAudio.duration) * 100);
+            });
+            newAudio.addEventListener("ended", () => {
+                if (!newAudio.loop) {
+                    setAudioPlaying(false);
+                    setProgress(100);
+                }
+            });
+
+            setAudioTrack({ title: title || "Unknown Track", artist: "Unknown Artist", url: src });
+            setAudioPlaying(false);
+            setProgress(0);
+            setCurrentTime("0:00");
+            setDuration("0:00");
+            setAudioInstance(newAudio);
+        }
+    }, [src, title]);
 
     const processAudioFile = (file: File) => {
         if (!file.type.startsWith("audio/")) return;

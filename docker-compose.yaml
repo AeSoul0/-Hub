@@ -2,7 +2,7 @@
 # MULTI-CONTAINER ORCHESTRATION MANIFEST
 # Defines the isolated network topology and persistent storage volumes
 # ==============================================================================
-version: '3.8'
+
 
 services:
   # ---------------------------------------------------------

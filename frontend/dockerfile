@@ -2,7 +2,7 @@
 # FRONTEND INTERFACE IMAGE
 # Utilizing a lightweight Node.js Alpine base for optimal compilation speeds
 # ==============================================================================
-FROM node:18-alpine
+FROM node:20-alpine
 
 # WORKDIR ASSIGNMENT: Establish the execution path within the container
 WORKDIR /app
