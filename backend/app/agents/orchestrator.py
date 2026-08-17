@@ -116,123 +116,58 @@ async def execute_slash_command(cmd: str, session_id: str):
     return {"transcription": reply_text, "audio_base64": base64_audio}
 
 
-import json
-from duckduckgo_search import DDGS
 from app.core.event_bus import event_bus
-
-def perform_web_search(query: str) -> str:
-    try:
-        results = DDGS().text(query, max_results=3)
-        return json.dumps(results, ensure_ascii=False) if results else "No results found."
-    except Exception as e:
-        return f"Error during web search: {str(e)}"
-
-TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "perform_web_search",
-            "description": "Cerca informazioni su internet in tempo reale. Usa questo tool per rispondere a domande su notizie recenti, meteo, o informazioni non presenti nel tuo contesto.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "La query di ricerca da inviare al motore di ricerca (sii specifico e conciso).",
-                    }
-                },
-                "required": ["query"],
-            },
-        },
-    }
-]
 
 # ==============================================================================
 # MAIN PROCESSING CORE
 # ==============================================================================
 
+from app.runtime.aurora import get_aurora_app
+from langchain_core.messages import HumanMessage
+
+from app.core.security import PromptInjectionFilter
+
 async def generate_ai_response(
     user_intent: str, system_prompt: str, ui_context: str, session_id: str
 ):
     """
-    Main cognitive assembly processor. Now securely isolated per user session
-    and equipped with Tool Calling for Agentic behavior.
+    Main cognitive assembly processor.
+    Invokes the compiled LangGraph JARVIS Core, passing the user_intent and retrieving the final artifact/state.
     """
+    try:
+        user_intent = PromptInjectionFilter.sanitize(user_intent)
+    except ValueError as e:
+        await event_bus.publish(session_id, "log", f"[Security] {str(e)}")
+        await event_bus.publish(session_id, "notification", {"title": "Security Alert", "content": str(e)})
+        return
+        
     session_config = database.get_settings(session_id)
-
-    messages = [{"role": "system", "content": system_prompt}]
-
-    if ui_context and ui_context.strip():
-        context_payload = (
-            f"LIVE SYSTEM DASHBOARD CONTEXT:\n{ui_context}\n"
-            f"Use this data organically only if the user's query relates to it."
-        )
-        messages.append({"role": "system", "content": context_payload})
-
-    if session_config["deep_mode"]:
-        messages.append(
-            {
-                "role": "system",
-                "content": "OVERRIDE: You are in DEEP REASONING mode. Provide a detailed analysis and ignore the concise limits.",
-            }
-        )
-
-    historical_context = database.get_recent_chat(session_id, limit=5)
-    messages.extend(historical_context)
-
-    messages.append({"role": "user", "content": user_intent})
-
-    # The Agent Loop
-    MAX_ITERATIONS = 5
-    raw_response = ""
     
-    for _ in range(MAX_ITERATIONS):
-        completion = await groq_client.chat.completions.create(
-            model="llama3-groq-70b-8192-tool-use-preview",
-            messages=messages,
-            temperature=session_config["temperature"],
-            top_p=1,
-            max_tokens=session_config["max_tokens"],
-            stream=False,
-            tools=TOOLS,
-            tool_choice="auto",
+    # Publish diagnostic event for observability
+    await event_bus.publish(session_id, "log", f"[System] Routing intent to A.U.R.O.R.A. Core: {user_intent[:30]}...")
+
+    # LangGraph Invocation
+    try:
+        initial_state = {
+            "messages": [HumanMessage(content=user_intent)],
+            "session_id": session_id,
+            "current_intent": ""
+        }
+        
+        # Invoke graph asynchronously
+        app_instance = await get_aurora_app()
+        final_state = await app_instance.ainvoke(
+            initial_state,
+            config={"configurable": {"thread_id": session_id}}
         )
+        ai_response_text = final_state["messages"][-1].content
         
-        response_message = completion.choices[0].message
         
-        # Se il modello decide di usare un tool
-        if response_message.tool_calls:
-            # Aggiungi la risposta del modello (con i tool_calls) ai messaggi
-            messages.append(response_message)
-            
-            for tool_call in response_message.tool_calls:
-                if tool_call.function.name == "perform_web_search":
-                    try:
-                        args = json.loads(tool_call.function.arguments)
-                        query = args.get("query", "")
-                        
-                        # Pubblica l'evento sul Terminal Log del frontend!
-                        await event_bus.publish(session_id, "log", f"[Web Search] Sto cercando: {query}")
-                        
-                        result = perform_web_search(query)
-                    except Exception as e:
-                        result = str(e)
-                    
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "name": tool_call.function.name,
-                        "content": result
-                    })
-            # Il loop continua, il modello riceve il risultato del tool e formula la risposta
-        else:
-            raw_response = response_message.content
-            break
+    except Exception as e:
+        ai_response_text = f"Errore del runtime agentico: {str(e)}"
+        print(f"Graph Execution Error: {e}")
 
-    if not raw_response:
-        raw_response = "Scusa, si è verificato un errore durante l'elaborazione dei tool."
-
-    clean_response = clean_text_for_speech(raw_response)
+    clean_response = clean_text_for_speech(ai_response_text)
     base64_audio = await generate_voice_base64(clean_response)
 
     database.save_chat(session_id, user_intent, clean_response)

@@ -99,3 +99,5 @@ backend/chat_history.json
 backend/phoenix_debug.png
 backend/playwright_session
 backend/playwright_sessions
+session_log.md
+session_log*.md

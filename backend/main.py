@@ -17,8 +17,9 @@ from litellm import RateLimitError, acompletion
 # Import the centralized relational persistence controller
 from app.core import database
 from app.core.event_bus import event_bus
-from app.api import academic, media
+from app.api import academic, media, voice
 from app.agents import orchestrator
+from app.workers.scheduler import proactive_scheduler
 
 load_dotenv()
 
@@ -92,6 +93,7 @@ app.add_middleware(
 # Register application routers under decoupled sub-context boundaries
 app.include_router(media.router)
 app.include_router(academic.router)
+app.include_router(voice.router)
 app.include_router(orchestrator.router)
 
 
@@ -126,11 +128,15 @@ async def get_events_stream(request: Request):
     return StreamingResponse(sse_event_generator(session_id, request), media_type="text/event-stream")
 
 
+from app.workflows.autonomous import register_workflows
+
 # Initialize database storage schemas during the application startup lifecycle
 @app.on_event("startup")
 def startup_db():
     database.init_db()
-    print("[OK] Centralized SQLite Database Schema Initialized")
+    register_workflows()
+    proactive_scheduler.start()
+    print("[OK] Centralized PostgreSQL Database Schema Initialized")
 
 
 # =====================================================================
@@ -256,61 +262,20 @@ async def websocket_endpoint(websocket: WebSocket):
 
             session_config = database.get_settings(session_id)
 
-            system_prompt = (
-                "You are AeSoul, the dashboard AI. "
-                f"Context: {json.dumps(user_context)}. "
-                "Use only provided data. No markdown."
-            )
+            # TODO: Phase 2 - Route this user_text to the LangGraph A.U.R.O.R.A. Runtime via Event Bus
+            # await event_bus.publish(session_id, "user_input", user_text)
+            
+            # Temporary Placeholder Response during architectural transition
+            placeholder_text = "A.U.R.O.R.A. Core in fase di transizione architetturale. Attendi il completamento dell'aggiornamento agentico."
+            
+            await asyncio.sleep(1) # Simulate routing delay
+            await safe_send({"type": "stream_end", "full_text": placeholder_text})
 
-            messages = [{"role": "system", "content": system_prompt}]
+            audio = await process_text_to_audio(placeholder_text)
+            if audio:
+                await safe_send({"type": "audio_stream", "data": audio})
 
-            if session_config["deep_mode"]:
-                messages.append(
-                    {
-                        "role": "system",
-                        "content": "OVERRIDE: You are in DEEP REASONING mode. Ignore brevity constraints. Provide detailed analysis.",
-                    }
-                )
-
-            historical_context = database.get_recent_chat(session_id, limit=5)
-            messages.extend(historical_context)
-            messages.append({"role": "user", "content": user_text})
-
-            retries = 3
-            while retries > 0:
-                try:
-                    response = await acompletion(
-                        model="openrouter/openai/gpt-oss-120b:free",
-                        api_key=api_key,
-                        messages=messages,
-                        temperature=session_config["temperature"],
-                        max_tokens=session_config["max_tokens"],
-                        stream=True,
-                    )
-
-                    full_text = ""
-                    async for chunk in response:
-                        delta = chunk.choices[0].delta.content or ""
-                        full_text += delta
-
-                    await safe_send({"type": "stream_end", "full_text": full_text})
-
-                    audio = await process_text_to_audio(full_text)
-                    if audio:
-                        await safe_send({"type": "audio_stream", "data": audio})
-
-                    database.save_chat(session_id, user_text, full_text)
-                    break
-
-                except RateLimitError:
-                    retries -= 1
-                    await safe_send({"type": "status", "data": "rate_limited_retrying"})
-                    await asyncio.sleep(3)
-
-                except Exception as e:
-                    print(f"LLM inference failure on WebSocket: {e}")
-                    await safe_send({"type": "error", "message": "Generation failed"})
-                    break
+            database.save_chat(session_id, user_text, placeholder_text)
 
     except WebSocketDisconnect:
         print("🔴 Client connection terminated on WebSocket node")

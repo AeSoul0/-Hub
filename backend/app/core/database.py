@@ -47,6 +47,33 @@ def init_db():
                     deep_mode BOOLEAN DEFAULT FALSE
                 )
             """)
+
+            # TABLE: A.U.R.O.R.A. Memory Layers
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS memory_semantic (
+                    id SERIAL PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    fact TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS memory_episodic (
+                    id SERIAL PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    task_description TEXT NOT NULL,
+                    outcome TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS memory_procedural (
+                    id SERIAL PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    rule TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
         conn.commit()
 
 
