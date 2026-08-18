@@ -10,7 +10,7 @@
 
 "use client";
 
-import React, { Suspense } from "react";
+import React from "react";
 import dynamic from "next/dynamic";
 import { Loader2 } from "lucide-react";
 
@@ -46,7 +46,7 @@ const CoreOrchestratorWidget = dynamic(() => import("./CoreOrchestratorWidget"),
 export interface Artifact {
   id: string;
   type: string;
-  data: any;
+  data: Record<string, unknown>;
 }
 
 interface DynamicArtifactRendererProps {

@@ -66,9 +66,10 @@ async def verify_api_key(request: Request, call_next):
     if request.method == "OPTIONS":
         return await call_next(request)
 
-    # Enforce strict token validation for all API endpoints except auth
     if request.url.path.startswith("/api/") and not request.url.path.startswith("/api/auth/"):
         from app.core.security import IdentityService
+        from app.core.db import SessionLocal
+        from app.core.cache import CacheService
         auth_header = request.headers.get("Authorization")
         cookie_token = request.cookies.get("aehub_session_token")
         
@@ -76,11 +77,25 @@ async def verify_api_key(request: Request, call_next):
         if auth_header and auth_header.startswith("Bearer "):
             session_token = auth_header.split(" ")[1]
             
-        if not session_token or not IdentityService.validate_session(session_token):
-            return JSONResponse(
-                status_code=401, 
-                content={"detail": "Unauthorized access. Invalid or missing session."}
+        with SessionLocal() as db:
+            session = IdentityService.validate_session(db, session_token) if session_token else None
+            if not session:
+                return JSONResponse(
+                    status_code=401, 
+                    content={"detail": "Unauthorized access. Invalid or missing session."}
+                )
+                
+            # M4: Rate Limiting
+            is_allowed = await CacheService.check_rate_limit(
+                identifier=f"user:{session.user_id}",
+                limit=60, # 60 requests
+                window_seconds=60 # per minute
             )
+            if not is_allowed:
+                return JSONResponse(
+                    status_code=429,
+                    content={"detail": "Too Many Requests. Rate limit exceeded."}
+                )
 
     # Proceed to the requested endpoint if authentication is successful
     response = await call_next(request)
@@ -90,6 +105,11 @@ async def verify_api_key(request: Request, call_next):
 # =====================================================================
 # CORS CONFIGURATION (MOBILE SAFE BOUNDARY)
 # =====================================================================
+from app.core.security_middleware import AdvancedSecurityMiddleware
+
+app.add_middleware(AdvancedSecurityMiddleware)
+app.add_middleware(SecurityAuditMiddleware)
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[os.getenv("FRONTEND_URL", "http://localhost:3000")],
@@ -98,42 +118,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# =====================================================================
-# AUTHENTICATION ENDPOINTS
-# =====================================================================
-@app.post("/api/auth/login")
-async def login(request: Request, response: Response):
-    data = await request.json()
-    if data.get("key") == AEHUB_SECRET_KEY:
-        from app.core.security import IdentityService, Role
-        import hashlib
-        
-        # Simple ID generation for now
-        user_id = hashlib.sha256(b"admin").hexdigest()
-        session_token = IdentityService.create_session(user_id=user_id, role=Role.ADMIN)
-        
-        # Set HttpOnly cookie for session
-        response = JSONResponse(content={"status": "ok", "session_token": session_token})
-        is_prod = os.getenv("ENVIRONMENT", "development") == "production"
-        response.set_cookie(key="aehub_session_token", value=session_token, httponly=True, samesite="lax", secure=is_prod)
-        return response
-    return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
-
-@app.post("/api/auth/logout")
-async def logout(request: Request, response: Response):
-    from app.core.security import IdentityService
-    cookie_token = request.cookies.get("aehub_session_token")
-    if cookie_token:
-        IdentityService.invalidate_session(cookie_token)
-        
-    response = JSONResponse(content={"status": "ok"})
-    response.delete_cookie("aehub_session_token")
-    return response
-
-@app.get("/api/auth/verify")
-async def verify_auth(request: Request):
-    # If it reaches here, the middleware has already approved it.
-    return {"status": "ok"}
+from app.api import auth
+app.include_router(auth.router)
 
 # =====================================================================
 # SECURITY HEADERS MIDDLEWARE
@@ -195,6 +181,19 @@ from app.workflows.autonomous import register_workflows
 # Initialize database storage schemas during the application startup lifecycle
 @app.on_event("startup")
 def startup_db():
+    from app.core.db import engine
+    from app.domain.models import Base
+    from app.core.telemetry import instrument_sqlalchemy
+    from sqlalchemy import text
+    
+    # Phase 6: Instrument Database Tracing
+    instrument_sqlalchemy(engine)
+    
+    with engine.begin() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        
+    Base.metadata.create_all(bind=engine)
+    
     database.init_db()
     register_workflows()
     proactive_scheduler.start()
@@ -283,9 +282,11 @@ async def websocket_endpoint(websocket: WebSocket):
     to segment settings matrices, history recall buffers, and loops on a per-user layer.
     """
     from app.core.security import IdentityService
+    from app.core.db import SessionLocal
     # SECURITY ANCHOR: Validate session token passed via cookies ONLY (no query params)
     client_token = websocket.cookies.get("aehub_session_token")
-    session = IdentityService.validate_session(client_token) if client_token else None
+    with SessionLocal() as db:
+        session = IdentityService.validate_session(db, client_token) if client_token else None
     
     if not session:
         print("[ERROR] Unauthorized WebSocket connection attempt blocked.")

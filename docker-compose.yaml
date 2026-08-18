@@ -50,10 +50,10 @@ services:
       - aehub-network
 
   # ---------------------------------------------------------
-  # DATABASE (PostgreSQL)
+  # DATABASE (PostgreSQL with pgvector for M4)
   # ---------------------------------------------------------
   postgres:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
     container_name: aehub-postgres
     restart: unless-stopped
     environment:
@@ -62,6 +62,37 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-aehub_db}
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
+    networks:
+      - aehub-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aehub_user -d aehub_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------
+  # CELERY WORKER (Async Tasks for M2.5)
+  # ---------------------------------------------------------
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: aehub-celery
+    command: celery -A app.core.celery_app.celery_app worker --loglevel=info
+    volumes:
+      - ./backend/audio_cache:/app/audio_cache
+      - ./backend/temp_downloads:/app/temp_downloads
+      - ./workspace/chromadb:/app/workspace/chromadb
+    env_file:
+      - ./backend/.env
+    environment:
+      - POSTGRES_URL=${POSTGRES_URL}
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - postgres
+      - redis
+      - backend
+    restart: unless-stopped
     networks:
       - aehub-network
 

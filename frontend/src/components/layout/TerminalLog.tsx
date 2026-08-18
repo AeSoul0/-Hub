@@ -13,13 +13,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Terminal } from "lucide-react";
 import BentoWidget from "@/components/widgets/BentoWidget";
+import { useUIStore } from "@/store/useUIStore";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:3002";
 
 interface LogEvent {
     id: string;
     type: string;
-    data: any;
+    data: unknown;
     timestamp: Date;
 }
 
@@ -55,6 +56,12 @@ export default function TerminalLog() {
         eventSource.onmessage = (event) => {
             try {
                 const parsed = JSON.parse(event.data);
+                
+                // M3: Check if event is an Artifact render command
+                if (parsed.type === "artifact") {
+                    useUIStore.getState().spawnArtifact(parsed.data);
+                }
+                
                 const newLog: LogEvent = {
                     id: Math.random().toString(36).substring(2, 9),
                     type: parsed.type,

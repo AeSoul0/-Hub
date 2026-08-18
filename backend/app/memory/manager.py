@@ -8,69 +8,72 @@ Architectural constraints and responsibilities apply here.
 Testability and dependency separation are enforced.
 """
 
-from app.core.database import get_connection
-
+from app.core.db import SessionLocal
+from app.domain.models.memory import VectorMemory, MemoryType
+try:
+    from langchain_huggingface import HuggingFaceEmbeddings
+    # Load lightweight local embeddings model (all-MiniLM-L6-v2 is 384 dims)
+    _embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+except ImportError:
+    _embeddings = None
 
 class AuroraMemoryManager:
     """
-    Manages A.U.R.O.R.A.'s Memory Architecture.
-    - Working Memory: Handled natively by LangGraph state (messages array).
-    - Conversation Memory: Handled by AsyncPostgresSaver Checkpoints.
-    - Episodic Memory: Events and task outcomes.
-    - Semantic Memory: Facts and knowledge about the user.
-    - Procedural Memory: Preferences and rules.
+    Manages A.U.R.O.R.A.'s Memory Architecture (M4).
+    Uses pgvector for Long-Term Semantic retrieval.
     """
     
     def __init__(self, session_id: str):
         self.session_id = session_id
-        
+
+    def _get_embedding(self, text: str) -> list[float]:
+        if not _embeddings:
+            return [0.0] * 384 # Fallback dummy if not installed
+        return _embeddings.embed_query(text)
+
+    def save_memory(self, content: str, memory_type: MemoryType):
+        """Stores a persistent memory with vector embedding."""
+        vector = self._get_embedding(content)
+        with SessionLocal() as db:
+            memory = VectorMemory(
+                session_id=self.session_id,
+                memory_type=memory_type.value,
+                content=content,
+                embedding=vector
+            )
+            db.add(memory)
+            db.commit()
+
     def save_semantic(self, fact: str):
-        """Stores a persistent fact about the user or environment."""
-        with get_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    "INSERT INTO memory_semantic (session_id, fact) VALUES (%s, %s)",
-                    (self.session_id, fact)
-                )
-            conn.commit()
+        self.save_memory(fact, MemoryType.SEMANTIC)
             
     def save_episodic(self, task_description: str, outcome: str):
-        """Stores the result of a completed task or significant event."""
-        with get_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    "INSERT INTO memory_episodic (session_id, task_description, outcome) VALUES (%s, %s, %s)",
-                    (self.session_id, task_description, outcome)
-                )
-            conn.commit()
+        self.save_memory(f"Task: {task_description}. Outcome: {outcome}", MemoryType.EPISODIC)
 
     def save_procedural(self, rule: str):
-        """Stores a preference or operational rule the agent must follow."""
-        with get_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    "INSERT INTO memory_procedural (session_id, rule) VALUES (%s, %s)",
-                    (self.session_id, rule)
-                )
-            conn.commit()
+        self.save_memory(rule, MemoryType.PROCEDURAL)
             
-    def fetch_all_context(self) -> str:
-        """Retrieves all context memory for injection into the prompt."""
-        semantic = []
-        procedural = []
-        
-        with get_connection() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT fact FROM memory_semantic WHERE session_id = %s ORDER BY created_at DESC LIMIT 20", (self.session_id,))
-                semantic = [row[0] for row in cursor.fetchall()]
-                
-                cursor.execute("SELECT rule FROM memory_procedural WHERE session_id = %s ORDER BY created_at DESC LIMIT 10", (self.session_id,))
-                procedural = [row[0] for row in cursor.fetchall()]
-
+    def fetch_all_context(self, current_intent: str = "") -> str:
+        """Retrieves semantically relevant memories based on current intent using pgvector."""
         context = ""
-        if semantic:
-            context += "=== SEMANTIC MEMORY (Known Facts) ===\n- " + "\n- ".join(semantic) + "\n\n"
-        if procedural:
-            context += "=== PROCEDURAL MEMORY (Rules & Preferences) ===\n- " + "\n- ".join(procedural) + "\n\n"
-            
+        
+        with SessionLocal() as db:
+            if current_intent and _embeddings:
+                query_vector = self._get_embedding(current_intent)
+                # Semantic search: get top 5 most relevant memories using cosine distance (<= operator in pgvector)
+                relevant_memories = db.query(VectorMemory).filter(
+                    VectorMemory.session_id == self.session_id
+                ).order_by(VectorMemory.embedding.cosine_distance(query_vector)).limit(5).all()
+                
+                if relevant_memories:
+                    context += "=== RECALLED MEMORIES ===\n- " + "\n- ".join([m.content for m in relevant_memories]) + "\n\n"
+            else:
+                # Fallback to recent procedural rules and semantic facts
+                recent = db.query(VectorMemory).filter(
+                    VectorMemory.session_id == self.session_id
+                ).order_by(VectorMemory.created_at.desc()).limit(10).all()
+                
+                if recent:
+                    context += "=== RECENT MEMORIES ===\n- " + "\n- ".join([m.content for m in recent]) + "\n\n"
+                    
         return context

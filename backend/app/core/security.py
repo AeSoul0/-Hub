@@ -9,22 +9,21 @@ Testability and dependency separation are enforced.
 """
 
 import hashlib
+import secrets
+from datetime import datetime, timedelta
 from enum import Enum
-from typing import Dict, List
+from typing import Dict, List, Optional
 
-from fastapi import Header, HTTPException, Request
+from fastapi import Header, HTTPException, Request, Depends
 from pydantic import BaseModel
+from sqlalchemy.orm import Session as DBSession
 
+from app.core.db import get_db, SessionLocal
+from app.domain.models.identity import Session as SessionModel, User, RoleEnum, Workspace
 
 # ==============================================================================
 # IDENTITY & PRINCIPAL MODEL
 # ==============================================================================
-class Role(str, Enum):
-    SYSTEM = "system"       # Unrestricted background daemons
-    ADMIN = "admin"         # Full capability access
-    USER = "user"           # Standard operations, restricted sensitive tools
-    GUEST = "guest"         # Read-only memory, no execution
-
 class Permission(str, Enum):
     EXECUTE_SAFE_TOOL = "tool:execute:safe"
     EXECUTE_SENSITIVE_TOOL = "tool:execute:sensitive"
@@ -32,30 +31,18 @@ class Permission(str, Enum):
     WRITE_MEMORY = "memory:write"
     INVOKE_SUBAGENT = "agent:invoke"
 
-ROLE_PERMISSIONS: Dict[Role, List[Permission]] = {
-    Role.SYSTEM: list(Permission),
-    Role.ADMIN: list(Permission),
-    Role.USER: [Permission.EXECUTE_SAFE_TOOL, Permission.READ_MEMORY, Permission.WRITE_MEMORY, Permission.INVOKE_SUBAGENT],
-    Role.GUEST: [Permission.READ_MEMORY]
+# Map roles to their permission sets
+ROLE_PERMISSIONS: Dict[RoleEnum, List[Permission]] = {
+    RoleEnum.SYSTEM: list(Permission),
+    RoleEnum.ADMIN: list(Permission),
+    RoleEnum.MEMBER: [Permission.EXECUTE_SAFE_TOOL, Permission.READ_MEMORY, Permission.WRITE_MEMORY],
+    RoleEnum.USER: [Permission.EXECUTE_SAFE_TOOL, Permission.READ_MEMORY, Permission.WRITE_MEMORY, Permission.INVOKE_SUBAGENT],
+    RoleEnum.GUEST: [Permission.READ_MEMORY]
 }
-
-from datetime import datetime, timedelta
-import secrets
-
-class Workspace(BaseModel):
-    id: str
-    name: str
-
-class Session(BaseModel):
-    id: str
-    user_id: str
-    role: Role
-    workspace_id: str
-    expires_at: datetime
 
 class Principal(BaseModel):
     id: str
-    role: Role
+    role: RoleEnum
     workspace_id: str
 
 class PolicyDecision(BaseModel):
@@ -66,54 +53,67 @@ class PolicyDecision(BaseModel):
 # IDENTITY SERVICE
 # ==============================================================================
 class IdentityService:
-    # In-memory session store for Phase 1. 
-    # Must be moved to Redis or Postgres for durable multi-worker execution.
-    _sessions: Dict[str, Session] = {}
+    """
+    Handles robust session management backed by PostgreSQL (M1 Requirement).
+    """
 
     @classmethod
-    def create_session(cls, user_id: str, role: Role, workspace_id: str = "default-workspace") -> str:
+    def create_session(cls, db: DBSession, user_id: str, workspace_id: str, role: RoleEnum) -> str:
         session_token = secrets.token_urlsafe(32)
-        cls._sessions[session_token] = Session(
+        new_session = SessionModel(
             id=session_token,
             user_id=user_id,
-            role=role,
             workspace_id=workspace_id,
+            role=role,
             expires_at=datetime.utcnow() + timedelta(days=7)
         )
+        db.add(new_session)
+        db.commit()
+        db.refresh(new_session)
         return session_token
 
     @classmethod
-    def validate_session(cls, session_token: str) -> Session:
-        session = cls._sessions.get(session_token)
-        if not session or session.expires_at < datetime.utcnow():
+    def validate_session(cls, db: DBSession, session_token: str) -> Optional[SessionModel]:
+        session_record = db.query(SessionModel).filter(SessionModel.id == session_token).first()
+        if not session_record:
             return None
-        return session
+        if session_record.expires_at < datetime.utcnow():
+            db.delete(session_record)
+            db.commit()
+            return None
+        return session_record
 
     @classmethod
-    def invalidate_session(cls, session_token: str):
-        cls._sessions.pop(session_token, None)
+    def invalidate_session(cls, db: DBSession, session_token: str):
+        session_record = db.query(SessionModel).filter(SessionModel.id == session_token).first()
+        if session_record:
+            db.delete(session_record)
+            db.commit()
 
 
 # ==============================================================================
 # IDENTITY RESOLUTION & BINDING
 # ==============================================================================
-def resolve_principal(request: Request) -> Principal:
+def resolve_principal(request: Request, db: DBSession = Depends(get_db)) -> Principal:
     """
-    Validates the session token and extracts the bound principal.
-    No longer uses AEHUB_SECRET_KEY as a bearer credential.
+    Validates the session token from the Request headers/cookies
+    and extracts the bound principal.
+    M1 Requirement: Fail closed.
     """
-    auth_token = request.cookies.get("aehub_session_token")
+    auth_token = request.cookies.get("aehub_session_token") or request.headers.get("X-Session-ID")
     if not auth_token:
-        raise HTTPException(status_code=401, detail="Unauthorized: Missing session token.")
+        raise HTTPException(status_code=401, detail="Unauthorized: Missing session token. Principal missing = DENY.")
         
-    session = IdentityService.validate_session(auth_token)
+    session = IdentityService.validate_session(db, auth_token)
     if not session:
         raise HTTPException(status_code=401, detail="Unauthorized: Invalid or expired session.")
     
     return Principal(id=session.user_id, role=session.role, workspace_id=session.workspace_id)
 
-def get_secure_session_id(request: Request) -> str:
-    principal = resolve_principal(request)
+def get_secure_session_id(principal: Principal = Depends(resolve_principal)) -> str:
+    """
+    Returns the user's secure session identifier for downstream isolation.
+    """
     return principal.id
 
 # ==============================================================================
@@ -124,7 +124,10 @@ class PolicyEngine:
     def authorize(principal: Principal, required_permission: Permission) -> PolicyDecision:
         if required_permission in ROLE_PERMISSIONS.get(principal.role, []):
             return PolicyDecision(allowed=True, reason="Permission granted by role.")
-        return PolicyDecision(allowed=False, reason=f"Principal role '{principal.role.value}' lacks permission '{required_permission.value}'.")
+        return PolicyDecision(
+            allowed=False, 
+            reason=f"Principal role '{principal.role.value}' lacks permission '{required_permission.value}'."
+        )
         
     @staticmethod
     def authorize_tool(principal: Principal, is_sensitive: bool) -> PolicyDecision:

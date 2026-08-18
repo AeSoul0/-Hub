@@ -29,3 +29,5 @@ ignore = [
 quote-style = "double"
 # Indent with spaces for absolute cross-editor consistency
 indent-style = "space"
+[tool.pytest.ini_options]
+pythonpath = ['.']

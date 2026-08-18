@@ -149,7 +149,7 @@ export default function CoreOrchestratorWidget() {
             });
 
             await handleBackendResponse(res);
-        } catch (err) {
+        } catch {
             setInputText("CRITICAL: Gateway sync failed. Host server unreachable.");
             setIsProcessing(false);
         }
@@ -182,7 +182,7 @@ export default function CoreOrchestratorWidget() {
             });
 
             await handleBackendResponse(res);
-        } catch (err) {
+        } catch {
             setInputText("CRITICAL: Gateway sync failed. Host server unreachable.");
             setIsProcessing(false);
         }

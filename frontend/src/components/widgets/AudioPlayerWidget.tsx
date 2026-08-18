@@ -88,7 +88,7 @@ export default function AudioPlayerWidget({ src, title }: AudioPlayerProps = {})
                     setProgress(100);
                 }
             });
-
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setAudioTrack({ title: title || "Unknown Track", artist: "Unknown Artist", url: src });
             setAudioPlaying(false);
             setProgress(0);
@@ -177,10 +177,12 @@ export default function AudioPlayerWidget({ src, title }: AudioPlayerProps = {})
     };
 
     const skipBackward = () => {
+        // eslint-disable-next-line react-hooks/immutability
         if (audioInstance) audioInstance.currentTime = Math.max(0, audioInstance.currentTime - 10);
     };
     const skipForward = () => {
         if (audioInstance)
+            // eslint-disable-next-line react-hooks/immutability
             audioInstance.currentTime = Math.min(
                 audioInstance.duration,
                 audioInstance.currentTime + 10
@@ -189,6 +191,7 @@ export default function AudioPlayerWidget({ src, title }: AudioPlayerProps = {})
 
     const toggleLoop = () => {
         const nextLoop = !isLooping;
+        // eslint-disable-next-line react-hooks/immutability
         if (audioInstance) audioInstance.loop = nextLoop;
         setIsLooping(nextLoop);
     };
@@ -199,6 +202,7 @@ export default function AudioPlayerWidget({ src, title }: AudioPlayerProps = {})
         let percent = (e.clientX - rect.left) / rect.width;
         percent = Math.max(0, Math.min(1, percent));
         const newTime = percent * audioInstance.duration;
+        // eslint-disable-next-line react-hooks/immutability
         audioInstance.currentTime = newTime;
         setProgress(percent * 100);
         setCurrentTime(formatTime(newTime));

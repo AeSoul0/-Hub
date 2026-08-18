@@ -73,9 +73,10 @@ async def agent_node(state: AuroraState):
     else:
         llm_with_tools = llm
     
-    # Retrieve memories
+    # Retrieve memories with semantic search
     memory_manager = AuroraMemoryManager(session_id)
-    memories_text = memory_manager.fetch_all_context()
+    current_intent = state.get("current_intent", "")
+    memories_text = memory_manager.fetch_all_context(current_intent)
     
     # Phase 5: Dynamic System Prompt based on Identity Role
     principal = state.get("principal")

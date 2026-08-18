@@ -162,14 +162,14 @@ async def perform_interactive_login(session_id: str):
 # ==============================================================================
 # CELERY TASK WRAPPERS
 # ==============================================================================
-from app.core.celery_app import celery_app
+from app.core.celery_app import secure_task
 
 
-@celery_app.task(name="academic.sync")
+@secure_task(name="academic.sync")
 def celery_academic_sync(session_id: str):
     asyncio.run(perform_academic_sync(session_id))
 
-@celery_app.task(name="academic.interactive_login")
+@secure_task(name="academic.interactive_login")
 def celery_interactive_login(session_id: str):
     asyncio.run(perform_interactive_login(session_id))
 

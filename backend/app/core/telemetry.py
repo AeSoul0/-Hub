@@ -77,3 +77,17 @@ def setup_telemetry(app: FastAPI):
     logger.addHandler(console_handler)
     
     logger.info("Telemetry and Observability Plane initialized successfully")
+
+def instrument_sqlalchemy(engine):
+    """Instruments SQLAlchemy engine with OpenTelemetry"""
+    from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+    SQLAlchemyInstrumentor().instrument(
+        engine=engine,
+        enable_commenter=True,
+        commenter_options={}
+    )
+
+def instrument_celery():
+    """Instruments Celery workers with OpenTelemetry"""
+    from opentelemetry.instrumentation.celery import CeleryInstrumentor
+    CeleryInstrumentor().instrument()

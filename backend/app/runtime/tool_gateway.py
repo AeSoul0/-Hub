@@ -86,8 +86,23 @@ class ToolGateway:
         is_sensitive = invocation.spec.risk_level == RiskLevel.HIGH if invocation.spec else False
         decision = PolicyEngine.authorize_tool(invocation.principal, is_sensitive)
         if not decision.allowed:
+            from app.core.db import SessionLocal
+            from app.domain.models.audit import AuditLog
+            
+            with SessionLocal() as db:
+                audit_record = AuditLog(
+                    session_id=invocation.session_id,
+                    principal_id=invocation.principal.id,
+                    tool_name=invocation.tool_name,
+                    success=False,
+                    error=f"Unauthorized: {decision.reason}"
+                )
+                db.add(audit_record)
+                db.commit()
+                audit_id = audit_record.id
+                
             return ToolResult(
-                success=False, output=None, error=f"Unauthorized: {decision.reason}"
+                success=False, output=None, error=f"Unauthorized: {decision.reason}", audit_id=audit_id
             )
             
         # 3. Budget (Token/Execution limits per session) - Placeholder
@@ -118,23 +133,43 @@ class ToolGateway:
             # 8. Audit and Task completion
             TaskManager.update_state(task.id, TaskState.COMPLETED)
             
-            audit = AuditEvent(
-                event_id=str(uuid.uuid4()),
-                timestamp=datetime.utcnow(),
-                session_id=invocation.session_id,
-                principal_id=invocation.principal.id,
-                tool_name=invocation.tool_name,
-                success=True,
-                error=None
-            )
-            # Store audit... (placeholder)
+            from app.core.db import SessionLocal
+            from app.domain.models.audit import AuditLog
+            
+            with SessionLocal() as db:
+                audit_record = AuditLog(
+                    session_id=invocation.session_id,
+                    principal_id=invocation.principal.id,
+                    tool_name=invocation.tool_name,
+                    success=True,
+                    error=None
+                )
+                db.add(audit_record)
+                db.commit()
+                audit_id = audit_record.id
             
             return ToolResult(
-                success=True, output=normalized_output, audit_id=task.id
+                success=True, output=normalized_output, audit_id=audit_id
             )
             
         except Exception as e:
             TaskManager.update_state(task.id, TaskState.FAILED, error_message=str(e))
+            
+            from app.core.db import SessionLocal
+            from app.domain.models.audit import AuditLog
+            
+            with SessionLocal() as db:
+                audit_record = AuditLog(
+                    session_id=invocation.session_id,
+                    principal_id=invocation.principal.id,
+                    tool_name=invocation.tool_name,
+                    success=False,
+                    error=str(e)
+                )
+                db.add(audit_record)
+                db.commit()
+                audit_id = audit_record.id
+                
             return ToolResult(
-                success=False, output=None, error=str(e), audit_id=task.id
+                success=False, output=None, error=str(e), audit_id=audit_id
             )

@@ -71,8 +71,10 @@ def search_photos(query: str) -> str:
 def index_folder_for_vision(folder_path: str) -> str:
     """Triggers a background indexing job for a folder to make its images searchable."""
     from app.core.celery_app import celery_app
-    celery_app.send_task("vision.index_folder", args=[folder_path])
-    return f"Started indexing folder: {folder_path} in the background."
+    from app.skills.memory_skill import current_session_id
+    session_id = current_session_id.get("default-session")
+    celery_app.send_task("vision.index_folder", args=[session_id, folder_path])
+    return f"Started secure indexing folder: {folder_path} in the background."
 
 def get_skill():
     return VisualMemorySkill()

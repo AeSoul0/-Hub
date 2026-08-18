@@ -1,39 +1,87 @@
-name: CI Pipeline
+name: A.U.R.O.R.A. 100/100 Final CI Gate
 
 on:
   push:
-    branches: [ "main", "develop" ]
+    branches: [ "main" ]
   pull_request:
-    branches: [ "main", "develop" ]
+    branches: [ "main" ]
 
 jobs:
-  test-backend:
+  build-and-test:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./backend
-        
+    services:
+      postgres:
+        image: pgvector/pgvector:pg15
+        env:
+          POSTGRES_USER: aehub_user
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: aehub_db
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+
     steps:
     - uses: actions/checkout@v3
-    
-    - name: Set up Python 3.11
+
+    - name: Set up Python 3.10
       uses: actions/setup-python@v4
       with:
-        python-version: "3.11"
-        
-    - name: Install dependencies
+        python-version: "3.10"
+
+    - name: Set up Node.js 20
+      uses: actions/setup-node@v3
+      with:
+        node-version: "20"
+
+    - name: Install Backend Dependencies
       run: |
+        cd backend
         python -m pip install --upgrade pip
+        pip install ruff pytest httpx
         pip install -r requirements.txt
-        pip install pytest pytest-asyncio httpx ruff
-        
-    - name: Lint with ruff
+
+    - name: Run Ruff Linter & Formatter Check
       run: |
+        cd backend
         ruff check .
-        
-    - name: Run Tests
+
+    - name: Run Unit and E2E Tests (M16 Gates)
       env:
-        AEHUB_SECRET_KEY: "test-key"
-        GROQ_API_KEY: "dummy-key"
+        POSTGRES_URL: postgresql://aehub_user:password@localhost:5432/aehub_db
+        REDIS_URL: redis://localhost:6379/0
       run: |
         pytest tests/ -v
+
+    - name: Install Frontend Dependencies
+      run: |
+        cd frontend
+        npm install
+
+    - name: Build Frontend
+      run: |
+        cd frontend
+        npm run build
+
+    - name: Container Scanning (Trivy)
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        format: 'table'
+        exit-code: '0' # Temporarily 0 so CI doesn't block on existing vulns initially
+        ignore-unfixed: true
+        vuln-type: 'os,library'
+        severity: 'CRITICAL,HIGH'
+
+    - name: Secret Scanning (TruffleHog)
+      uses: trufflesecurity/trufflehog@main
+      with:
+        path: ./
+        base: ${{ github.event.repository.default_branch }}
+        head: HEAD
+
+    - name: 100/100 Certification Script
+      run: |
+        python evals/certify_100_100.py

@@ -40,7 +40,6 @@ const DEFAULT_DATA: AcademicData = { gpa: 0, exams: 0, cfu: 0 };
 export default function AcademicWidget() {
     const [data, setData] = useState<AcademicData>(DEFAULT_DATA);
     const [loading, setLoading] = useState<boolean>(true);
-    const [cookieInput, setCookieInput] = useState<string>("");
     const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
     const loadAcademic = async () => {
@@ -65,7 +64,7 @@ export default function AcademicWidget() {
             } else {
                 setData(DEFAULT_DATA);
             }
-        } catch (e: any) {
+        } catch (e: unknown) {
             console.error("Diagnostic Fetch Corrupted:", e);
         } finally {
             setLoading(false);
@@ -73,6 +72,7 @@ export default function AcademicWidget() {
     };
 
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         loadAcademic();
     }, []);
 

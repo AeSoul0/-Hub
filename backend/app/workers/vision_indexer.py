@@ -78,8 +78,10 @@ def search_images(query: str, n_results: int = 5):
     )
     return results
 
-@celery_app.task(name="vision.index_folder")
-def index_folder(folder_path: str):
+from app.core.celery_app import secure_task
+
+@secure_task(name="vision.index_folder")
+def index_folder(session_id: str, folder_path: str):
     for root, _, files in os.walk(folder_path):
         for file in files:
             if file.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):

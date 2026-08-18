@@ -14,11 +14,13 @@ import { useEffect, useState } from "react";
 import Header from "../components/layout/Header";
 import CoreOrchestratorWidget from "../components/widgets/CoreOrchestratorWidget";
 import TerminalLog from "../components/layout/TerminalLog";
+import WorkspaceDesktop from "../components/layout/WorkspaceDesktop";
 
 export default function Home() {
     const [isDarkMode, setIsDarkMode] = useState(true);
 
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setIsDarkMode(document.documentElement.classList.contains("dark"));
     }, []);
 
@@ -50,8 +52,10 @@ export default function Home() {
             <div className="fixed inset-0 holographic-space pointer-events-none -z-20" />
             <div className="fixed top-0 left-0 w-full h-[200vh] depth-mesh pointer-events-none -z-20 opacity-50" />
 
-            <div className="flex-1 flex flex-col h-screen overflow-hidden">
+            <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
+                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                 <Header {...({ isDarkMode, toggleTheme } as any)} />
+                <WorkspaceDesktop />
 
                 <div className="flex-1 flex flex-col overflow-hidden p-4 sm:p-6 gap-4 sm:gap-6">
                     {/* MAIN WORKSPACE - Minimal, Cinematic & Centered */}

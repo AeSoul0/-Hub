@@ -1,3 +1,12 @@
+"""
+@file evals/harness.py
+@description Core module for A.U.R.O.R.A. System
+
+Implements primary logic and architectural constraints.
+Architectural constraints and responsibilities apply here.
+Testability and dependency separation are enforced.
+"""
+
 import time
 import uuid
 from typing import Any, Dict, List
@@ -24,27 +33,59 @@ class AgentEvaluationHarness:
         self.agent_version = agent_version
         self.results = []
     
-    def evaluate_task(self, task_input: str, expected_outcome: Any) -> Dict[str, Any]:
+    async def evaluate_task(self, task_input: str, expected_outcome: str, expected_tools: List[str] = None) -> Dict[str, Any]:
         """
         Executes a single evaluation task and records the outcome.
         """
+        from app.runtime.aurora import run_aurora_agent
+        from app.core.security import Principal, RoleEnum
+        
         start_time = time.time()
         
-        # In a real scenario, this invokes the agent via its API or internal entrypoint
-        # For now, it's a stub that simulates execution and metrics gathering
+        # We use a synthetic principal for evals
+        principal = Principal(id="eval_user", role=RoleEnum.ADMIN, workspace_id="default")
+        session_id = f"eval-{uuid.uuid4()}"
         
+        try:
+            final_state = await run_aurora_agent(session_id, task_input, principal)
+            messages = final_state.get("messages", [])
+            output = messages[-1].content if messages else ""
+            
+            # Count tool calls
+            tool_calls = 0
+            called_tools = []
+            for msg in messages:
+                if hasattr(msg, "tool_calls") and msg.tool_calls:
+                    tool_calls += len(msg.tool_calls)
+                    called_tools.extend([tc["name"] for tc in msg.tool_calls])
+                    
+            # Basic assertion logic: Check if expected outcome keywords are in output
+            success = expected_outcome.lower() in output.lower()
+            
+            # Check if expected tools were used
+            if expected_tools:
+                success = success and all(t in called_tools for t in expected_tools)
+                
+            error = False
+            
+        except Exception as e:
+            success = False
+            error = True
+            output = str(e)
+            tool_calls = 0
+            
         end_time = time.time()
         latency = end_time - start_time
         
         result = {
-            "task_id": str(uuid.uuid4()),
+            "task_id": session_id,
             "task_input": task_input,
-            "success": True,
-            "tool_calls": 2,
-            "tokens": 1500,
+            "success": success,
+            "tool_calls": tool_calls,
+            "tokens": 0, # Could be injected from LangSmith if connected
             "latency": latency,
-            "cost": 0.0015,
-            "policy_violation": False,
+            "cost": 0.0,
+            "policy_violation": error,
             "recovered": False
         }
         self.results.append(result)
