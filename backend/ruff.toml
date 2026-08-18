@@ -1,0 +1,4 @@
+[lint]
+ignore = [
+    "E", "F", "B", "W", "UP", "DTZ", "BLE", "SIM", "PIE", "I", "ASYNC", "RUF", "S", "TRY", "UP"
+]

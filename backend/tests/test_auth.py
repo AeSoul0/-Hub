@@ -1,7 +1,18 @@
-import pytest
-from fastapi.testclient import TestClient
-from main import app
+"""
+@file backend/tests/test_auth.py
+@description Core module for A.U.R.O.R.A. System
+
+Implements primary logic and architectural constraints.
+
+Architectural constraints and responsibilities apply here.
+Testability and dependency separation are enforced.
+"""
+
 import os
+
+from fastapi.testclient import TestClient
+
+from main import app
 
 client = TestClient(app)
 

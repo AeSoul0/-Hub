@@ -1,6 +1,16 @@
-import pytest
+"""
+@file backend/tests/test_skills.py
+@description Core module for A.U.R.O.R.A. System
+
+Implements primary logic and architectural constraints.
+
+Architectural constraints and responsibilities apply here.
+Testability and dependency separation are enforced.
+"""
+
 from app.skills.base import BaseSkill
 from app.skills.registry import SkillRegistry
+
 
 class DummySkill(BaseSkill):
     name = "dummy_skill"

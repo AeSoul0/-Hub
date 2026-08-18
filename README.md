@@ -83,12 +83,14 @@ The current codebase supports or provides foundations for:
 | Tool / function calling    | ✅      | LangChain tools are dynamically bound to the LLM                                                              |
 | Planning and reasoning     | ✅      | Agent decisions emerge from the LangGraph execution cycle                                                     |
 | Short-term memory          | ✅      | LangGraph message state                                                                                       |
-| Persistent memory          | ✅      | PostgreSQL-backed semantic, episodic, and procedural memory                                                   |
-| RAG                        | 🟡     | Architecture-ready, but no dedicated vector database retrieval pipeline is currently implemented              |
-| Multi-agent collaboration  | ✅      | Supervisor skill can delegate research tasks to specialized subagents                                         |
+| Persistent memory          | ✅      | PostgreSQL-backed semantic, episodic, and procedural memory (with pgvector embedding)                         |
+| RAG                        | ✅      | Semantic Memory integrated with pgvector for contextual retrieval                                             |
+| Multi-agent collaboration  | ✅      | Supervisor skill delegates tasks dynamically using deterministic role-based Llama models                      |
 | Human-in-the-loop          | 🟡     | Risk metadata and approval flags exist; full approval workflow is not yet enforced end-to-end                 |
-| Monitoring / observability | 🟡     | EventBus/SSE logging is implemented; full distributed tracing and evaluation infrastructure is still evolving |
+| Monitoring / observability | ✅      | JSON Semantic Logging, OpenTelemetry tracing, and Prometheus `/metrics` exporter implemented                  |
 | Extensibility              | ✅      | Skill registry, dynamic discovery, MCP bridge, tool metadata, and modular runtime                             |
+| Security / Identity        | ✅      | RBAC Policy Engine, strict Docker Sandboxing (cpus, pids-limit, read-only), and Tool Gateway                  |
+| Distributed Tasks          | ✅      | Durable Task Runtime with state recovery, idempotency, and Celery / Redis execution backend                   |
 
 ---
 
