@@ -8,17 +8,19 @@ Architectural constraints and responsibilities apply here.
 Testability and dependency separation are enforced.
 """
 
-from typing import List, Callable, Dict, Optional
-from langchain_core.tools import tool
-from .base import BaseSkill, SkillMetadata, ToolMetadata, RiskLevel
-from app.memory.manager import AuroraMemoryManager
-from pydantic import Field
-
 # We need the session_id to use the memory manager.
 # In Langchain, we can pass runtime config or use a global context var,
 # but for simplicity, the tools will require session_id or infer it from a context var.
 # Let's use contextvars for session_id.
 import contextvars
+from typing import Callable, Dict, List, Optional
+
+from langchain_core.tools import tool
+
+from app.memory.manager import AuroraMemoryManager
+
+from .base import BaseSkill, RiskLevel, SkillMetadata, ToolMetadata
+
 current_session_id = contextvars.ContextVar("current_session_id", default="default-session")
 
 @tool

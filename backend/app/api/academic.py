@@ -8,12 +8,12 @@ Architectural constraints and responsibilities apply here.
 Testability and dependency separation are enforced.
 """
 
+import asyncio
 import os
 import re
-import asyncio
 import traceback
 
-from fastapi import APIRouter, Header, HTTPException, BackgroundTasks, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from playwright.async_api import async_playwright
 from pydantic import BaseModel
 
@@ -163,6 +163,7 @@ async def perform_interactive_login(session_id: str):
 # CELERY TASK WRAPPERS
 # ==============================================================================
 from app.core.celery_app import celery_app
+
 
 @celery_app.task(name="academic.sync")
 def celery_academic_sync(session_id: str):

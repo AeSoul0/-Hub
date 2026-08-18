@@ -8,19 +8,17 @@ Architectural constraints and responsibilities apply here.
 Testability and dependency separation are enforced.
 """
 
-import os
-import logging
 import json
+import logging
 from datetime import datetime
+
 from fastapi import FastAPI
-from starlette.middleware.base import BaseHTTPMiddleware
-from opentelemetry import trace, metrics
+from opentelemetry import trace
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
-from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader, ConsoleMetricExporter
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from prometheus_client import make_asgi_app
+
 
 class JSONLogFormatter(logging.Formatter):
     """

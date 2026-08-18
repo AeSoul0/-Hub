@@ -8,11 +8,14 @@ Architectural constraints and responsibilities apply here.
 Testability and dependency separation are enforced.
 """
 
-from typing import List, Callable, Dict, Optional
+from typing import Callable, Dict, List, Optional
+
 from langchain_core.tools import tool
-from .base import BaseSkill, SkillMetadata, ToolMetadata, RiskLevel
+
 from app.agents.subagents.base import SubagentFactory
 from app.skills.web_search import perform_web_search
+
+from .base import BaseSkill, RiskLevel, SkillMetadata, ToolMetadata
 
 # Define standard subagents
 RESEARCHER_PROMPT = (

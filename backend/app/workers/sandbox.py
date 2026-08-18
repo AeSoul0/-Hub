@@ -9,8 +9,10 @@ Testability and dependency separation are enforced.
 """
 
 import asyncio
-from typing import Dict, Any, Optional
+from typing import Dict
+
 from pydantic import BaseModel
+
 
 class SandboxResult(BaseModel):
     stdout: str
@@ -70,7 +72,7 @@ class EphemeralSandboxManager:
             # Attempt to kill if timed out
             try:
                 process.kill()
-            except:
+            except Exception:
                 pass
             return SandboxResult(
                 stdout="",
@@ -116,7 +118,7 @@ class EphemeralSandboxManager:
         except asyncio.TimeoutError:
             try:
                 process.kill()
-            except:
+            except Exception:
                 pass
             return SandboxResult(
                 stdout="",

@@ -10,6 +10,7 @@ Testability and dependency separation are enforced.
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 class Settings(BaseSettings):
     # App Config
     APP_NAME: str = "ÆHub Core OS"

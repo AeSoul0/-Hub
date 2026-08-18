@@ -11,6 +11,7 @@ Testability and dependency separation are enforced.
 import asyncio
 import json
 import os
+
 import redis.asyncio as redis
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")

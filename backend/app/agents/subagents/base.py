@@ -8,13 +8,15 @@ Architectural constraints and responsibilities apply here.
 Testability and dependency separation are enforced.
 """
 
-import os
 import operator
-from typing import TypedDict, Annotated, Sequence, List, Callable
+import os
+from typing import Annotated, Callable, List, Sequence, TypedDict
+
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
-from langgraph.graph import StateGraph, END
+from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
+
 
 class SubagentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], operator.add]

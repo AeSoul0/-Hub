@@ -9,10 +9,9 @@ Testability and dependency separation are enforced.
 """
 
 import os
-import psycopg2
-from psycopg2.pool import ThreadedConnectionPool
-from psycopg2.extras import RealDictCursor
 from contextlib import contextmanager
+
+from psycopg2.pool import ThreadedConnectionPool
 
 # POSTGRES_URL is injected by docker-compose or environment
 POSTGRES_URL = os.getenv("POSTGRES_URL", "postgresql://aehub_user:aehub_pass@localhost:5432/aehub_db")

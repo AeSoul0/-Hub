@@ -10,8 +10,10 @@ Testability and dependency separation are enforced.
 
 import importlib
 import pkgutil
-from typing import Dict, List, Type
+from typing import Dict, List
+
 from .base import BaseSkill, ToolMetadata
+
 
 class SkillRegistry:
     """

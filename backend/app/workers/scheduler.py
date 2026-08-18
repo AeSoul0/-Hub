@@ -9,9 +9,9 @@ Testability and dependency separation are enforced.
 """
 
 import asyncio
-from typing import Callable, Coroutine
 from datetime import datetime
-import contextvars
+from typing import Callable, Coroutine
+
 
 class AuroraProactiveScheduler:
     """

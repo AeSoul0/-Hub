@@ -8,8 +8,8 @@ Architectural constraints and responsibilities apply here.
 Testability and dependency separation are enforced.
 """
 
-from typing import List, Dict, Any
 from app.core.database import get_connection
+
 
 class AuroraMemoryManager:
     """

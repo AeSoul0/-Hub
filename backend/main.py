@@ -10,6 +10,7 @@ Testability and dependency separation are enforced.
 
 import asyncio
 import base64
+import hashlib
 import json
 import os
 import sys
@@ -18,20 +19,17 @@ from datetime import datetime
 
 import edge_tts
 import httpx
-import logging
-import hashlib
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
-from litellm import RateLimitError, acompletion
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+from app.agents import orchestrator
+from app.api import academic, media, voice
 
 # Import the centralized relational persistence controller
 from app.core import database
 from app.core.event_bus import event_bus
-from app.api import academic, media, voice
-from app.agents import orchestrator
 from app.workers.scheduler import proactive_scheduler
 
 load_dotenv()
@@ -165,7 +163,6 @@ async def get_events_stream(request: Request):
     """
     SSE endpoint for streaming real-time logs and agent states to the frontend.
     """
-    import hashlib
     client_session_id = request.query_params.get("session_id") or request.headers.get("x-session-id", "default-session")
     auth_token = request.cookies.get("aehub_auth_token", "unauth")
     session_id = hashlib.sha256(f"{auth_token}:{client_session_id}".encode()).hexdigest()
@@ -174,6 +171,7 @@ async def get_events_stream(request: Request):
 
 
 from app.workflows.autonomous import register_workflows
+
 
 # Initialize database storage schemas during the application startup lifecycle
 @app.on_event("startup")
@@ -275,10 +273,9 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     print("[OK] Client connection established on WebSocket node")
 
-    api_key = os.getenv("OPENROUTER_API_KEY")
+    os.getenv("OPENROUTER_API_KEY")
     client_session_id = websocket.query_params.get("session_id", "default-session")
     
-    import hashlib
     session_id = hashlib.sha256(f"{client_token}:{client_session_id}".encode()).hexdigest()
 
     async def safe_send(payload: dict):
@@ -309,7 +306,7 @@ async def websocket_endpoint(websocket: WebSocket):
             await safe_send({"type": "status", "data": "thinking"})
 
             # Canonical Execution Path
-            from app.agents.orchestrator import generate_ai_response, AESOUL_SYSTEM_PROMPT
+            from app.agents.orchestrator import AESOUL_SYSTEM_PROMPT, generate_ai_response
             
             response_payload = await generate_ai_response(
                 user_text, AESOUL_SYSTEM_PROMPT, str(user_context), session_id

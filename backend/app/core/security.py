@@ -8,12 +8,13 @@ Architectural constraints and responsibilities apply here.
 Testability and dependency separation are enforced.
 """
 
-import re
 import hashlib
 from enum import Enum
-from typing import Optional, List, Dict
+from typing import Dict, List
+
+from fastapi import Header, HTTPException, Request
 from pydantic import BaseModel
-from fastapi import HTTPException, Request, Header
+
 
 # ==============================================================================
 # IDENTITY & PRINCIPAL MODEL

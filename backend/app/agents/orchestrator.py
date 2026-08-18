@@ -14,11 +14,11 @@ import re
 
 import edge_tts
 from dotenv import load_dotenv
-import hashlib
-from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile, Request
+from fastapi import APIRouter, File, Form, Header, HTTPException, Request, UploadFile
 
 # ... (rest of imports remain intact, we just add Request and hashlib, wait, imports are at top)
 from groq import AsyncGroq
+
 from app.core import database
 
 load_dotenv()
@@ -129,15 +129,14 @@ async def execute_slash_command(cmd: str, session_id: str):
     return {"transcription": reply_text, "audio_base64": base64_audio}
 
 
+from langchain_core.messages import HumanMessage
+
 from app.core.event_bus import event_bus
 
 # ==============================================================================
 # MAIN PROCESSING CORE
 # ==============================================================================
-
 from app.runtime.aurora import get_aurora_app
-from langchain_core.messages import HumanMessage
-
 
 
 async def generate_ai_response(
@@ -150,7 +149,7 @@ async def generate_ai_response(
     """
     intent_str = user_intent[0]["text"] if isinstance(user_intent, list) else user_intent
         
-    session_config = database.get_settings(session_id)
+    database.get_settings(session_id)
     
     # Publish diagnostic event for observability
     await event_bus.publish(session_id, "log", f"[System] Routing intent to A.U.R.O.R.A. Core: {intent_str[:30]}...")
@@ -214,7 +213,6 @@ async def process_orchestration_voice(
         
         audio_bytes = await file.read()
         import base64
-        import os
         base64_audio = base64.b64encode(audio_bytes).decode("utf-8")
 
         from main import process_audio_to_text

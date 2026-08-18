@@ -8,9 +8,11 @@ Architectural constraints and responsibilities apply here.
 Testability and dependency separation are enforced.
 """
 
-from typing import List, Callable, Dict, Any, Optional
-from pydantic import BaseModel, Field
 from enum import Enum
+from typing import Callable, Dict, List, Optional
+
+from pydantic import BaseModel, Field
+
 
 class RiskLevel(str, Enum):
     LOW = "low"         # automatic

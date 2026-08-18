@@ -8,13 +8,16 @@ Architectural constraints and responsibilities apply here.
 Testability and dependency separation are enforced.
 """
 
-import uuid
 import json
-from enum import Enum
-from typing import Optional, Dict, Any
+import uuid
 from datetime import datetime
+from enum import Enum
+from typing import Any, Dict, Optional
+
 from pydantic import BaseModel
+
 from app.core.database import get_connection
+
 
 class TaskState(str, Enum):
     QUEUED = "QUEUED"

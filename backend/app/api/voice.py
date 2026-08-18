@@ -8,13 +8,11 @@ Architectural constraints and responsibilities apply here.
 Testability and dependency separation are enforced.
 """
 
-import asyncio
-import io
-import wave
 import base64
+
+import edge_tts
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from faster_whisper import WhisperModel
-import edge_tts
 
 # For a local, free, professional setup:
 # - STT: faster-whisper (local, high performance, completely free)
@@ -58,12 +56,12 @@ async def voice_stream_endpoint(websocket: WebSocket):
     print("[Voice] Client connected to real-time voice stream.")
     
     # Initialize model
-    model = get_whisper_model()
+    get_whisper_model()
     
     try:
         while True:
             # Receive audio chunk from frontend (e.g., PCM 16kHz)
-            data = await websocket.receive_bytes()
+            await websocket.receive_bytes()
             
             # Phase 10 placeholder:
             # 1. Pass data through Silero VAD to detect speech bounds.

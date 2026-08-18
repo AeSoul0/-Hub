@@ -8,11 +8,14 @@ Architectural constraints and responsibilities apply here.
 Testability and dependency separation are enforced.
 """
 
-from app.core.celery_app import celery_app
-from app.core import database
-from litellm import acompletion
 import asyncio
 import os
+
+from litellm import acompletion
+
+from app.core import database
+from app.core.celery_app import celery_app
+
 
 @celery_app.task(name="memory.summarize_and_forget")
 def summarize_old_chats(session_id: str):

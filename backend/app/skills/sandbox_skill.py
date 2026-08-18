@@ -8,10 +8,14 @@ Architectural constraints and responsibilities apply here.
 Testability and dependency separation are enforced.
 """
 
-from typing import List, Callable, Dict, Optional
+from typing import Callable, Dict, List, Optional
+
 from langchain_core.tools import tool
-from .base import BaseSkill, SkillMetadata, ToolMetadata, RiskLevel
+
 from app.workers.sandbox import sandbox_manager
+
+from .base import BaseSkill, RiskLevel, SkillMetadata, ToolMetadata
+
 
 @tool
 async def execute_python_code(code: str) -> str:

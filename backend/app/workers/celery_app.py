@@ -9,8 +9,9 @@ Testability and dependency separation are enforced.
 """
 
 import os
+
 from celery import Celery
-from app.core.config import settings
+
 from app.runtime.task_manager import TaskManager, TaskState
 
 # Phase 5: Distributed remote workers.
@@ -44,6 +45,7 @@ def execute_durable_task(self, task_id: str, tool_name: str, args: dict):
         # In a real environment, this imports the Tool Gateway and executes it.
         # For now, we simulate success and normalize the output.
         import asyncio
+
         from app.workers.sandbox import EphemeralSandboxManager
         
         sandbox = EphemeralSandboxManager()
@@ -73,4 +75,4 @@ def execute_durable_task(self, task_id: str, tool_name: str, args: dict):
             
     except Exception as exc:
         TaskManager.update_state(task_id, TaskState.RETRYING, error_message=str(exc))
-        raise self.retry(exc=exc, countdown=2 ** self.request.retries)
+        raise self.retry(exc=exc, countdown=2 ** self.request.retries) from exc

@@ -10,12 +10,14 @@ Testability and dependency separation are enforced.
 
 import base64
 from io import BytesIO
-from typing import List, Callable, Dict
-from PIL import Image, ImageGrab
+from typing import Callable, Dict, List
+
 import pyautogui
 from langchain_core.tools import tool
+from PIL import Image, ImageGrab
 
-from app.skills.base import BaseSkill, SkillMetadata, ToolMetadata, RiskLevel
+from app.skills.base import BaseSkill, RiskLevel, SkillMetadata, ToolMetadata
+
 
 class VisionSkill(BaseSkill):
     def __init__(self):

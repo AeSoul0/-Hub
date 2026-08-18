@@ -8,12 +8,11 @@ Architectural constraints and responsibilities apply here.
 Testability and dependency separation are enforced.
 """
 
-import asyncio
-from typing import Dict, Any
 from langchain_core.messages import HumanMessage
-from app.workers.scheduler import proactive_scheduler
-from app.runtime.aurora import get_aurora_app
+
 from app.core.event_bus import event_bus
+from app.runtime.aurora import get_aurora_app
+
 
 class WorkflowEngine:
     """

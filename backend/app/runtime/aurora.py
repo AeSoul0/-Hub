@@ -8,21 +8,19 @@ Architectural constraints and responsibilities apply here.
 Testability and dependency separation are enforced.
 """
 
-import os
-import json
 import operator
-from typing import TypedDict, Annotated, Sequence
+import os
+from typing import Annotated, Sequence, TypedDict
 
 from langchain_core.messages import BaseMessage
-from langchain_core.tools import tool
 from langchain_groq import ChatGroq
-from langgraph.graph import StateGraph, END
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
 from psycopg_pool import AsyncConnectionPool
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-from duckduckgo_search import DDGS
 
-from app.core.security import Principal, PolicyEngine, Permission
+from app.core.security import PolicyEngine, Principal
+
 
 # Define the State for our Agentic System
 class AuroraState(TypedDict):
@@ -31,9 +29,9 @@ class AuroraState(TypedDict):
     current_intent: str
     principal: Principal
 
-from app.skills import skill_registry
-from app.memory.manager import AuroraMemoryManager
 import app.skills.memory_skill as memory_skill_module
+from app.memory.manager import AuroraMemoryManager
+from app.skills import skill_registry
 
 # Load all skills dynamically
 skill_registry.load_from_package("app.skills")

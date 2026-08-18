@@ -9,11 +9,13 @@ Testability and dependency separation are enforced.
 """
 
 import json
-from typing import List, Callable, Optional
+from typing import Callable, List, Optional
+
 from duckduckgo_search import DDGS
 from langchain_core.tools import tool
 
 from .base import BaseSkill, SkillMetadata
+
 
 @tool
 def perform_web_search(query: str) -> str:

@@ -8,10 +8,12 @@ Architectural constraints and responsibilities apply here.
 Testability and dependency separation are enforced.
 """
 
-from typing import List, Callable, Dict
+from typing import Callable, Dict, List
+
 from langchain_core.tools import tool
 
-from app.skills.base import BaseSkill, SkillMetadata, ToolMetadata, RiskLevel
+from app.skills.base import BaseSkill, RiskLevel, SkillMetadata, ToolMetadata
+
 
 class VisualMemorySkill(BaseSkill):
     def __init__(self):

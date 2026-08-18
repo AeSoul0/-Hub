@@ -9,6 +9,7 @@ Testability and dependency separation are enforced.
 """
 
 import os
+
 from app.core.celery_app import celery_app
 
 # Lazy loaded components
@@ -30,8 +31,8 @@ def _get_chroma():
 def _get_clip():
     global _model, _preprocess, _tokenizer, _device
     if _model is None:
-        import torch
         import open_clip
+        import torch
         _device = "cuda" if torch.cuda.is_available() else "cpu"
         _model, _, _preprocess = open_clip.create_model_and_transforms('ViT-B-32', pretrained='openai', device=_device)
         _tokenizer = open_clip.get_tokenizer('ViT-B-32')
@@ -40,8 +41,8 @@ def _get_clip():
 def index_image(image_path: str):
     """Computes CLIP embedding and stores it in ChromaDB."""
     try:
-        from PIL import Image
         import torch
+        from PIL import Image
         collection = _get_chroma()
         model, preprocess, _, device = _get_clip()
         
