@@ -116,7 +116,15 @@ def init_db():
                     priority INTEGER DEFAULT 0,
                     created_at TIMESTAMP NOT NULL,
                     updated_at TIMESTAMP NOT NULL,
-                    error_message TEXT
+                    error_message TEXT,
+                    version INTEGER DEFAULT 1,
+                    attempt_number INTEGER DEFAULT 0,
+                    worker_lease_id TEXT,
+                    worker_lease_expires_at TIMESTAMP,
+                    idempotency_key TEXT,
+                    cancellation_requested BOOLEAN DEFAULT FALSE,
+                    deadline TIMESTAMP,
+                    max_retries INTEGER DEFAULT 3
                 )
             """)
             cursor.execute("""

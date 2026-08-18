@@ -12,18 +12,16 @@ import os
 
 from fastapi.testclient import TestClient
 
-from main import app
+from main import app, AEHUB_SECRET_KEY
 
 client = TestClient(app)
 
 def test_auth_login_success():
-    os.environ["AEHUB_SECRET_KEY"] = "test-key"
-    response = client.post("/api/auth/login", json={"key": "test-key"})
+    response = client.post("/api/auth/login", json={"key": AEHUB_SECRET_KEY})
     assert response.status_code == 200
-    assert "aehub_auth_token" in response.cookies
+    assert "aehub_session_token" in response.cookies
 
 def test_auth_login_failure():
-    os.environ["AEHUB_SECRET_KEY"] = "test-key"
     response = client.post("/api/auth/login", json={"key": "wrong-key"})
     assert response.status_code == 401
     

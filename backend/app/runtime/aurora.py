@@ -13,7 +13,7 @@ import os
 from typing import Annotated, Sequence, TypedDict
 
 from langchain_core.messages import BaseMessage
-from langchain_groq import ChatGroq
+# ChatGroq import removed in favor of ModelRouter
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
@@ -59,10 +59,12 @@ async def agent_node(state: AuroraState):
     # Set the contextvar for tools that need it (like MemorySkill)
     memory_skill_module.current_session_id.set(session_id)
     
-    llm = ChatGroq(
-        model="llama-3.2-90b-vision-preview",
-        temperature=0.75,
-        api_key=os.getenv("GROQ_API_KEY")
+    from app.core.models import ModelRouter, ModelProvider
+    from app.core.config import settings
+    llm = ModelRouter.get_model(
+        provider=ModelProvider.GROQ,
+        model_name=settings.DEFAULT_LLM_MODEL,
+        temperature=settings.DEFAULT_TEMPERATURE
     )
     
     # Only bind tools if there are tools available
@@ -102,85 +104,81 @@ async def agent_node(state: AuroraState):
     response = await llm_with_tools.ainvoke(full_messages)
     return {"messages": [response]}
 
-# Node: Policy Gateway
-async def policy_gateway_node(state: AuroraState):
+from app.runtime.tool_gateway import ToolGateway, ToolInvocation, ToolSpec, RiskLevel
+
+# Node: Execute Tools via Gateway
+async def execute_tools_node(state: AuroraState):
     messages = state["messages"]
     last_message = messages[-1]
     principal = state.get("principal")
+    session_id = state.get("session_id", "default-session")
     
     if not principal:
         return {"messages": []} # Fallback, should never happen
         
-    # Check if any requested tool violates policy
-    denied = []
     if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+        results = []
         for tc in last_message.tool_calls:
-            is_sensitive = any(t.name == tc["name"] for t in sensitive_tools)
-            decision = PolicyEngine.authorize_tool(principal, is_sensitive)
-            if not decision.allowed:
-                denied.append((tc, decision.reason))
+            tool_name = tc["name"]
+            arguments = tc["args"]
+            
+            tool_instance = next((t for t in tools if t.name == tool_name), None)
+            if not tool_instance:
+                from langchain_core.messages import ToolMessage
+                results.append(ToolMessage(tool_call_id=tc["id"], name=tool_name, content="Error: Tool not found"))
+                continue
                 
-    if denied:
-        # We must return a ToolMessage for each denied call to satisfy the LLM
-        from langchain_core.messages import ToolMessage
-        error_msgs = []
-        for tc, reason in denied:
-            error_msgs.append(ToolMessage(
-                tool_call_id=tc["id"], 
-                name=tc["name"], 
-                content=f"Security Policy Violation: {reason}"
-            ))
-        return {"messages": error_msgs}
+            meta = skill_registry._tool_metadata.get(tool_name)
+            spec = ToolSpec(
+                name=tool_name,
+                description=tool_instance.description,
+                risk_level=RiskLevel.HIGH if (meta and meta.requires_approval) else RiskLevel.LOW,
+                approval_required=meta.requires_approval if meta else False
+            )
+            
+            invocation = ToolInvocation(
+                tool_name=tool_name,
+                arguments=arguments,
+                principal=principal,
+                session_id=session_id,
+                spec=spec
+            )
+            
+            async def executor(**kwargs):
+                # Handle execution of LangChain BaseTool
+                if hasattr(tool_instance, "ainvoke"):
+                    return await tool_instance.ainvoke(kwargs)
+                else:
+                    return tool_instance.invoke(kwargs)
+                    
+            res = await ToolGateway.execute(invocation, executor)
+            
+            from langchain_core.messages import ToolMessage
+            if res.success:
+                results.append(ToolMessage(tool_call_id=tc["id"], name=tool_name, content=res.output))
+            else:
+                results.append(ToolMessage(tool_call_id=tc["id"], name=tool_name, content=f"Policy/Execution Error: {res.error}"))
+                
+        return {"messages": results}
     
     return {"messages": []}
 
-# Conditional edge from agent to gateway
-def should_continue_to_gateway(state: AuroraState):
+# Conditional edge from agent to tools
+def should_execute_tools(state: AuroraState):
     messages = state["messages"]
     last_message = messages[-1]
     
     if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-        return "policy_gateway"
+        return "execute_tools"
     return END
-    
-# Conditional edge from gateway to tools or back to agent
-def route_from_gateway(state: AuroraState):
-    messages = state["messages"]
-    last_message = messages[-1]
-    
-    # If the gateway added ToolMessages (denials), route back to agent
-    from langchain_core.messages import ToolMessage
-    if isinstance(last_message, ToolMessage):
-        return "agent"
-        
-    # Otherwise, find the original AIMessage with tool calls
-    ai_msg = messages[-1]
-    for m in reversed(messages):
-        if hasattr(m, "tool_calls") and m.tool_calls:
-            ai_msg = m
-            break
-            
-    for tc in ai_msg.tool_calls:
-        if any(t.name == tc["name"] for t in sensitive_tools):
-            return "sensitive_tools"
-    return "safe_tools"
 
 # Build the Graph
 workflow = StateGraph(AuroraState)
 workflow.add_node("agent", agent_node)
-workflow.add_node("policy_gateway", policy_gateway_node)
+workflow.add_node("execute_tools", execute_tools_node)
 
-if safe_tool_node:
-    workflow.add_node("safe_tools", safe_tool_node)
-    workflow.add_edge("safe_tools", "agent")
-if sensitive_tool_node:
-    workflow.add_node("sensitive_tools", sensitive_tool_node)
-    workflow.add_edge("sensitive_tools", "agent")
-
-workflow.add_conditional_edges("agent", should_continue_to_gateway, {"policy_gateway": "policy_gateway", END: END})
-
-route_map = {"agent": "agent", "safe_tools": "safe_tools", "sensitive_tools": "sensitive_tools"}
-workflow.add_conditional_edges("policy_gateway", route_from_gateway, route_map)
+workflow.add_conditional_edges("agent", should_execute_tools, {"execute_tools": "execute_tools", END: END})
+workflow.add_edge("execute_tools", "agent")
 
 workflow.set_entry_point("agent")
 

@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     OPENROUTER_API_KEY: str = ""
     
     # Connections
-    POSTGRES_URL: str = "postgresql://aehub_user:aehub_pass@localhost:5432/aehub_db"
+    POSTGRES_URL: str
     REDIS_URL: str = "redis://localhost:6379/0"
     
     # LLM Defaults

@@ -60,8 +60,7 @@ if not AEHUB_SECRET_KEY or AEHUB_SECRET_KEY == "default-unsafe-key":
 async def verify_api_key(request: Request, call_next):
     """
     Global security checkpoint. Intercepts all incoming HTTP traffic.
-    Requires a valid 'X-AeHub-Key' header or 'aehub_auth_token' cookie 
-    matching the environment secret to process any route under the '/api/' path.
+    Requires a valid session token.
     """
     # Always allow CORS preflight requests to pass through
     if request.method == "OPTIONS":
@@ -69,13 +68,18 @@ async def verify_api_key(request: Request, call_next):
 
     # Enforce strict token validation for all API endpoints except auth
     if request.url.path.startswith("/api/") and not request.url.path.startswith("/api/auth/"):
-        client_key = request.headers.get("X-AeHub-Key")
-        cookie_token = request.cookies.get("aehub_auth_token")
+        from app.core.security import IdentityService
+        auth_header = request.headers.get("Authorization")
+        cookie_token = request.cookies.get("aehub_session_token")
         
-        if client_key != AEHUB_SECRET_KEY and cookie_token != AEHUB_SECRET_KEY:
+        session_token = cookie_token
+        if auth_header and auth_header.startswith("Bearer "):
+            session_token = auth_header.split(" ")[1]
+            
+        if not session_token or not IdentityService.validate_session(session_token):
             return JSONResponse(
                 status_code=401, 
-                content={"detail": "Unauthorized access. Invalid or missing authentication."}
+                content={"detail": "Unauthorized access. Invalid or missing session."}
             )
 
     # Proceed to the requested endpoint if authentication is successful
@@ -101,17 +105,29 @@ app.add_middleware(
 async def login(request: Request, response: Response):
     data = await request.json()
     if data.get("key") == AEHUB_SECRET_KEY:
+        from app.core.security import IdentityService, Role
+        import hashlib
+        
+        # Simple ID generation for now
+        user_id = hashlib.sha256(b"admin").hexdigest()
+        session_token = IdentityService.create_session(user_id=user_id, role=Role.ADMIN)
+        
         # Set HttpOnly cookie for session
-        response = JSONResponse(content={"status": "ok"})
+        response = JSONResponse(content={"status": "ok", "session_token": session_token})
         is_prod = os.getenv("ENVIRONMENT", "development") == "production"
-        response.set_cookie(key="aehub_auth_token", value=AEHUB_SECRET_KEY, httponly=True, samesite="lax", secure=is_prod)
+        response.set_cookie(key="aehub_session_token", value=session_token, httponly=True, samesite="lax", secure=is_prod)
         return response
     return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
 
 @app.post("/api/auth/logout")
-async def logout(response: Response):
+async def logout(request: Request, response: Response):
+    from app.core.security import IdentityService
+    cookie_token = request.cookies.get("aehub_session_token")
+    if cookie_token:
+        IdentityService.invalidate_session(cookie_token)
+        
     response = JSONResponse(content={"status": "ok"})
-    response.delete_cookie("aehub_auth_token")
+    response.delete_cookie("aehub_session_token")
     return response
 
 @app.get("/api/auth/verify")
@@ -163,9 +179,12 @@ async def get_events_stream(request: Request):
     """
     SSE endpoint for streaming real-time logs and agent states to the frontend.
     """
-    client_session_id = request.query_params.get("session_id") or request.headers.get("x-session-id", "default-session")
-    auth_token = request.cookies.get("aehub_auth_token", "unauth")
-    session_id = hashlib.sha256(f"{auth_token}:{client_session_id}".encode()).hexdigest()
+    from app.core.security import resolve_principal
+    try:
+        principal = resolve_principal(request)
+        session_id = principal.id
+    except:
+        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
     
     return StreamingResponse(sse_event_generator(session_id, request), media_type="text/event-stream")
 
@@ -263,9 +282,12 @@ async def websocket_endpoint(websocket: WebSocket):
     Manages continuous duplex WebSocket communication streams. Extracts state tokens
     to segment settings matrices, history recall buffers, and loops on a per-user layer.
     """
-    # SECURITY ANCHOR: Validate token passed via cookies
-    client_token = websocket.cookies.get("aehub_auth_token") or websocket.query_params.get("token")
-    if client_token != AEHUB_SECRET_KEY:
+    from app.core.security import IdentityService
+    # SECURITY ANCHOR: Validate session token passed via cookies ONLY (no query params)
+    client_token = websocket.cookies.get("aehub_session_token")
+    session = IdentityService.validate_session(client_token) if client_token else None
+    
+    if not session:
         print("[ERROR] Unauthorized WebSocket connection attempt blocked.")
         await websocket.close(code=1008)  # 1008 corresponds to Policy Violation
         return
@@ -274,9 +296,7 @@ async def websocket_endpoint(websocket: WebSocket):
     print("[OK] Client connection established on WebSocket node")
 
     os.getenv("OPENROUTER_API_KEY")
-    client_session_id = websocket.query_params.get("session_id", "default-session")
-    
-    session_id = hashlib.sha256(f"{client_token}:{client_session_id}".encode()).hexdigest()
+    session_id = session.user_id
 
     async def safe_send(payload: dict):
         try:

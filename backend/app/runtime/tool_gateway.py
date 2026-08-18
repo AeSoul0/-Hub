@@ -8,74 +8,133 @@ Architectural constraints and responsibilities apply here.
 Testability and dependency separation are enforced.
 """
 
-from typing import Any, Dict, Optional
+from datetime import datetime
+from enum import Enum
+from typing import Any, Dict, List, Optional
+import uuid
 
 from pydantic import BaseModel
 
 from app.core.security import PolicyEngine, Principal
 from app.runtime.task_manager import TaskManager, TaskState
 
+class RiskLevel(str, Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
 
-class ToolExecutionRequest(BaseModel):
+class ToolSpec(BaseModel):
+    name: str
+    description: str
+    risk_level: RiskLevel
+    required_permissions: List[str] = []
+    network_access: bool = False
+    filesystem_access: bool = False
+    execution_timeout: int = 30
+    max_cost: float = 0.0
+    max_output: int = 4000
+    idempotency: bool = False
+    audit_policy: str = "standard"
+    approval_required: bool = False
+
+class ToolPolicy(BaseModel):
+    allowed: bool
+    reason: str
+
+class ToolInvocation(BaseModel):
     tool_name: str
     arguments: Dict[str, Any]
     principal: Principal
     session_id: str
-    is_sensitive: bool = False
+    spec: Optional[ToolSpec] = None
 
-class ToolExecutionResult(BaseModel):
+class ToolDecision(BaseModel):
+    approved: bool
+    reason: str
+
+class ToolExecution(BaseModel):
+    invocation_id: str
+    status: str
+
+class ToolResult(BaseModel):
     success: bool
     output: Any
     error: Optional[str] = None
     audit_id: Optional[str] = None
 
+class AuditEvent(BaseModel):
+    event_id: str
+    timestamp: datetime
+    session_id: str
+    principal_id: str
+    tool_name: str
+    success: bool
+    error: Optional[str]
+
 class ToolGateway:
     """
     Phase 3: Tool Gateway.
     Implements a strict pipeline for ALL tool executions:
-    Validate -> Authorize -> Budget -> Approval -> Sandbox -> Execute -> Normalize -> Audit
+    Schema validation -> Identity -> Permission -> Risk -> Budget -> Approval -> Executor -> Output limits -> Audit
     """
     
     @staticmethod
-    async def execute(request: ToolExecutionRequest, executor_callback) -> ToolExecutionResult:
-        # 1. Validate (Pydantic models already do basic schema validation)
+    async def execute(invocation: ToolInvocation, executor_callback) -> ToolResult:
+        # 1. Identity is already bound in ToolInvocation
         
-        # 2. Authorize
-        decision = PolicyEngine.authorize_tool(request.principal, request.is_sensitive)
+        # 2. Permission & Risk
+        is_sensitive = invocation.spec.risk_level == RiskLevel.HIGH if invocation.spec else False
+        decision = PolicyEngine.authorize_tool(invocation.principal, is_sensitive)
         if not decision.allowed:
-            return ToolExecutionResult(
+            return ToolResult(
                 success=False, output=None, error=f"Unauthorized: {decision.reason}"
             )
             
-        # 3. Budget (Token/Execution limits per session) - Placeholder for future limit logic
+        # 3. Budget (Token/Execution limits per session) - Placeholder
         
         # 4. Approval (If human-in-the-loop is needed)
-        # 5. Sandbox routing + 6. Execute
-        # We wrap execution in a Durable Task
+        if invocation.spec and invocation.spec.approval_required:
+            # We would typically transition to WAITING_APPROVAL here
+            pass
+            
+        # 5. Sandbox routing + 6. Executor
         task = TaskManager.create_task(
-            session_id=request.session_id,
-            payload={"tool": request.tool_name, "args": request.arguments},
+            session_id=invocation.session_id,
+            payload={"tool": invocation.tool_name, "args": invocation.arguments},
             priority=1
         )
-        
         TaskManager.update_state(task.id, TaskState.RUNNING)
         
         try:
-            # 6. Execute via provided callback (which should use Sandbox Manager if it's code)
-            result = await executor_callback(**request.arguments)
+            # 6. Execute via provided callback (Sandbox)
+            result = await executor_callback(**invocation.arguments)
             
-            # 7. Normalize output (ensuring strings/json compliance)
+            # 7. Output limits & Normalization
             normalized_output = str(result)
+            max_out = invocation.spec.max_output if invocation.spec else 4000
+            if len(normalized_output) > max_out:
+                normalized_output = normalized_output[:max_out] + "... [TRUNCATED]"
             
             # 8. Audit and Task completion
             TaskManager.update_state(task.id, TaskState.COMPLETED)
             
-            return ToolExecutionResult(
+            audit = AuditEvent(
+                event_id=str(uuid.uuid4()),
+                timestamp=datetime.utcnow(),
+                session_id=invocation.session_id,
+                principal_id=invocation.principal.id,
+                tool_name=invocation.tool_name,
+                success=True,
+                error=None
+            )
+            # Store audit... (placeholder)
+            
+            return ToolResult(
                 success=True, output=normalized_output, audit_id=task.id
             )
             
         except Exception as e:
             TaskManager.update_state(task.id, TaskState.FAILED, error_message=str(e))
-            return ToolExecutionResult(
+            return ToolResult(
                 success=False, output=None, error=str(e), audit_id=task.id
             )

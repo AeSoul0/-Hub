@@ -22,7 +22,7 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      - POSTGRES_URL=postgresql://aehub_user:aehub_pass@postgres:5432/aehub_db
+      - POSTGRES_URL=${POSTGRES_URL}
       - REDIS_URL=redis://redis:6379/0
     depends_on:
       - postgres
@@ -57,9 +57,9 @@ services:
     container_name: aehub-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: aehub_user
-      POSTGRES_PASSWORD: aehub_pass
-      POSTGRES_DB: aehub_db
+      POSTGRES_USER: ${POSTGRES_USER:-aehub_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-aehub_db}
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
     networks:
