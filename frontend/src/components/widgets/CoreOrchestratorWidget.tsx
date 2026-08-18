@@ -9,7 +9,6 @@ import { useAppStore } from "../../store/index";
 // ENVIRONMENT & AUTHENTICATION CONFIGURATION
 // ==============================================================================
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:3002";
-const API_SECRET_KEY = process.env.NEXT_PUBLIC_AEHUB_KEY || "";
 
 /**
  * Generates and retrieves persistent session identifiers and security headers.
@@ -30,7 +29,6 @@ const getAuthHeaders = (): Record<string, string> => {
         }
     }
     return {
-        "X-AeHub-Key": API_SECRET_KEY,
         "X-Session-ID": sessionId,
     };
 };
@@ -137,6 +135,7 @@ export default function CoreOrchestratorWidget() {
                 method: "POST",
                 headers: getAuthHeaders(),
                 body: formData,
+                credentials: "include",
             });
 
             await handleBackendResponse(res);
@@ -169,6 +168,7 @@ export default function CoreOrchestratorWidget() {
                 method: "POST",
                 headers: getAuthHeaders(),
                 body: formData,
+                credentials: "include",
             });
 
             await handleBackendResponse(res);

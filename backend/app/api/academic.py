@@ -3,12 +3,13 @@ import re
 import asyncio
 import traceback
 
-from fastapi import APIRouter, Header, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Header, HTTPException, BackgroundTasks, Depends
 from playwright.async_api import async_playwright
 from pydantic import BaseModel
 
 from app.core import database
 from app.core.event_bus import event_bus
+from app.core.security import get_secure_session_id
 
 router = APIRouter(prefix="/api/academic", tags=["academic"])
 
@@ -21,18 +22,18 @@ class AcademicLoginRequest(BaseModel):
 # SECURE STATUS EXTRACTION
 # ==============================================================================
 @router.get("/status")
-def get_academic_status(x_session_id: str = Header(default="default-session")):
-    data = database.get_academic_data(x_session_id)
+def get_academic_status(secure_session_id: str = Depends(get_secure_session_id)):
+    data = database.get_academic_data(secure_session_id)
     if data:
         return {"status": "success", "data": data}
     return {"status": "unauthenticated"}
 
 
 @router.post("/logout")
-def logout_academic(x_session_id: str = Header(default="default-session")):
+def logout_academic(secure_session_id: str = Depends(get_secure_session_id)):
     try:
-        database.clear_academic_data(x_session_id)
-        state_path = f"workspace/playwright_sessions/{x_session_id}_state.json"
+        database.clear_academic_data(secure_session_id)
+        state_path = f"workspace/playwright_sessions/{secure_session_id}_state.json"
         if os.path.exists(state_path):
             os.remove(state_path)
         return {"status": "unauthenticated"}
@@ -149,27 +150,39 @@ async def perform_interactive_login(session_id: str):
 
 
 # ==============================================================================
+# CELERY TASK WRAPPERS
+# ==============================================================================
+from app.core.celery_app import celery_app
+
+@celery_app.task(name="academic.sync")
+def celery_academic_sync(session_id: str):
+    asyncio.run(perform_academic_sync(session_id))
+
+@celery_app.task(name="academic.interactive_login")
+def celery_interactive_login(session_id: str):
+    asyncio.run(perform_interactive_login(session_id))
+
+
+# ==============================================================================
 # ENDPOINTS
 # ==============================================================================
 @router.post("/sync")
 async def start_academic_sync(
-    background_tasks: BackgroundTasks, 
-    x_session_id: str = Header(default="default-session")
+    secure_session_id: str = Depends(get_secure_session_id)
 ):
     """
-    Triggers the headless extraction flow.
+    Triggers the headless extraction flow via Celery.
     """
-    background_tasks.add_task(perform_academic_sync, x_session_id)
+    celery_academic_sync.delay(secure_session_id)
     return {"status": "started", "message": "Sincronizzazione in background avviata."}
 
 
 @router.post("/interactive-login")
 async def start_interactive_login(
-    background_tasks: BackgroundTasks, 
-    x_session_id: str = Header(default="default-session")
+    secure_session_id: str = Depends(get_secure_session_id)
 ):
     """
-    Triggers the headed auth-recovery flow.
+    Triggers the headed auth-recovery flow via Celery.
     """
-    background_tasks.add_task(perform_interactive_login, x_session_id)
+    celery_interactive_login.delay(secure_session_id)
     return {"status": "started", "message": "Finestra di login in apertura..."}

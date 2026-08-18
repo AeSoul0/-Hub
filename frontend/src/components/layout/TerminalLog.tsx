@@ -39,7 +39,7 @@ export default function TerminalLog() {
         const url = `${API_BASE_URL}/api/events?session_id=${sessionId}`;
         
         // Setup EventSource for SSE
-        const eventSource = new EventSource(url);
+        const eventSource = new EventSource(url, { withCredentials: true });
         eventSourceRef.current = eventSource;
 
         eventSource.onmessage = (event) => {

@@ -8,11 +8,14 @@ from datetime import datetime
 
 import edge_tts
 import httpx
+import logging
+import hashlib
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from litellm import RateLimitError, acompletion
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
 # Import the centralized relational persistence controller
 from app.core import database
@@ -28,9 +31,13 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 app = FastAPI(title="AeSouls Hub API Server")
+FastAPIInstrumentor.instrument_app(app)
 
 # SECURITY ANCHOR: Fetch the master authorization token from environment variables.
-AEHUB_SECRET_KEY = os.getenv("AEHUB_SECRET_KEY", "default-unsafe-key")
+AEHUB_SECRET_KEY = os.getenv("AEHUB_SECRET_KEY")
+if not AEHUB_SECRET_KEY or AEHUB_SECRET_KEY == "default-unsafe-key":
+    print("[CRITICAL] AEHUB_SECRET_KEY not set securely. Halting for security.")
+    sys.exit(1)
 
 
 # =====================================================================
@@ -38,40 +45,24 @@ AEHUB_SECRET_KEY = os.getenv("AEHUB_SECRET_KEY", "default-unsafe-key")
 # =====================================================================
 @app.middleware("http")
 async def verify_api_key(request: Request, call_next):
-
-    # Enforce strict token validation for all API endpoints
-    if request.url.path.startswith("/api/"):
-        client_key = request.headers.get("X-AeHub-Key")
-        
-        # 👇 INSERISCI QUESTE RIGHE:
-        print("\n--- DEBUG SICUREZZA ---")
-        print(f"Chiave che il Backend ha letto dal file .env: '{AEHUB_SECRET_KEY}'")
-        print(f"Chiave che il Frontend ha inviato: '{client_key}'")
-        print("-----------------------\n")
-
-        if not client_key or client_key != AEHUB_SECRET_KEY:
-            return JSONResponse(
-                status_code=401, 
-                content={"detail": "Unauthorized access. Invalid or missing X-AeHub-Key."}
-            )
-
     """
     Global security checkpoint. Intercepts all incoming HTTP traffic.
-    Requires a valid 'X-AeHub-Key' header matching the environment secret
-    to process any route under the '/api/' path. Bypasses preflight CORS checks.
+    Requires a valid 'X-AeHub-Key' header or 'aehub_auth_token' cookie 
+    matching the environment secret to process any route under the '/api/' path.
     """
     # Always allow CORS preflight requests to pass through
     if request.method == "OPTIONS":
         return await call_next(request)
 
-    # Enforce strict token validation for all API endpoints
-    if request.url.path.startswith("/api/"):
+    # Enforce strict token validation for all API endpoints except auth
+    if request.url.path.startswith("/api/") and not request.url.path.startswith("/api/auth/"):
         client_key = request.headers.get("X-AeHub-Key")
-        if not client_key or client_key != AEHUB_SECRET_KEY:
-            # Drop the request immediately if unauthorized, protecting compute resources
+        cookie_token = request.cookies.get("aehub_auth_token")
+        
+        if client_key != AEHUB_SECRET_KEY and cookie_token != AEHUB_SECRET_KEY:
             return JSONResponse(
-                status_code=401,
-                content={"detail": "Unauthorized access. Invalid or missing X-AeHub-Key."},
+                status_code=401, 
+                content={"detail": "Unauthorized access. Invalid or missing authentication."}
             )
 
     # Proceed to the requested endpoint if authentication is successful
@@ -84,11 +75,47 @@ async def verify_api_key(request: Request, call_next):
 # =====================================================================
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[os.getenv("FRONTEND_URL", "http://localhost:3000")],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# =====================================================================
+# AUTHENTICATION ENDPOINTS
+# =====================================================================
+@app.post("/api/auth/login")
+async def login(request: Request, response: Response):
+    data = await request.json()
+    if data.get("key") == AEHUB_SECRET_KEY:
+        # Set HttpOnly cookie for session
+        response = JSONResponse(content={"status": "ok"})
+        is_prod = os.getenv("ENVIRONMENT", "development") == "production"
+        response.set_cookie(key="aehub_auth_token", value=AEHUB_SECRET_KEY, httponly=True, samesite="lax", secure=is_prod)
+        return response
+    return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+
+@app.post("/api/auth/logout")
+async def logout(response: Response):
+    response = JSONResponse(content={"status": "ok"})
+    response.delete_cookie("aehub_auth_token")
+    return response
+
+@app.get("/api/auth/verify")
+async def verify_auth(request: Request):
+    # If it reaches here, the middleware has already approved it.
+    return {"status": "ok"}
+
+# =====================================================================
+# SECURITY HEADERS MIDDLEWARE
+# =====================================================================
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
 
 # Register application routers under decoupled sub-context boundaries
 app.include_router(media.router)
@@ -123,8 +150,11 @@ async def get_events_stream(request: Request):
     """
     SSE endpoint for streaming real-time logs and agent states to the frontend.
     """
-    # Prefer query parameter for EventSource compatibility, fallback to header
-    session_id = request.query_params.get("session_id") or request.headers.get("x-session-id", "default-session")
+    import hashlib
+    client_session_id = request.query_params.get("session_id") or request.headers.get("x-session-id", "default-session")
+    auth_token = request.cookies.get("aehub_auth_token", "unauth")
+    session_id = hashlib.sha256(f"{auth_token}:{client_session_id}".encode()).hexdigest()
+    
     return StreamingResponse(sse_event_generator(session_id, request), media_type="text/event-stream")
 
 
@@ -220,8 +250,8 @@ async def websocket_endpoint(websocket: WebSocket):
     Manages continuous duplex WebSocket communication streams. Extracts state tokens
     to segment settings matrices, history recall buffers, and loops on a per-user layer.
     """
-    # SECURITY ANCHOR: Validate token passed via query parameters (e.g. ?token=...)
-    client_token = websocket.query_params.get("token")
+    # SECURITY ANCHOR: Validate token passed via cookies
+    client_token = websocket.cookies.get("aehub_auth_token") or websocket.query_params.get("token")
     if client_token != AEHUB_SECRET_KEY:
         print("[ERROR] Unauthorized WebSocket connection attempt blocked.")
         await websocket.close(code=1008)  # 1008 corresponds to Policy Violation
@@ -231,7 +261,10 @@ async def websocket_endpoint(websocket: WebSocket):
     print("[OK] Client connection established on WebSocket node")
 
     api_key = os.getenv("OPENROUTER_API_KEY")
-    session_id = websocket.query_params.get("session_id", "default-session")
+    client_session_id = websocket.query_params.get("session_id", "default-session")
+    
+    import hashlib
+    session_id = hashlib.sha256(f"{client_token}:{client_session_id}".encode()).hexdigest()
 
     async def safe_send(payload: dict):
         try:

@@ -25,35 +25,94 @@ class EphemeralSandboxManager:
         """
         Executes Python code in a secure sandboxed environment.
         """
-        # Phase 7 Placeholder: 
-        # Here we would use aio-docker or subprocess to run an ephemeral docker container
-        # e.g., docker run --rm --network none --memory 512m python:3.11-slim python -c "{code}"
+        cmd = [
+            "docker", "run", "--rm", "-i",
+            "-m", self.memory_limit,
+            self.image,
+            "python", "-c", code
+        ]
         
-        print(f"[Sandbox] Executing Python script ({len(code)} bytes) in isolated container...")
-        
-        # Simulate execution delay
-        await asyncio.sleep(1)
-        
-        # Simulated safety net (Local fallback during dev if docker isn't connected)
-        return SandboxResult(
-            stdout="Sandbox execution is mocked. Docker socket integration pending Phase 7 completion.",
-            stderr="",
-            exit_code=0
-        )
+        if self.network_disabled:
+            cmd.insert(4, "--network")
+            cmd.insert(5, "none")
+            
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
+            
+            return SandboxResult(
+                stdout=stdout.decode("utf-8"),
+                stderr=stderr.decode("utf-8"),
+                exit_code=process.returncode
+            )
+        except asyncio.TimeoutError:
+            # Attempt to kill if timed out
+            try:
+                process.kill()
+            except:
+                pass
+            return SandboxResult(
+                stdout="",
+                stderr="Execution timed out.",
+                exit_code=124
+            )
+        except Exception as e:
+            return SandboxResult(
+                stdout="",
+                stderr=f"Sandbox Error: {str(e)}",
+                exit_code=1
+            )
 
     async def execute_shell(self, command: str, timeout: int = 30) -> SandboxResult:
         """
         Executes a shell command in a secure sandboxed environment.
         """
-        print(f"[Sandbox] Executing Shell command: {command}")
+        cmd = [
+            "docker", "run", "--rm", "-i",
+            "-m", self.memory_limit,
+            self.image,
+            "sh", "-c", command
+        ]
         
-        await asyncio.sleep(1)
-        
-        return SandboxResult(
-            stdout="Sandbox shell execution is mocked.",
-            stderr="",
-            exit_code=0
-        )
+        if self.network_disabled:
+            cmd.insert(4, "--network")
+            cmd.insert(5, "none")
+            
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
+            
+            return SandboxResult(
+                stdout=stdout.decode("utf-8"),
+                stderr=stderr.decode("utf-8"),
+                exit_code=process.returncode
+            )
+        except asyncio.TimeoutError:
+            try:
+                process.kill()
+            except:
+                pass
+            return SandboxResult(
+                stdout="",
+                stderr="Execution timed out.",
+                exit_code=124
+            )
+        except Exception as e:
+            return SandboxResult(
+                stdout="",
+                stderr=f"Sandbox Error: {str(e)}",
+                exit_code=1
+            )
 
 # Global singleton for sandbox orchestration
 sandbox_manager = EphemeralSandboxManager()

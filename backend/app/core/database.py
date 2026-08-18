@@ -1,14 +1,29 @@
 import os
 import psycopg2
+from psycopg2.pool import ThreadedConnectionPool
 from psycopg2.extras import RealDictCursor
-from urllib.parse import urlparse
+from contextlib import contextmanager
 
 # POSTGRES_URL is injected by docker-compose or environment
 POSTGRES_URL = os.getenv("POSTGRES_URL", "postgresql://aehub_user:aehub_pass@localhost:5432/aehub_db")
 
+_pool = None
+
+def get_pool():
+    global _pool
+    if _pool is None:
+        _pool = ThreadedConnectionPool(1, 20, POSTGRES_URL)
+    return _pool
+
+@contextmanager
 def get_connection():
-    """Establishes a connection to the PostgreSQL database."""
-    return psycopg2.connect(POSTGRES_URL)
+    """Establishes a connection to the PostgreSQL database from a thread-safe pool."""
+    pool = get_pool()
+    conn = pool.getconn()
+    try:
+        yield conn
+    finally:
+        pool.putconn(conn)
 
 def init_db():
     """
@@ -74,6 +89,13 @@ def init_db():
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            
+            # Create indexes for faster queries
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chats_session_time ON chats (session_id, timestamp)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_semantic_session ON memory_semantic (session_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_episodic_session ON memory_episodic (session_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_procedural_session ON memory_procedural (session_id)")
+            
         conn.commit()
 
 
@@ -139,6 +161,10 @@ def save_chat(session_id: str, user_text: str, ai_text: str):
                 (session_id, user_text, ai_text),
             )
         conn.commit()
+    
+    # Trigger background auto-summarization (Phase 4)
+    from app.core.celery_app import celery_app
+    celery_app.send_task("memory.summarize_and_forget", args=[session_id])
 
 
 def get_recent_chat(session_id: str, limit: int = 5) -> list:

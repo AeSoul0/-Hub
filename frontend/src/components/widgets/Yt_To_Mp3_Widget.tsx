@@ -8,18 +8,12 @@ import BentoWidget from "@/components/widgets/BentoWidget";
 // ENVIRONMENT & AUTHENTICATION CONFIGURATION
 // ==============================================================================
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:3002";
-const API_SECRET_KEY = process.env.NEXT_PUBLIC_AEHUB_KEY || "";
-
-/**
- * Extracts session persistence tokens to bypass the backend security gateway.
- */
 const getAuthHeaders = (): Record<string, string> => {
     let sessionId = "default-session";
     if (typeof window !== "undefined") {
         sessionId = localStorage.getItem("aehub_session_id") || "default-session";
     }
     return {
-        "X-AeHub-Key": API_SECRET_KEY,
         "X-Session-ID": sessionId,
     };
 };
@@ -49,6 +43,7 @@ export default function MediaSyncWidget() {
                     ...getAuthHeaders(),
                 },
                 body: JSON.stringify({ query: mediaQuery }),
+                credentials: "include",
             });
 
             if (response.ok) {

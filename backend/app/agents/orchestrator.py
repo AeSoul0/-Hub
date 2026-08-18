@@ -4,7 +4,10 @@ import re
 
 import edge_tts
 from dotenv import load_dotenv
-from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
+import hashlib
+from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile, Request
+
+# ... (rest of imports remain intact, we just add Request and hashlib, wait, imports are at top)
 from groq import AsyncGroq
 from app.core import database
 
@@ -128,14 +131,16 @@ from langchain_core.messages import HumanMessage
 from app.core.security import PromptInjectionFilter
 
 async def generate_ai_response(
-    user_intent: str, system_prompt: str, ui_context: str, session_id: str
+    user_intent: str | list, system_prompt: str, ui_context: str, session_id: str
 ):
     """
     Main cognitive assembly processor.
     Invokes the compiled LangGraph JARVIS Core, passing the user_intent and retrieving the final artifact/state.
     """
     try:
-        user_intent = PromptInjectionFilter.sanitize(user_intent)
+        # Extract string for sanitization if it's a multimodal list
+        intent_str = user_intent[0]["text"] if isinstance(user_intent, list) else user_intent
+        PromptInjectionFilter.sanitize(intent_str)
     except ValueError as e:
         await event_bus.publish(session_id, "log", f"[Security] {str(e)}")
         await event_bus.publish(session_id, "notification", {"title": "Security Alert", "content": str(e)})
@@ -144,7 +149,7 @@ async def generate_ai_response(
     session_config = database.get_settings(session_id)
     
     # Publish diagnostic event for observability
-    await event_bus.publish(session_id, "log", f"[System] Routing intent to A.U.R.O.R.A. Core: {user_intent[:30]}...")
+    await event_bus.publish(session_id, "log", f"[System] Routing intent to A.U.R.O.R.A. Core: {intent_str[:30]}...")
 
     # LangGraph Invocation
     try:
@@ -154,11 +159,18 @@ async def generate_ai_response(
             "current_intent": ""
         }
         
-        # Invoke graph asynchronously
+        # Invoke graph asynchronously with recursion limit and timeout
+        import asyncio
         app_instance = await get_aurora_app()
-        final_state = await app_instance.ainvoke(
-            initial_state,
-            config={"configurable": {"thread_id": session_id}}
+        final_state = await asyncio.wait_for(
+            app_instance.ainvoke(
+                initial_state,
+                config={
+                    "configurable": {"thread_id": session_id},
+                    "recursion_limit": 15
+                }
+            ),
+            timeout=45.0
         )
         ai_response_text = final_state["messages"][-1].content
         
@@ -170,7 +182,7 @@ async def generate_ai_response(
     clean_response = clean_text_for_speech(ai_response_text)
     base64_audio = await generate_voice_base64(clean_response)
 
-    database.save_chat(session_id, user_intent, clean_response)
+    database.save_chat(session_id, intent_str, clean_response)
 
     return {"transcription": clean_response, "audio_base64": base64_audio}
 
@@ -181,12 +193,17 @@ async def generate_ai_response(
 
 @router.post("/listen")
 async def process_orchestration_voice(
+    request: Request,
     file: UploadFile = File(...),
     ui_context: str = Form(default=""),
     # SECURITY: Extract session identifier from HTTP headers to guarantee isolation
     x_session_id: str = Header(default="default-session"),
 ):
     try:
+        # Cryptographic binding of Session to User Identity
+        auth_token = request.cookies.get("aehub_auth_token", "unauth")
+        secure_session_id = hashlib.sha256(f"{auth_token}:{x_session_id}".encode()).hexdigest()
+        
         audio_bytes = await file.read()
         temp_file = "temp_input.webm"
 
@@ -204,7 +221,7 @@ async def process_orchestration_voice(
             os.remove(temp_file)
 
         return await generate_ai_response(
-            user_intent, AESOUL_SYSTEM_PROMPT, ui_context, x_session_id
+            user_intent, AESOUL_SYSTEM_PROMPT, ui_context, secure_session_id
         )
 
     except Exception as e:
@@ -213,16 +230,36 @@ async def process_orchestration_voice(
 
 @router.post("/ask")
 async def process_orchestration_text(
+    request: Request,
     text: str = Form(...),
     ui_context: str = Form(default=""),
+    image: UploadFile = File(default=None),
     # SECURITY: Extract session identifier from HTTP headers to guarantee isolation
     x_session_id: str = Header(default="default-session"),
 ):
     try:
-        if text.strip().startswith("/"):
-            return await execute_slash_command(text, x_session_id)
+        # Cryptographic binding of Session to User Identity
+        auth_token = request.cookies.get("aehub_auth_token", "unauth")
+        secure_session_id = hashlib.sha256(f"{auth_token}:{x_session_id}".encode()).hexdigest()
 
-        return await generate_ai_response(text, AESOUL_SYSTEM_PROMPT, ui_context, x_session_id)
+        if text.strip().startswith("/"):
+            return await execute_slash_command(text, secure_session_id)
+
+        # Multimodal Image Handling
+        if image:
+            image_bytes = await image.read()
+            import base64
+            img_b64 = base64.b64encode(image_bytes).decode("utf-8")
+            
+            # Construct a Langchain-compatible multimodal message content array
+            content_payload = [
+                {"type": "text", "text": text},
+                {"type": "image_url", "image_url": {"url": f"data:{image.content_type};base64,{img_b64}"}}
+            ]
+            # Override text with the multimodal payload for generate_ai_response
+            text = content_payload
+
+        return await generate_ai_response(text, AESOUL_SYSTEM_PROMPT, ui_context, secure_session_id)
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Text node failure: {str(e)}") from e

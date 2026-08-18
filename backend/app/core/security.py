@@ -1,6 +1,11 @@
 import re
 from typing import Optional
-from fastapi import HTTPException
+from fastapi import HTTPException, Request, Header
+import hashlib
+
+def get_secure_session_id(request: Request, x_session_id: str = Header(default="default-session")) -> str:
+    auth_token = request.cookies.get("aehub_auth_token", "unauth")
+    return hashlib.sha256(f"{auth_token}:{x_session_id}".encode()).hexdigest()
 
 # RBAC Configuration
 class Roles:

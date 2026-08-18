@@ -27,7 +27,18 @@ skill_registry.load_from_package("app.skills")
 
 # Get aggregated tools
 tools = skill_registry.get_all_tools()
-tool_node = ToolNode(tools) if tools else None
+safe_tools = []
+sensitive_tools = []
+
+for t in tools:
+    meta = skill_registry._tool_metadata.get(t.name)
+    if meta and meta.requires_approval:
+        sensitive_tools.append(t)
+    else:
+        safe_tools.append(t)
+
+safe_tool_node = ToolNode(safe_tools) if safe_tools else None
+sensitive_tool_node = ToolNode(sensitive_tools) if sensitive_tools else None
 
 # Node: Agent
 async def agent_node(state: AuroraState):
@@ -38,7 +49,7 @@ async def agent_node(state: AuroraState):
     memory_skill_module.current_session_id.set(session_id)
     
     llm = ChatGroq(
-        model="llama3-70b-8192",
+        model="llama-3.2-90b-vision-preview",
         temperature=0.75,
         api_key=os.getenv("GROQ_API_KEY")
     )
@@ -75,18 +86,35 @@ async def agent_node(state: AuroraState):
 def should_continue(state: AuroraState):
     messages = state["messages"]
     last_message = messages[-1]
+    
+    # Count how many AI messages with tool calls exist in the state
+    tool_calls_count = sum(1 for m in messages if hasattr(m, "tool_calls") and m.tool_calls)
+    
     if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-        return "tools"
+        if tool_calls_count > 5:
+            print("[Warning] Max tool calls reached. Forcing END.")
+            return END
+            
+        # Check if any requested tool requires approval
+        for tc in last_message.tool_calls:
+            if any(t.name == tc["name"] for t in sensitive_tools):
+                return "sensitive_tools"
+        return "safe_tools"
     return END
 
 # Build the Graph
 workflow = StateGraph(AuroraState)
 workflow.add_node("agent", agent_node)
 
-if tool_node:
-    workflow.add_node("tools", tool_node)
-    workflow.add_conditional_edges("agent", should_continue, {"tools": "tools", END: END})
-    workflow.add_edge("tools", "agent")
+if safe_tool_node:
+    workflow.add_node("safe_tools", safe_tool_node)
+    workflow.add_edge("safe_tools", "agent")
+if sensitive_tool_node:
+    workflow.add_node("sensitive_tools", sensitive_tool_node)
+    workflow.add_edge("sensitive_tools", "agent")
+
+if safe_tool_node or sensitive_tool_node:
+    workflow.add_conditional_edges("agent", should_continue, {"safe_tools": "safe_tools", "sensitive_tools": "sensitive_tools", END: END})
 else:
     workflow.add_edge("agent", END)
 
@@ -111,5 +139,8 @@ async def get_aurora_app():
     checkpointer = AsyncPostgresSaver(_pool)
     await checkpointer.setup()
     
-    _aurora_app = workflow.compile(checkpointer=checkpointer)
+    _aurora_app = workflow.compile(
+        checkpointer=checkpointer,
+        interrupt_before=["sensitive_tools"] if sensitive_tool_node else None
+    )
     return _aurora_app

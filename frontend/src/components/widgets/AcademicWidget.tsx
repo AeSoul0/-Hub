@@ -9,15 +9,12 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 // ENVIRONMENT & AUTHENTICATION CONFIGURATION
 // ==============================================================================
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:3002";
-const API_SECRET_KEY = process.env.NEXT_PUBLIC_AEHUB_KEY || "";
-
 const getAuthHeaders = (): Record<string, string> => {
     let sessionId = "default-session";
     if (typeof window !== "undefined") {
         sessionId = localStorage.getItem("aehub_session_id") || "default-session";
     }
     return {
-        "X-AeHub-Key": API_SECRET_KEY,
         "X-Session-ID": sessionId,
     };
 };
@@ -42,6 +39,7 @@ export default function AcademicWidget() {
             const res = await fetch(`${API_BASE_URL}/api/academic/status`, {
                 method: "GET",
                 headers: getAuthHeaders(),
+                credentials: "include",
             });
 
             if (!res.ok) throw new Error(`HTTP Verification Failed: ${res.status}`);
@@ -81,6 +79,7 @@ export default function AcademicWidget() {
                     "Content-Type": "application/json",
                     ...getAuthHeaders(),
                 },
+                credentials: "include",
             });
 
             if (res.ok) {
@@ -108,6 +107,7 @@ export default function AcademicWidget() {
                     "Content-Type": "application/json",
                     ...getAuthHeaders(),
                 },
+                credentials: "include",
             });
 
             if (res.ok) {
@@ -229,6 +229,7 @@ export default function AcademicWidget() {
                                 fetch(`${API_BASE_URL}/api/academic/logout`, {
                                     method: "POST",
                                     headers: getAuthHeaders(),
+                                    credentials: "include",
                                 }).then(() => setData(DEFAULT_DATA));
                             }}
                             className="mt-3 text-[9px] font-mono text-slate-400 hover:text-red-500 transition-colors uppercase text-center w-full py-1 border border-transparent hover:border-red-900/30 rounded-lg hover:bg-red-900/10"
