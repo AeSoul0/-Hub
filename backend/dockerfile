@@ -4,6 +4,10 @@
 # ==============================================================================
 FROM mcr.microsoft.com/playwright/python:v1.40.0-jammy
 
+# PREVENT PYTHON FROM BUFFERING STDOUT/STDERR (Real-time logs)
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
 # WORKDIR ASSIGNMENT: Establish the execution path within the container
 WORKDIR /app
 

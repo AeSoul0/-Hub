@@ -3,7 +3,6 @@
 # Defines the isolated network topology and persistent storage volumes
 # ==============================================================================
 
-
 services:
   # ---------------------------------------------------------
   # BACKEND SERVICE NODE (FastAPI + AI Orchestrator)
@@ -19,6 +18,7 @@ services:
       # PERSISTENT STORAGE: Map local directories to prevent data loss on container restarts
       - ./backend/audio_cache:/app/audio_cache
       - ./backend/temp_downloads:/app/temp_downloads
+      - ./workspace/chromadb:/app/workspace/chromadb
     env_file:
       - ./backend/.env
     environment:
@@ -30,6 +30,13 @@ services:
     restart: unless-stopped
     networks:
       - aehub-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   # ---------------------------------------------------------
   # FRONTEND SERVICE NODE (Next.js Dashboard)
@@ -43,6 +50,8 @@ services:
       - "3000:3000"
     env_file:
       - ./frontend/.env.local
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:3002
     depends_on:
       - backend
     restart: unless-stopped
@@ -95,6 +104,13 @@ services:
     restart: unless-stopped
     networks:
       - aehub-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   # ---------------------------------------------------------
   # CACHE & EVENT BUS (Redis)

@@ -1,26 +1,47 @@
 # ==============================================================================
-# FRONTEND INTERFACE IMAGE
-# Utilizing a lightweight Node.js Alpine base for optimal compilation speeds
+# FRONTEND INTERFACE IMAGE (MULTI-STAGE BUILD)
 # ==============================================================================
-FROM node:20-alpine
 
-# WORKDIR ASSIGNMENT: Establish the execution path within the container
+# --- STAGE 1: Builder ---
+FROM node:20-alpine AS builder
+
 WORKDIR /app
 
-# DEPENDENCY INJECTION: Copy package manifests to leverage build caching
+# COPY manifest to leverage build caching
 COPY package.json package-lock.json* ./
 
-# PACKAGE INSTALLATION: Install Node dependencies
-RUN npm install
+# Use 'ci' for cleaner, more reliable dependency resolution in CI/CD
+RUN npm ci
 
-# SOURCE CODE SYNCHRONIZATION: Copy the Next.js frontend ecosystem
+# Copy the rest of the application
 COPY . .
 
-# ARTIFACT COMPILATION: Build the Next.js optimized production bundle
+# Pass API URL during build for Next.js SSG/SSR components
+ARG NEXT_PUBLIC_API_URL=http://localhost:3002
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+
+# Build the Next.js optimized production bundle
 RUN npm run build
 
-# PORT EXPOSURE: Expose the standard Next.js listener port
+# --- STAGE 2: Production Runner ---
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+# Set to production environment
+ENV NODE_ENV=production
+
+# Copy only the compiled artifacts and dependencies from the builder
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+
+# (Optional: If you have a custom next.config.js, uncomment the line below)
+# COPY --from=builder /app/next.config.js ./
+
+# PORT EXPOSURE
 EXPOSE 3000
 
-# EXECUTION ENTRYPOINT: Initialize the production-ready Node server
+# EXECUTION ENTRYPOINT
 CMD ["npm", "start"]
