@@ -477,6 +477,8 @@ mv frontend/dockerfile frontend/Dockerfile
 
 Alternatively, update the corresponding `dockerfile:` entries in `docker-compose.yaml`.
 
+**Healthcheck**: The backend service now includes a Docker `HEALTHCHECK` that probes `http://localhost:3002/health` every 30 seconds. This ensures the container is marked unhealthy if the API does not respond.
+
 ## Option B — Local backend development
 
 Install backend dependencies:
