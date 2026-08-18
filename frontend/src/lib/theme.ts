@@ -1,3 +1,13 @@
+/**
+ * @file frontend/src/lib/theme.ts
+ * @description Core module for A.U.R.O.R.A. System
+ *
+ * Implements primary logic and architectural constraints.
+ *
+ * Architectural constraints and responsibilities apply here.
+ * Testability and dependency separation are enforced.
+ */
+
 export type ColorKey = "cyan" | "indigo" | "rose" | "emerald" | "amber" | "violet";
 
 // Core theme definitions establishing borders, shadows, and accent properties

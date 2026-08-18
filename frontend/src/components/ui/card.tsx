@@ -1,3 +1,13 @@
+/**
+ * @file frontend/src/components/ui/card.tsx
+ * @description Core module for A.U.R.O.R.A. System
+ *
+ * Implements primary logic and architectural constraints.
+ *
+ * Architectural constraints and responsibilities apply here.
+ * Testability and dependency separation are enforced.
+ */
+
 import * as React from "react";
 
 import { cn } from "@/lib/utils";

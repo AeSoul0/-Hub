@@ -1,3 +1,13 @@
+"""
+@file backend/main.py
+@description Core module for A.U.R.O.R.A. System
+
+Implements primary logic and architectural constraints.
+
+Architectural constraints and responsibilities apply here.
+Testability and dependency separation are enforced.
+"""
+
 import asyncio
 import base64
 import json
@@ -30,11 +40,16 @@ load_dotenv()
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
+from app.core.config import settings
+from app.core.telemetry import setup_telemetry
+
 app = FastAPI(title="AeSouls Hub API Server")
-FastAPIInstrumentor.instrument_app(app)
+
+# Phase 4: Observability Plane
+setup_telemetry(app)
 
 # SECURITY ANCHOR: Fetch the master authorization token from environment variables.
-AEHUB_SECRET_KEY = os.getenv("AEHUB_SECRET_KEY")
+AEHUB_SECRET_KEY = settings.AEHUB_SECRET_KEY
 if not AEHUB_SECRET_KEY or AEHUB_SECRET_KEY == "default-unsafe-key":
     print("[CRITICAL] AEHUB_SECRET_KEY not set securely. Halting for security.")
     sys.exit(1)
@@ -293,22 +308,17 @@ async def websocket_endpoint(websocket: WebSocket):
 
             await safe_send({"type": "status", "data": "thinking"})
 
-            session_config = database.get_settings(session_id)
-
-            # TODO: Phase 2 - Route this user_text to the LangGraph A.U.R.O.R.A. Runtime via Event Bus
-            # await event_bus.publish(session_id, "user_input", user_text)
+            # Canonical Execution Path
+            from app.agents.orchestrator import generate_ai_response, AESOUL_SYSTEM_PROMPT
             
-            # Temporary Placeholder Response during architectural transition
-            placeholder_text = "A.U.R.O.R.A. Core in fase di transizione architetturale. Attendi il completamento dell'aggiornamento agentico."
+            response_payload = await generate_ai_response(
+                user_text, AESOUL_SYSTEM_PROMPT, str(user_context), session_id
+            )
             
-            await asyncio.sleep(1) # Simulate routing delay
-            await safe_send({"type": "stream_end", "full_text": placeholder_text})
-
-            audio = await process_text_to_audio(placeholder_text)
-            if audio:
-                await safe_send({"type": "audio_stream", "data": audio})
-
-            database.save_chat(session_id, user_text, placeholder_text)
+            if response_payload:
+                await safe_send({"type": "stream_end", "full_text": response_payload["transcription"]})
+                if response_payload.get("audio_base64"):
+                    await safe_send({"type": "audio_stream", "data": response_payload["audio_base64"]})
 
     except WebSocketDisconnect:
         print("🔴 Client connection terminated on WebSocket node")

@@ -1,3 +1,13 @@
+/**
+ * @file frontend/src/store/index.ts
+ * @description Core module for A.U.R.O.R.A. System
+ *
+ * Implements primary logic and architectural constraints.
+ *
+ * Architectural constraints and responsibilities apply here.
+ * Testability and dependency separation are enforced.
+ */
+
 import { create } from "zustand";
 
 // ==============================================================================

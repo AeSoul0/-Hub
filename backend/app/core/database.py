@@ -1,3 +1,13 @@
+"""
+@file backend/app/core/database.py
+@description Core module for A.U.R.O.R.A. System
+
+Implements primary logic and architectural constraints.
+
+Architectural constraints and responsibilities apply here.
+Testability and dependency separation are enforced.
+"""
+
 import os
 import psycopg2
 from psycopg2.pool import ThreadedConnectionPool
@@ -32,14 +42,15 @@ def init_db():
     """
     with get_connection() as conn:
         with conn.cursor() as cursor:
-            # TABLE: Chat history isolated by session_id
+            # TABLE: Conversations / Event Logs
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS chats (
                     id SERIAL PRIMARY KEY,
                     session_id TEXT NOT NULL,
-                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    user_text TEXT NOT NULL,
-                    ai_text TEXT NOT NULL
+                    workspace_id TEXT NOT NULL DEFAULT 'default-workspace',
+                    user_message TEXT NOT NULL,
+                    bot_response TEXT NOT NULL,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
 
@@ -63,12 +74,17 @@ def init_db():
                 )
             """)
 
+            # Phase 5: Contextual Retrieval Engine (pgvector)
+            cursor.execute("CREATE EXTENSION IF NOT EXISTS vector")
+            
             # TABLE: A.U.R.O.R.A. Memory Layers
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS memory_semantic (
                     id SERIAL PRIMARY KEY,
                     session_id TEXT NOT NULL,
+                    workspace_id TEXT NOT NULL DEFAULT 'default-workspace',
                     fact TEXT NOT NULL,
+                    embedding vector(1536),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -76,8 +92,8 @@ def init_db():
                 CREATE TABLE IF NOT EXISTS memory_episodic (
                     id SERIAL PRIMARY KEY,
                     session_id TEXT NOT NULL,
-                    task_description TEXT NOT NULL,
-                    outcome TEXT NOT NULL,
+                    workspace_id TEXT NOT NULL DEFAULT 'default-workspace',
+                    event TEXT NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -90,11 +106,67 @@ def init_db():
                 )
             """)
             
+            # TABLE: Durable Task Runtime (Phase 2)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS tasks (
+                    id TEXT PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    parent_task_id TEXT,
+                    state TEXT NOT NULL,
+                    payload JSONB NOT NULL,
+                    priority INTEGER DEFAULT 0,
+                    created_at TIMESTAMP NOT NULL,
+                    updated_at TIMESTAMP NOT NULL,
+                    error_message TEXT
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS task_attempts (
+                    id TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                    started_at TIMESTAMP NOT NULL,
+                    finished_at TIMESTAMP,
+                    worker_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    error_trace TEXT
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS task_steps (
+                    id TEXT PRIMARY KEY,
+                    task_attempt_id TEXT NOT NULL REFERENCES task_attempts(id) ON DELETE CASCADE,
+                    step_name TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    started_at TIMESTAMP NOT NULL,
+                    finished_at TIMESTAMP,
+                    output_payload JSONB
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS task_checkpoints (
+                    id TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                    state_snapshot JSONB NOT NULL,
+                    created_at TIMESTAMP NOT NULL
+                )
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS task_artifacts (
+                    id TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                    artifact_type TEXT NOT NULL,
+                    uri_or_content TEXT NOT NULL,
+                    created_at TIMESTAMP NOT NULL
+                )
+            """)
+            
             # Create indexes for faster queries
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chats_session_time ON chats (session_id, timestamp)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_semantic_session ON memory_semantic (session_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_episodic_session ON memory_episodic (session_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_procedural_session ON memory_procedural (session_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_session_state ON tasks (session_id, state)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_task_attempts_task ON task_attempts (task_id)")
             
         conn.commit()
 

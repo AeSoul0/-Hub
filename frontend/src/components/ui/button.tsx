@@ -1,3 +1,13 @@
+/**
+ * @file frontend/src/components/ui/button.tsx
+ * @description Core module for A.U.R.O.R.A. System
+ *
+ * Implements primary logic and architectural constraints.
+ *
+ * Architectural constraints and responsibilities apply here.
+ * Testability and dependency separation are enforced.
+ */
+
 import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { Slot } from "radix-ui";

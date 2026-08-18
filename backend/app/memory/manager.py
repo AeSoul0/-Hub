@@ -1,3 +1,13 @@
+"""
+@file backend/app/memory/manager.py
+@description Core module for A.U.R.O.R.A. System
+
+Implements primary logic and architectural constraints.
+
+Architectural constraints and responsibilities apply here.
+Testability and dependency separation are enforced.
+"""
+
 from typing import List, Dict, Any
 from app.core.database import get_connection
 

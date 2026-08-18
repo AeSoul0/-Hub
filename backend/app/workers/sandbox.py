@@ -1,3 +1,13 @@
+"""
+@file backend/app/workers/sandbox.py
+@description Core module for A.U.R.O.R.A. System
+
+Implements primary logic and architectural constraints.
+
+Architectural constraints and responsibilities apply here.
+Testability and dependency separation are enforced.
+"""
+
 import asyncio
 from typing import Dict, Any, Optional
 from pydantic import BaseModel
@@ -28,6 +38,12 @@ class EphemeralSandboxManager:
         cmd = [
             "docker", "run", "--rm", "-i",
             "-m", self.memory_limit,
+            "--cpus", "0.5",
+            "--pids-limit", "50",
+            "--read-only",
+            "--security-opt", "no-new-privileges",
+            "--tmpfs", "/tmp",
+            "--env", "PYTHONUNBUFFERED=1",
             self.image,
             "python", "-c", code
         ]

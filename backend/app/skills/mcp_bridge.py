@@ -1,3 +1,13 @@
+"""
+@file backend/app/skills/mcp_bridge.py
+@description Core module for A.U.R.O.R.A. System
+
+Implements primary logic and architectural constraints.
+
+Architectural constraints and responsibilities apply here.
+Testability and dependency separation are enforced.
+"""
+
 from typing import List, Callable, Dict, Any, Optional
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, create_model

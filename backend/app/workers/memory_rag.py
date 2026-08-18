@@ -1,3 +1,13 @@
+"""
+@file backend/app/workers/memory_rag.py
+@description Core module for A.U.R.O.R.A. System
+
+Implements primary logic and architectural constraints.
+
+Architectural constraints and responsibilities apply here.
+Testability and dependency separation are enforced.
+"""
+
 from app.core.celery_app import celery_app
 from app.core import database
 from litellm import acompletion

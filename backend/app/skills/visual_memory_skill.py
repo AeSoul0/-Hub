@@ -1,3 +1,13 @@
+"""
+@file backend/app/skills/visual_memory_skill.py
+@description Core module for A.U.R.O.R.A. System
+
+Implements primary logic and architectural constraints.
+
+Architectural constraints and responsibilities apply here.
+Testability and dependency separation are enforced.
+"""
+
 from typing import List, Callable, Dict
 from langchain_core.tools import tool
 

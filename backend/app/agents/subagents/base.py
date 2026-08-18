@@ -1,3 +1,13 @@
+"""
+@file backend/app/agents/subagents/base.py
+@description Core module for A.U.R.O.R.A. System
+
+Implements primary logic and architectural constraints.
+
+Architectural constraints and responsibilities apply here.
+Testability and dependency separation are enforced.
+"""
+
 import os
 import operator
 from typing import TypedDict, Annotated, Sequence, List, Callable
@@ -24,7 +34,7 @@ class SubagentFactory:
         
         async def node_agent(state: SubagentState):
             llm = ChatGroq(
-                model="llama3-70b-8192", 
+                model="llama-3.2-90b-vision-preview", 
                 temperature=0.3, # Subagents should be more deterministic
                 api_key=os.getenv("GROQ_API_KEY")
             )

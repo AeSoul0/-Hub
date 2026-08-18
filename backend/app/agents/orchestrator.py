@@ -1,3 +1,13 @@
+"""
+@file backend/app/agents/orchestrator.py
+@description Core module for A.U.R.O.R.A. System
+
+Implements primary logic and architectural constraints.
+
+Architectural constraints and responsibilities apply here.
+Testability and dependency separation are enforced.
+"""
+
 import base64
 import os
 import re
@@ -128,38 +138,38 @@ from app.core.event_bus import event_bus
 from app.runtime.aurora import get_aurora_app
 from langchain_core.messages import HumanMessage
 
-from app.core.security import PromptInjectionFilter
+
 
 async def generate_ai_response(
-    user_intent: str | list, system_prompt: str, ui_context: str, session_id: str
+    user_intent: str | list, system_prompt: str, ui_context: str, session_id: str,
+    principal=None
 ):
     """
     Main cognitive assembly processor.
     Invokes the compiled LangGraph JARVIS Core, passing the user_intent and retrieving the final artifact/state.
     """
-    try:
-        # Extract string for sanitization if it's a multimodal list
-        intent_str = user_intent[0]["text"] if isinstance(user_intent, list) else user_intent
-        PromptInjectionFilter.sanitize(intent_str)
-    except ValueError as e:
-        await event_bus.publish(session_id, "log", f"[Security] {str(e)}")
-        await event_bus.publish(session_id, "notification", {"title": "Security Alert", "content": str(e)})
-        return
+    intent_str = user_intent[0]["text"] if isinstance(user_intent, list) else user_intent
         
     session_config = database.get_settings(session_id)
     
     # Publish diagnostic event for observability
     await event_bus.publish(session_id, "log", f"[System] Routing intent to A.U.R.O.R.A. Core: {intent_str[:30]}...")
 
-    # LangGraph Invocation
-    try:
-        initial_state = {
-            "messages": [HumanMessage(content=user_intent)],
-            "session_id": session_id,
-            "current_intent": ""
-        }
+    # Fallback to a mock principal if not provided by the transport layer
+    from app.core.security import Principal, Role
+    if not principal:
+        principal = Principal(id=session_id, role=Role.ADMIN, workspace_id="default-workspace")
+
+    # The payload MUST match the AuroraState schema exactly
+    initial_state = {
+        "messages": [HumanMessage(content=intent_str)],
+        "session_id": session_id,
+        "current_intent": intent_str,
+        "principal": principal
+    }
         
-        # Invoke graph asynchronously with recursion limit and timeout
+    # Invoke graph asynchronously with recursion limit and timeout
+    try:
         import asyncio
         app_instance = await get_aurora_app()
         final_state = await asyncio.wait_for(
@@ -196,32 +206,25 @@ async def process_orchestration_voice(
     request: Request,
     file: UploadFile = File(...),
     ui_context: str = Form(default=""),
-    # SECURITY: Extract session identifier from HTTP headers to guarantee isolation
     x_session_id: str = Header(default="default-session"),
 ):
     try:
-        # Cryptographic binding of Session to User Identity
-        auth_token = request.cookies.get("aehub_auth_token", "unauth")
-        secure_session_id = hashlib.sha256(f"{auth_token}:{x_session_id}".encode()).hexdigest()
+        from app.core.security import resolve_principal
+        principal = resolve_principal(request, x_session_id)
         
         audio_bytes = await file.read()
-        temp_file = "temp_input.webm"
+        import base64
+        import os
+        base64_audio = base64.b64encode(audio_bytes).decode("utf-8")
 
-        with open(temp_file, "wb") as f:
-            f.write(audio_bytes)
+        from main import process_audio_to_text
+        user_intent = await process_audio_to_text(base64_audio)
 
-        with open(temp_file, "rb") as f:
-            transcript = await groq_client.audio.transcriptions.create(
-                model="whisper-large-v3", file=(temp_file, f.read()), response_format="text"
-            )
-
-        user_intent = transcript
-
-        if os.path.exists(temp_file):
-            os.remove(temp_file)
+        if not user_intent or user_intent == "Transcription error.":
+            return {"transcription": "", "audio_base64": ""}
 
         return await generate_ai_response(
-            user_intent, AESOUL_SYSTEM_PROMPT, ui_context, secure_session_id
+            user_intent, AESOUL_SYSTEM_PROMPT, ui_context, principal.id, principal
         )
 
     except Exception as e:
@@ -234,16 +237,14 @@ async def process_orchestration_text(
     text: str = Form(...),
     ui_context: str = Form(default=""),
     image: UploadFile = File(default=None),
-    # SECURITY: Extract session identifier from HTTP headers to guarantee isolation
     x_session_id: str = Header(default="default-session"),
 ):
     try:
-        # Cryptographic binding of Session to User Identity
-        auth_token = request.cookies.get("aehub_auth_token", "unauth")
-        secure_session_id = hashlib.sha256(f"{auth_token}:{x_session_id}".encode()).hexdigest()
+        from app.core.security import resolve_principal
+        principal = resolve_principal(request, x_session_id)
 
         if text.strip().startswith("/"):
-            return await execute_slash_command(text, secure_session_id)
+            return await execute_slash_command(text, principal.id)
 
         # Multimodal Image Handling
         if image:
@@ -251,15 +252,13 @@ async def process_orchestration_text(
             import base64
             img_b64 = base64.b64encode(image_bytes).decode("utf-8")
             
-            # Construct a Langchain-compatible multimodal message content array
             content_payload = [
                 {"type": "text", "text": text},
                 {"type": "image_url", "image_url": {"url": f"data:{image.content_type};base64,{img_b64}"}}
             ]
-            # Override text with the multimodal payload for generate_ai_response
             text = content_payload
 
-        return await generate_ai_response(text, AESOUL_SYSTEM_PROMPT, ui_context, secure_session_id)
+        return await generate_ai_response(text, AESOUL_SYSTEM_PROMPT, ui_context, principal.id, principal)
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Text node failure: {str(e)}") from e

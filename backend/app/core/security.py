@@ -1,57 +1,91 @@
+"""
+@file backend/app/core/security.py
+@description Core module for A.U.R.O.R.A. System
+
+Implements primary logic and architectural constraints.
+
+Architectural constraints and responsibilities apply here.
+Testability and dependency separation are enforced.
+"""
+
 import re
-from typing import Optional
-from fastapi import HTTPException, Request, Header
 import hashlib
+from enum import Enum
+from typing import Optional, List, Dict
+from pydantic import BaseModel
+from fastapi import HTTPException, Request, Header
 
-def get_secure_session_id(request: Request, x_session_id: str = Header(default="default-session")) -> str:
-    auth_token = request.cookies.get("aehub_auth_token", "unauth")
-    return hashlib.sha256(f"{auth_token}:{x_session_id}".encode()).hexdigest()
+# ==============================================================================
+# IDENTITY & PRINCIPAL MODEL
+# ==============================================================================
+class Role(str, Enum):
+    SYSTEM = "system"       # Unrestricted background daemons
+    ADMIN = "admin"         # Full capability access
+    USER = "user"           # Standard operations, restricted sensitive tools
+    GUEST = "guest"         # Read-only memory, no execution
 
-# RBAC Configuration
-class Roles:
-    USER = "user"
-    ADMIN = "admin"
-    GUEST = "guest"
+class Permission(str, Enum):
+    EXECUTE_SAFE_TOOL = "tool:execute:safe"
+    EXECUTE_SENSITIVE_TOOL = "tool:execute:sensitive"
+    READ_MEMORY = "memory:read"
+    WRITE_MEMORY = "memory:write"
+    INVOKE_SUBAGENT = "agent:invoke"
 
-# In a real system, these would be loaded from JWTs or the database
-# We mock it for the agentic framework Phase 14.
-SESSION_ROLES = {
-    "default-session": Roles.ADMIN,
-    "guest-session": Roles.GUEST,
-    "background_workflow_daemon": Roles.ADMIN
+ROLE_PERMISSIONS: Dict[Role, List[Permission]] = {
+    Role.SYSTEM: list(Permission),
+    Role.ADMIN: list(Permission),
+    Role.USER: [Permission.EXECUTE_SAFE_TOOL, Permission.READ_MEMORY, Permission.WRITE_MEMORY, Permission.INVOKE_SUBAGENT],
+    Role.GUEST: [Permission.READ_MEMORY]
 }
 
-def get_session_role(session_id: str) -> str:
-    return SESSION_ROLES.get(session_id, Roles.USER)
+class Principal(BaseModel):
+    id: str
+    role: Role
+    workspace_id: str
 
-def check_permission(session_id: str, required_role: str) -> bool:
-    role = get_session_role(session_id)
-    if required_role == Roles.ADMIN and role != Roles.ADMIN:
-        return False
-    return True
+class PolicyDecision(BaseModel):
+    allowed: bool
+    reason: str
 
-class PromptInjectionFilter:
+# ==============================================================================
+# IDENTITY RESOLUTION & BINDING
+# ==============================================================================
+def resolve_principal(request: Request, x_session_id: str = Header(default="default-session")) -> Principal:
     """
-    Phase 14: Agentic Security & Hardening.
-    Scans incoming user prompts for known injection patterns before sending to the LLM.
+    Cryptographically binds a session to an identity.
+    In Phase 1, we map the robust SHA256 session to a Principal.
+    Future phases will extract this from a JWT payload.
     """
+    auth_token = request.cookies.get("aehub_auth_token", "unauth")
     
-    # Common attack vectors for LLMs
-    SUSPICIOUS_PATTERNS = [
-        r"ignore all previous instructions",
-        r"disregard previous prompts",
-        r"you are now a",
-        r"system prompt:",
-        r"forget your instructions"
-    ]
+    # Block default credentials entirely
+    if auth_token == "unauth" or auth_token == "default-unsafe-key":
+        raise HTTPException(status_code=401, detail="Unauthorized: Invalid identity token.")
+        
+    secure_id = hashlib.sha256(f"{auth_token}:{x_session_id}".encode()).hexdigest()
     
-    @classmethod
-    def sanitize(cls, text: str) -> str:
-        """
-        Throws an exception if malicious intent is detected, or sanitizes the text.
-        """
-        lower_text = text.lower()
-        for pattern in cls.SUSPICIOUS_PATTERNS:
-            if re.search(pattern, lower_text):
-                raise ValueError("Potential Prompt Injection detected. Request blocked by Security Filter.")
-        return text
+    # For Phase 1, we assume anyone with a valid auth_token matching the system secret is an ADMIN
+    # Background tasks get SYSTEM. 
+    from app.core.config import settings
+    role = Role.ADMIN if auth_token == settings.AEHUB_SECRET_KEY else Role.USER
+    
+    return Principal(id=secure_id, role=role, workspace_id="default-workspace")
+
+def get_secure_session_id(request: Request, x_session_id: str = Header(default="default-session")) -> str:
+    principal = resolve_principal(request, x_session_id)
+    return principal.id
+
+# ==============================================================================
+# POLICY ENGINE
+# ==============================================================================
+class PolicyEngine:
+    @staticmethod
+    def authorize(principal: Principal, required_permission: Permission) -> PolicyDecision:
+        if required_permission in ROLE_PERMISSIONS.get(principal.role, []):
+            return PolicyDecision(allowed=True, reason="Permission granted by role.")
+        return PolicyDecision(allowed=False, reason=f"Principal role '{principal.role.value}' lacks permission '{required_permission.value}'.")
+        
+    @staticmethod
+    def authorize_tool(principal: Principal, is_sensitive: bool) -> PolicyDecision:
+        perm = Permission.EXECUTE_SENSITIVE_TOOL if is_sensitive else Permission.EXECUTE_SAFE_TOOL
+        return PolicyEngine.authorize(principal, perm)

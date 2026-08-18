@@ -1,4 +1,14 @@
 /**
+ * @file frontend/src/app/api/academic/login/route.ts
+ * @description Core module for A.U.R.O.R.A. System
+ *
+ * Implements primary logic and architectural constraints.
+ *
+ * Architectural constraints and responsibilities apply here.
+ * Testability and dependency separation are enforced.
+ */
+
+/**
  * Academic Login API Route (Proxy Layer)
  * --------------------------------------
  * Triggers Playwright SPID authentication flow in backend.

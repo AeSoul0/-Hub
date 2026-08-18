@@ -1,3 +1,13 @@
+/**
+ * @file frontend/src/components/widgets/BentoWidget.tsx
+ * @description Core module for A.U.R.O.R.A. System
+ *
+ * Implements primary logic and architectural constraints.
+ *
+ * Architectural constraints and responsibilities apply here.
+ * Testability and dependency separation are enforced.
+ */
+
 import React from "react";
 import { THEME_COLORS, ColorKey } from "../../lib/theme";
 
