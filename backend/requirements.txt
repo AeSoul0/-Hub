@@ -43,7 +43,7 @@ beautifulsoup4>=4.12.2
 pytest>=7.4.3
 pytest-asyncio>=0.21.1
 ruff>=0.1.5
-python-dotenv>=1.0.0
+python-dotenv>=1.2.3
 
 # Distributed Execution (Phase 3)
 redis>=5.0.1
