@@ -7,7 +7,7 @@ pydantic-settings>=2.0.3
 # AI & LLM Core
 litellm>=1.0.0
 groq>=0.4.1
-httpx>=0.25.0
+httpx>=0.28.1
 edge-tts>=6.1.9
 duckduckgo-search>=3.9.3
 faster-whisper>=1.0.0
