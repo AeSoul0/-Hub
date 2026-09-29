@@ -1,11 +1,8 @@
 /**
  * @file frontend/src/components/widgets/AudioPlayerWidget.tsx
- * @description Core module for A.U.R.O.R.A. System
+ * @description Audio player widget for local playback, looping, seeking, and global state synchronization.
  *
- * Implements primary logic and architectural constraints.
- *
- * Architectural constraints and responsibilities apply here.
- * Testability and dependency separation are enforced.
+ * Implements core logic and architectural definitions.
  */
 
 "use client";
@@ -34,6 +31,8 @@ export default function AudioPlayerWidget({ src, title }: AudioPlayerProps = {})
         artist: string;
         url: string;
     } | null>(null);
+    // State for tracking the active audio playback status
+    // State for tracking the active audio playback status
     const [audioPlaying, setAudioPlaying] = useState(false);
     const [audioInstance, setAudioInstance] = useState<HTMLAudioElement | null>(null);
     const [isDragging, setIsDragging] = useState(false);

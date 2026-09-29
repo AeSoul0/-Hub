@@ -2,10 +2,7 @@
 @file backend/app/skills/memory_skill.py
 @description Core module for A.U.R.O.R.A. System
 
-Implements primary logic and architectural constraints.
-
-Architectural constraints and responsibilities apply here.
-Testability and dependency separation are enforced.
+Implements core logic and architectural definitions.
 """
 
 # We need the session_id to use the memory manager.

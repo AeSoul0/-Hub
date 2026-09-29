@@ -1,11 +1,8 @@
 /**
  * @file frontend/src/components/widgets/Yt_To_Mp3_Widget.tsx
- * @description Core module for A.U.R.O.R.A. System
+ * @description Media extraction widget facilitating YouTube-to-MP3 conversion, querying, and downloading.
  *
- * Implements primary logic and architectural constraints.
- *
- * Architectural constraints and responsibilities apply here.
- * Testability and dependency separation are enforced.
+ * Implements core logic and architectural definitions.
  */
 
 "use client";
@@ -29,6 +26,8 @@ const getAuthHeaders = (): Record<string, string> => {
 };
 
 export default function MediaSyncWidget() {
+    // State for the media search query input
+    // State for the media search query input
     const [mediaQuery, setMediaQuery] = useState("");
     const [mediaStatus, setMediaStatus] = useState<"idle" | "searching" | "downloading" | "done">(
         "idle"

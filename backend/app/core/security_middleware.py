@@ -2,9 +2,7 @@
 @file backend/app/core/security_middleware.py
 @description Core module for A.U.R.O.R.A. System
 
-Implements primary logic and architectural constraints.
-Architectural constraints and responsibilities apply here.
-Testability and dependency separation are enforced.
+Implements core logic and architectural definitions.
 """
 
 from fastapi import Request
@@ -19,6 +17,8 @@ class AdvancedSecurityMiddleware(BaseHTTPMiddleware):
     Enforces SSRF defense, Path Traversal defense, and injects strict Security Headers.
     """
     async def dispatch(self, request: Request, call_next):
+        # Inspect raw URL paths to detect and block Path Traversal attempts
+        # Inspect raw URL paths to detect and block Path Traversal attempts
         
         # 1. Path Traversal Defense
         raw_path = urllib.parse.unquote(request.url.path)

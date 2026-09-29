@@ -1,11 +1,8 @@
 """
 @file backend/app/workers/celery_app.py
-@description Core module for A.U.R.O.R.A. System
+@description Core module for A.U.R.O.R.A. System - Celery App Worker Configuration
 
-Implements primary logic and architectural constraints.
-
-Architectural constraints and responsibilities apply here.
-Testability and dependency separation are enforced.
+Implements core logic and architectural definitions.
 """
 
 import os
@@ -23,6 +20,7 @@ celery_app = Celery(
     backend=os.getenv("REDIS_URL", "redis://localhost:6379/0")
 )
 
+# Apply resiliency and execution configurations
 celery_app.conf.update(
     task_serializer="json",
     accept_content=["json"],
@@ -39,6 +37,7 @@ def execute_durable_task(self, task_id: str, tool_name: str, args: dict):
     Worker task that executes a tool through the Sandbox.
     Connects Phase 2 (Durable Task) with Phase 5 (Distributed Workers).
     """
+    # Notify system that task execution has begun
     TaskManager.update_state(task_id, TaskState.RUNNING)
     
     try:
@@ -59,20 +58,23 @@ def execute_durable_task(self, task_id: str, tool_name: str, args: dict):
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 
+            # Perform Python code execution in sandbox
             result = loop.run_until_complete(sandbox.execute_python(code))
             
             if result.exit_code == 0:
                 TaskManager.update_state(task_id, TaskState.COMPLETED)
                 return result.stdout
             else:
+                # Mark as failed to avoid infinite retrying on bad code
                 TaskManager.update_state(task_id, TaskState.FAILED, error_message=result.stderr)
                 raise Exception(f"Sandbox Error: {result.stderr}")
                 
         else:
-            # Generic skill
+            # Generic skill execution fallback
             TaskManager.update_state(task_id, TaskState.COMPLETED)
             return f"Executed {tool_name} successfully"
             
     except Exception as exc:
+        # On transient or uncaught failures, requeue for retry
         TaskManager.update_state(task_id, TaskState.RETRYING, error_message=str(exc))
         raise self.retry(exc=exc, countdown=2 ** self.request.retries) from exc

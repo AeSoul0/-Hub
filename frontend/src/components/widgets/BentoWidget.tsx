@@ -1,11 +1,8 @@
 /**
  * @file frontend/src/components/widgets/BentoWidget.tsx
- * @description Core module for A.U.R.O.R.A. System
+ * @description Base bento-box UI wrapper component providing consistent styling, glowing animations, and layout for all widgets.
  *
- * Implements primary logic and architectural constraints.
- *
- * Architectural constraints and responsibilities apply here.
- * Testability and dependency separation are enforced.
+ * Implements core logic and architectural definitions.
  */
 
 import React from "react";
@@ -40,6 +37,8 @@ export default function BentoWidget({
     isLoading = false,
     children,
 }: BentoWidgetProps) {
+    // Resolve theme colors based on the provided color key
+    // Resolve theme colors based on the provided color key
     const colors = THEME_COLORS[colorKey];
     const colClass = colSpan === 2 ? "md:col-span-2" : "";
     const rowClass = rowSpan === 2 ? "md:row-span-2" : "";

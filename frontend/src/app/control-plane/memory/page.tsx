@@ -1,9 +1,13 @@
 /**
  * @file frontend/src/app/control-plane/memory/page.tsx
- * @description Core module for A.U.R.O.R.A. System
+ * @description Semantic Memory visualization page for the Control Plane.
+ *
+ * Implements core logic and architectural definitions.
  */
 "use client";
 import React from 'react';
+
+// Renders the Semantic Memory visualization UI
 export default function MemoryPage() {
     return (
         <div className="p-8 text-white min-h-screen" style={{ backgroundColor: '#111' }}>

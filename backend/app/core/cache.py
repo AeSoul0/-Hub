@@ -2,9 +2,7 @@
 @file backend/app/core/cache.py
 @description Core module for A.U.R.O.R.A. System
 
-Implements primary logic and architectural constraints.
-Architectural constraints and responsibilities apply here.
-Testability and dependency separation are enforced.
+Implements core logic and architectural definitions.
 """
 
 import json
@@ -22,6 +20,8 @@ class CacheService:
 
     @classmethod
     def get_pool(cls) -> redis.ConnectionPool:
+        # Initialize the Redis connection pool if it doesn't exist
+        # Initialize the Redis connection pool if it doesn't exist
         if cls._pool is None:
             cls._pool = redis.ConnectionPool.from_url(
                 settings.REDIS_URL, decode_responses=True
@@ -30,10 +30,14 @@ class CacheService:
 
     @classmethod
     async def get_client(cls) -> redis.Redis:
+        # Retrieve a new Redis client instance from the connection pool
+        # Retrieve a new Redis client instance from the connection pool
         return redis.Redis(connection_pool=cls.get_pool())
 
     @classmethod
     async def get(cls, key: str) -> Optional[Any]:
+        # Fetch data from Redis and attempt to parse it as JSON
+        # Fetch data from Redis and attempt to parse it as JSON
         client = await cls.get_client()
         data = await client.get(key)
         if data:
@@ -45,6 +49,8 @@ class CacheService:
 
     @classmethod
     async def set(cls, key: str, value: Any, expire_seconds: int = 3600):
+        # Serialize dictionaries or lists to JSON strings and store in Redis with expiration
+        # Serialize dictionaries or lists to JSON strings and store in Redis with expiration
         client = await cls.get_client()
         if isinstance(value, (dict, list)):
             value = json.dumps(value)
@@ -52,6 +58,8 @@ class CacheService:
 
     @classmethod
     async def delete(cls, key: str):
+        # Remove a specific key from the Redis cache
+        # Remove a specific key from the Redis cache
         client = await cls.get_client()
         await client.delete(key)
 

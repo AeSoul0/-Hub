@@ -2,9 +2,7 @@
 @file backend/app/core/model_router.py
 @description Core module for A.U.R.O.R.A. System
 
-Implements primary logic and architectural constraints.
-Architectural constraints and responsibilities apply here.
-Testability and dependency separation are enforced.
+Implements core logic and architectural definitions.
 """
 
 from typing import Dict, Any
@@ -17,6 +15,8 @@ class ModelRouter:
     
     @staticmethod
     def route_query(prompt: str, requires_vision: bool = False, requires_json: bool = False) -> str:
+        # Route query to specialized models based on capability requirements (vision, complex reasoning, or speed)
+        # Route query to specialized models based on capability requirements (vision, complex reasoning, or speed)
         prompt_length = len(prompt)
         
         if requires_vision:
@@ -32,6 +32,8 @@ class ModelRouter:
 
     @staticmethod
     def calculate_budget_impact(model_name: str, tokens: int) -> float:
+        # Calculate the estimated execution cost of the model in USD based on token count
+        # Calculate the estimated execution cost of the model in USD based on token count
         """Calculates estimated cost to ensure Policy Limits are respected."""
         rates = {
             "llama3-8b-8192": 0.0001,

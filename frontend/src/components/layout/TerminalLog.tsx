@@ -1,11 +1,8 @@
 /**
  * @file frontend/src/components/layout/TerminalLog.tsx
- * @description Core module for A.U.R.O.R.A. System
+ * @description Terminal log component for real-time telemetry streaming and event handling via Server-Sent Events (SSE).
  *
- * Implements primary logic and architectural constraints.
- *
- * Architectural constraints and responsibilities apply here.
- * Testability and dependency separation are enforced.
+ * Implements core logic and architectural definitions.
  */
 
 "use client";
@@ -25,6 +22,8 @@ interface LogEvent {
 }
 
 export default function TerminalLog() {
+    // State array for storing terminal log events
+    // State array for storing terminal log events
     const [logs, setLogs] = useState<LogEvent[]>([]);
     const endOfMessagesRef = useRef<HTMLDivElement>(null);
     const eventSourceRef = useRef<EventSource | null>(null);

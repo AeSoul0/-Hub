@@ -1,11 +1,8 @@
 /**
  * @file frontend/src/components/widgets/WeatherWidget.tsx
- * @description Core module for A.U.R.O.R.A. System
+ * @description Weather widget fetching and displaying real-time meteorological data and daily forecasts from Open-Meteo.
  *
- * Implements primary logic and architectural constraints.
- *
- * Architectural constraints and responsibilities apply here.
- * Testability and dependency separation are enforced.
+ * Implements core logic and architectural definitions.
  */
 
 "use client";
@@ -28,6 +25,8 @@ import { useAppStore, WeatherData } from "../../store/index";
 export default function WeatherWidget() {
     const setWeatherData = useAppStore((state) => state.setWeatherData);
 
+    // Local state for storing the mapped weather telemetry data
+    // Local state for storing the mapped weather telemetry data
     const [weather, setWeather] = useState<WeatherData | null>(null);
 
     useEffect(() => {

@@ -2,10 +2,7 @@
 @file backend/app/runtime/task_manager.py
 @description Core module for A.U.R.O.R.A. System
 
-Implements primary logic and architectural constraints.
-
-Architectural constraints and responsibilities apply here.
-Testability and dependency separation are enforced.
+Implements core logic and architectural definitions.
 """
 
 import json
@@ -101,6 +98,8 @@ class TaskManager:
     
     @staticmethod
     def create_task(session_id: str, payload: Dict[str, Any], parent_task_id: Optional[str] = None, priority: int = 0, idempotency_key: Optional[str] = None) -> Task:
+        # Check idempotency key to prevent duplicate tasks, then insert a new task record
+        # Check idempotency key to prevent duplicate tasks, then insert a new task record
         task_id = str(uuid.uuid4())
         now = datetime.utcnow()
         
@@ -125,6 +124,8 @@ class TaskManager:
         
     @staticmethod
     def update_state(task_id: str, new_state: TaskState, expected_version: Optional[int] = None, error_message: Optional[str] = None) -> bool:
+        # Enforce valid state transitions and optimistic locking before updating task state
+        # Enforce valid state transitions and optimistic locking before updating task state
         task = TaskManager.get_task(task_id)
         if not task:
             return False
@@ -156,6 +157,8 @@ class TaskManager:
             
     @staticmethod
     def acquire_lease(task_id: str, worker_id: str, lease_minutes: int = 5) -> bool:
+        # Assign a task to a worker exclusively by setting a lease expiration and updating its state to RUNNING
+        # Assign a task to a worker exclusively by setting a lease expiration and updating its state to RUNNING
         from datetime import timedelta
         now = datetime.utcnow()
         task = TaskManager.get_task(task_id)
@@ -209,6 +212,8 @@ class TaskManager:
 
     @staticmethod
     def renew_lease(task_id: str, worker_id: str, lease_minutes: int = 5) -> bool:
+        # Extend the lease expiration time for a task currently executing on a worker
+        # Extend the lease expiration time for a task currently executing on a worker
         """Heartbeat mechanism to keep the worker lease alive."""
         from datetime import timedelta
         now = datetime.utcnow()
@@ -227,6 +232,8 @@ class TaskManager:
 
     @staticmethod
     def cancel_task(task_id: str) -> bool:
+        # Mark a task as cancellation_requested so workers can gracefully abort execution
+        # Mark a task as cancellation_requested so workers can gracefully abort execution
         """Cancellation token mechanism to request task stop."""
         now = datetime.utcnow()
         with get_connection() as conn:
@@ -241,6 +248,8 @@ class TaskManager:
 
     @staticmethod
     def create_checkpoint(task_id: str, state_snapshot: Dict[str, Any]) -> TaskCheckpoint:
+        # Persist a snapshot of the agent's current state to allow recovery from failures
+        # Persist a snapshot of the agent's current state to allow recovery from failures
         """Checkpoints mechanism to save agent state for recovery."""
         checkpoint_id = str(uuid.uuid4())
         now = datetime.utcnow()
@@ -269,6 +278,8 @@ class TaskManager:
 
     @staticmethod
     def recover_zombie_tasks(timeout_minutes: int = 30):
+        # Identify tasks stuck in the RUNNING state beyond the timeout and mark them as FAILED
+        # Identify tasks stuck in the RUNNING state beyond the timeout and mark them as FAILED
         """
         Phase 2: Resiliency.
         Finds tasks that have been RUNNING for longer than the timeout and marks them as FAILED.

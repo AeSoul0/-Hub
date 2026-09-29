@@ -1,10 +1,8 @@
 /**
  * @file frontend/src/components/layout/WorkspaceDesktop.tsx
- * @description Core module for A.U.R.O.R.A. System
+ * @description Desktop workspace layout managing draggable, resizable widget windows and dynamic artifact rendering.
  *
- * Implements primary logic and architectural constraints.
- * Architectural constraints and responsibilities apply here.
- * Testability and dependency separation are enforced.
+ * Implements core logic and architectural definitions.
  */
 
 "use client";
@@ -16,6 +14,8 @@ import { useUIStore } from "@/store/useUIStore";
 import { DynamicArtifactRenderer } from "@/components/widgets/DynamicArtifactRenderer";
 
 export default function WorkspaceDesktop() {
+    // Extract window management actions from the global UI store
+    // Extract window management actions from the global UI store
     const { windows, closeArtifact, updateWindow, bringToFront } = useUIStore();
 
     return (

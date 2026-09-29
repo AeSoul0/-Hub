@@ -1,9 +1,13 @@
 /**
  * @file frontend/src/app/control-plane/runs/page.tsx
- * @description Core module for A.U.R.O.R.A. System
+ * @description Agent Runs monitoring page for the Control Plane.
+ *
+ * Implements core logic and architectural definitions.
  */
 "use client";
 import React from 'react';
+
+// Renders the Agent Runs monitoring UI
 export default function RunsPage() {
     return (
         <div className="p-8 text-white min-h-screen" style={{ backgroundColor: '#111' }}>

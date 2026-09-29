@@ -2,10 +2,7 @@
  * @file frontend/src/components/ui/button.tsx
  * @description Core module for A.U.R.O.R.A. System
  *
- * Implements primary logic and architectural constraints.
- *
- * Architectural constraints and responsibilities apply here.
- * Testability and dependency separation are enforced.
+ * Implements core logic and architectural definitions.
  */
 
 import * as React from "react";

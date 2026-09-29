@@ -2,14 +2,14 @@
 @file backend/app/core/db.py
 @description Core module for A.U.R.O.R.A. System
 
-Implements primary logic and architectural constraints.
-Architectural constraints and responsibilities apply here.
-Testability and dependency separation are enforced.
+Implements core logic and architectural definitions.
 """
 
 import os
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, declarative_base
+
+Base = declarative_base()
 
 POSTGRES_URL = os.getenv("POSTGRES_URL", "postgresql://aehub_user:aehub_pass@localhost:5432/aehub_db")
 

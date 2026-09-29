@@ -1,15 +1,14 @@
 """
 @file backend/app/domain/models/memory.py
-@description Core module for A.U.R.O.R.A. System
+@description Database Models for Memory Engine.
 
-Implements primary logic and architectural constraints.
-Architectural constraints and responsibilities apply here.
-Testability and dependency separation are enforced.
+Defines the VectorMemory schema and MemoryType enumerations (including the new EXECUTION type).
+Provides the foundational persistence structure for the Phase 6 Memory System utilizing pgvector.
 """
 
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, Text, Enum
+from sqlalchemy import Column, String, DateTime, Text, Enum, Float
 import enum
 from pgvector.sqlalchemy import Vector
 from app.domain.models.identity import Base
@@ -18,6 +17,7 @@ class MemoryType(str, enum.Enum):
     SEMANTIC = "semantic"
     EPISODIC = "episodic"
     PROCEDURAL = "procedural"
+    EXECUTION = "execution"
 
 class VectorMemory(Base):
     """
@@ -31,4 +31,9 @@ class VectorMemory(Base):
     memory_type = Column(String, nullable=False, index=True)
     content = Column(Text, nullable=False)
     embedding = Column(Vector(384)) # 384 dimensions for all-MiniLM-L6-v2
+    workspace_id = Column(String, nullable=True, index=True)
+    importance = Column(Float, default=1.0)
+    confidence = Column(Float, default=1.0)
+    source = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+

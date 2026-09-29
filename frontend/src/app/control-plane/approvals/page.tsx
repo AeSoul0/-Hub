@@ -1,16 +1,15 @@
 /**
  * @file frontend/src/app/control-plane/approvals/page.tsx
- * @description Core module for A.U.R.O.R.A. System
+ * @description Approvals management page for the M11 Control Plane.
  *
- * Implements primary logic and architectural constraints.
- * Architectural constraints and responsibilities apply here.
- * Testability and dependency separation are enforced.
+ * Implements core logic and architectural definitions.
  */
 
 "use client";
 
 import React, { useState } from 'react';
 
+// Renders the approvals interface where users can manage pending operations
 export default function ApprovalsPage() {
     const [approvals, setApprovals] = useState([
         { id: "app-101", task_id: "tsk-99", status: "WAITING_APPROVAL", description: "Deploy to Production", requested_by: "agent_runner" }

@@ -1,11 +1,8 @@
 /**
  * @file frontend/src/components/layout/Header.tsx
- * @description Core module for A.U.R.O.R.A. System
+ * @description Primary application header component for ÆHub, rendering the main navigation bar, branding, and real-time backend connectivity status.
  *
- * Implements primary logic and architectural constraints.
- *
- * Architectural constraints and responsibilities apply here.
- * Testability and dependency separation are enforced.
+ * Implements core logic and architectural definitions.
  */
 
 "use client";
@@ -14,6 +11,8 @@ import { useEffect, useState } from "react";
 import { Activity } from "lucide-react";
 
 export default function Header() {
+    // Initialize backend connection status state
+    // Initialize backend connection status state
     const [backendStatus, setBackendStatus] = useState("Connecting...");
 
     // Fetches the backend connection status on component mount

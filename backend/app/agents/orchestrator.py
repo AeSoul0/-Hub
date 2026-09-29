@@ -1,11 +1,8 @@
 """
 @file backend/app/agents/orchestrator.py
-@description Core module for A.U.R.O.R.A. System
+@description Orchestrator for the A.U.R.O.R.A. System
 
-Implements primary logic and architectural constraints.
-
-Architectural constraints and responsibilities apply here.
-Testability and dependency separation are enforced.
+Implements core logic and architectural definitions.
 """
 
 import base64
@@ -154,10 +151,10 @@ async def generate_ai_response(
     # Publish diagnostic event for observability
     await event_bus.publish(session_id, "log", f"[System] Routing intent to A.U.R.O.R.A. Core: {intent_str[:30]}...")
 
-    # Fallback to a mock principal if not provided by the transport layer
-    from app.core.security import Principal, Role
+    # Fail closed if principal is missing
+    from app.core.security import Principal
     if not principal:
-        principal = Principal(id=session_id, role=Role.ADMIN, workspace_id="default-workspace")
+        raise ValueError("Missing principal. Execution denied.")
 
     # The payload MUST match the AuroraState schema exactly
     initial_state = {

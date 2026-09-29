@@ -2,9 +2,7 @@
 @file backend/app/core/plugins.py
 @description Core module for A.U.R.O.R.A. System
 
-Implements primary logic and architectural constraints.
-Architectural constraints and responsibilities apply here.
-Testability and dependency separation are enforced.
+Implements core logic and architectural definitions.
 """
 
 import importlib
@@ -21,6 +19,8 @@ class PluginRegistry:
         self.hooks: Dict[str, list[Callable]] = {}
         
     def register_plugin(self, name: str, plugin_instance: Any):
+        # Store the plugin instance in the registry to make it accessible to the platform
+        # Store the plugin instance in the registry to make it accessible to the platform
         self.plugins[name] = plugin_instance
         print(f"[Extensibility] Plugin '{name}' registered successfully.")
         
@@ -30,6 +30,8 @@ class PluginRegistry:
         self.hooks[event_name].append(callback)
         
     def trigger_hook(self, event_name: str, *args, **kwargs):
+        # Execute all callback functions registered for the specified event
+        # Execute all callback functions registered for the specified event
         if event_name in self.hooks:
             for hook in self.hooks[event_name]:
                 try:
@@ -38,6 +40,8 @@ class PluginRegistry:
                     print(f"[Extensibility] Error in hook '{event_name}': {e}")
                     
     def load_from_directory(self, plugin_dir: str):
+        # Dynamically import and setup all valid python modules found in the plugin directory
+        # Dynamically import and setup all valid python modules found in the plugin directory
         if not os.path.exists(plugin_dir):
             return
             
@@ -77,6 +81,8 @@ class MCPTransportLayer:
         self.tool_gateway = tool_gateway
 
     def handle_mcp_request(self, mcp_tool_name: str, args: dict, principal):
+        # MCP must NOT bypass the Tool Gateway. Route requests securely via Gateway policy.
+        # MCP must NOT bypass the Tool Gateway. Route requests securely via Gateway policy.
         # MCP must NOT bypass the Tool Gateway.
         return self.tool_gateway.execute_tool(principal, mcp_tool_name, args)
 

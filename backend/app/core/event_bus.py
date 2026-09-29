@@ -2,10 +2,7 @@
 @file backend/app/core/event_bus.py
 @description Core module for A.U.R.O.R.A. System
 
-Implements primary logic and architectural constraints.
-
-Architectural constraints and responsibilities apply here.
-Testability and dependency separation are enforced.
+Implements core logic and architectural definitions.
 """
 
 import asyncio
@@ -27,6 +24,8 @@ class EventBus:
         self._listener_task = None
 
     async def _listen_to_redis(self):
+        # Listen to Redis Pub/Sub channels matching the pattern 'session:*'
+        # Listen to Redis Pub/Sub channels matching the pattern 'session:*'
         await self.pubsub.psubscribe("session:*")
         async for message in self.pubsub.listen():
             if message["type"] == "pmessage":
@@ -39,6 +38,8 @@ class EventBus:
                         await queue.put(data)
 
     def subscribe(self, session_id: str) -> asyncio.Queue:
+        # Initialize background listener task if not already running
+        # Initialize background listener task if not already running
         if not self._listener_task:
             self._listener_task = asyncio.create_task(self._listen_to_redis())
             
@@ -49,6 +50,8 @@ class EventBus:
         return queue
 
     def unsubscribe(self, session_id: str, queue: asyncio.Queue):
+        # Remove a specific listener queue from the session's subscribers
+        # Remove a specific listener queue from the session's subscribers
         if session_id in self.listeners:
             if queue in self.listeners[session_id]:
                 self.listeners[session_id].remove(queue)
@@ -56,6 +59,8 @@ class EventBus:
                 del self.listeners[session_id]
 
     async def publish(self, session_id: str, event_type: str, data: dict | str):
+        # Serialize the event data and publish it to the session's Redis channel
+        # Serialize the event data and publish it to the session's Redis channel
         message = json.dumps({"type": event_type, "data": data})
         await self.redis.publish(f"session:{session_id}", message)
 

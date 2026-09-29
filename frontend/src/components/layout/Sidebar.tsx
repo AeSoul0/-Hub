@@ -1,11 +1,8 @@
 /**
  * @file frontend/src/components/layout/Sidebar.tsx
- * @description Core module for A.U.R.O.R.A. System
+ * @description Sidebar navigation component providing access to main modules, session history, and core system settings.
  *
- * Implements primary logic and architectural constraints.
- *
- * Architectural constraints and responsibilities apply here.
- * Testability and dependency separation are enforced.
+ * Implements core logic and architectural definitions.
  */
 
 "use client";
@@ -14,6 +11,8 @@ import { useState } from "react";
 import { Menu, ChevronLeft, History, Settings, FolderOpen, Network } from "lucide-react";
 
 export default function Sidebar() {
+    // State for toggling mobile sidebar visibility
+    // State for toggling mobile sidebar visibility
     const [isOpen, setIsOpen] = useState(false);
 
     return (

@@ -1,15 +1,14 @@
 /**
  * @file frontend/src/store/useUIStore.ts
- * @description Core module for A.U.R.O.R.A. System
+ * @description UI state management store using Zustand.
  *
- * Implements primary logic and architectural constraints.
- * Architectural constraints and responsibilities apply here.
- * Testability and dependency separation are enforced.
+ * Implements core logic and architectural definitions.
  */
 
 import { create } from "zustand";
 import { Artifact } from "@/components/widgets/DynamicArtifactRenderer";
 
+// Defines the structure of an active draggable artifact window
 export interface ArtifactWindow {
     id: string;
     artifact: Artifact;
@@ -55,14 +54,17 @@ export const useUIStore = create<UIStore>((set) => ({
         return { windows: [...state.windows, newWindow] };
     }),
     
+    // Closes and removes an artifact window by its ID
     closeArtifact: (id) => set((state) => ({
         windows: state.windows.filter((w) => w.id !== id),
     })),
     
+    // Updates specific properties of an existing artifact window
     updateWindow: (id, updates) => set((state) => ({
         windows: state.windows.map((w) => (w.id === id ? { ...w, ...updates } : w)),
     })),
     
+    // Raises a window to the front by updating its z-index
     bringToFront: (id) => set((state) => ({
         windows: state.windows.map((w) => (w.id === id ? { ...w, zIndex: Date.now() } : w)),
     })),

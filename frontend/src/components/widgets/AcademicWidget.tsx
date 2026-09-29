@@ -1,11 +1,8 @@
 /**
  * @file frontend/src/components/widgets/AcademicWidget.tsx
- * @description Core module for A.U.R.O.R.A. System
+ * @description Academic tracking widget for fetching, syncing, and displaying university data such as GPA and acquired credits.
  *
- * Implements primary logic and architectural constraints.
- *
- * Architectural constraints and responsibilities apply here.
- * Testability and dependency separation are enforced.
+ * Implements core logic and architectural definitions.
  */
 
 "use client";
@@ -39,6 +36,8 @@ const DEFAULT_DATA: AcademicData = { gpa: 0, exams: 0, cfu: 0 };
 
 export default function AcademicWidget() {
     const [data, setData] = useState<AcademicData>(DEFAULT_DATA);
+    // State for tracking network loading status during data fetches
+    // State for tracking network loading status during data fetches
     const [loading, setLoading] = useState<boolean>(true);
     const [isSyncing, setIsSyncing] = useState<boolean>(false);
 

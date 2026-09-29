@@ -1,10 +1,8 @@
 """
 @file tests/agents/test_subagents.py
-@description Core module for A.U.R.O.R.A. System
+@description Tests for subagent delegation logic.
 
-Implements primary logic and architectural constraints.
-Architectural constraints and responsibilities apply here.
-Testability and dependency separation are enforced.
+Implements core logic and architectural definitions.
 """
 
 import pytest
@@ -12,5 +10,6 @@ from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
 
 # TODO: Implement 100% line coverage for Agents: Subagent Delegation
+# This section contains placeholder tests for tests for subagent delegation logic.
 def test_placeholder():
     assert True

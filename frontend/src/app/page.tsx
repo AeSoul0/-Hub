@@ -1,11 +1,8 @@
 /**
  * @file frontend/src/app/page.tsx
- * @description Core module for A.U.R.O.R.A. System
+ * @description Main entry point and home page for the ÆHub application.
  *
- * Implements primary logic and architectural constraints.
- *
- * Architectural constraints and responsibilities apply here.
- * Testability and dependency separation are enforced.
+ * Implements core logic and architectural definitions.
  */
 
 "use client";
@@ -16,14 +13,18 @@ import CoreOrchestratorWidget from "../components/widgets/CoreOrchestratorWidget
 import TerminalLog from "../components/layout/TerminalLog";
 import WorkspaceDesktop from "../components/layout/WorkspaceDesktop";
 
+// Main Home component serving as the central hub interface
 export default function Home() {
+    // State to track the current theme mode (dark or light)
     const [isDarkMode, setIsDarkMode] = useState(true);
 
+    // Sync the local state with the actual document theme on initial mount
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setIsDarkMode(document.documentElement.classList.contains("dark"));
     }, []);
 
+    // Function to handle switching between light and dark themes
     const toggleTheme = () => {
         const updateDOM = () => {
             const isDark = document.documentElement.classList.contains("dark");

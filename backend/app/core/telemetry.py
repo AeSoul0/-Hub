@@ -2,10 +2,7 @@
 @file backend/app/core/telemetry.py
 @description Core module for A.U.R.O.R.A. System
 
-Implements primary logic and architectural constraints.
-
-Architectural constraints and responsibilities apply here.
-Testability and dependency separation are enforced.
+Implements core logic and architectural definitions.
 """
 
 import json
@@ -26,6 +23,8 @@ class JSONLogFormatter(logging.Formatter):
     Formats logs as structured JSON with Trace IDs for centralized observability.
     """
     def format(self, record):
+        # Enrich log records with trace IDs from OpenTelemetry and format them as JSON
+        # Enrich log records with trace IDs from OpenTelemetry and format them as JSON
         span = trace.get_current_span()
         trace_id = span.get_span_context().trace_id
         trace_id_str = format(trace_id, "032x") if trace_id else "N/A"
@@ -46,6 +45,8 @@ class JSONLogFormatter(logging.Formatter):
         return json.dumps(log_obj)
 
 def setup_telemetry(app: FastAPI):
+    # Initialize OpenTelemetry TracerProvider and console exporter
+    # Initialize OpenTelemetry TracerProvider and console exporter
     """
     Phase 4: OpenTelemetry & Metric Exporters.
     Configures Tracing, Metrics, and Prometheus exporters.

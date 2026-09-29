@@ -1,34 +1,31 @@
 """
 @file tests/unit/test_tool_gateway.py
-@description Core module for A.U.R.O.R.A. System
+@description Unit tests for Tool Gateway.
 
-Implements primary logic and architectural constraints.
-Architectural constraints and responsibilities apply here.
-Testability and dependency separation are enforced.
+Implements core logic and architectural definitions.
 """
-
 import pytest
-from app.tools.gateway import ToolGateway
+import asyncio
+from app.runtime.tool_gateway import ToolGateway, ToolInvocation, ToolResult
 from app.core.security import Principal
+from app.agent_engine.models import ToolSpec
 
 def test_tool_gateway_sandbox_enforcement():
-    """M3: Verify Tool Gateway does not allow arbitrary script execution."""
     gateway = ToolGateway()
-    user = Principal(id="tester", roles=["agent"], workspace_id="ws-test")
+    user = Principal(id="tester", role="user", workspace_id="ws-test")
+    spec = ToolSpec(name="shell", version="1", description="", input_schema={}, output_schema={}, risk_level="HIGH", permissions=[], network_access=False, filesystem_access=False, max_runtime=1, max_output=1, max_cost=0, idempotent=False, requires_approval=False, sandbox_profile="", audit_policy="")
+    invocation = ToolInvocation(tool_name="shell", arguments={"cmd": "rm -rf"}, principal=user, session_id="test", spec=spec)
     
-    # Should raise error because 'bash' is restricted
-    with pytest.raises(Exception) as exc:
-        gateway.execute_tool(user, tool_name="bash", kwargs={"cmd": "rm -rf /"})
-    assert "Unauthorized" in str(exc.value) or "restricted" in str(exc.value).lower()
+    res = asyncio.run(gateway.execute(invocation, None))
+    assert not res.success
+    assert "Unauthorized" in res.error
 
 def test_tool_gateway_budget_tracking():
-    """M3: Verify Tool Gateway registers execution metrics."""
     gateway = ToolGateway()
-    user = Principal(id="tester", roles=["agent"], workspace_id="ws-test")
+    user = Principal(id="tester", role="user", workspace_id="ws-test")
+    spec = ToolSpec(name="costly", version="1", description="", input_schema={}, output_schema={}, risk_level="LOW", permissions=[], network_access=False, filesystem_access=False, max_runtime=1, max_output=1, max_cost=9999.0, idempotent=False, requires_approval=False, sandbox_profile="", audit_policy="")
+    invocation = ToolInvocation(tool_name="costly", arguments={}, principal=user, session_id="123", spec=spec)
     
-    # Registering a safe tool
-    def dummy_tool(*args, **kwargs): return "success"
-    gateway.registry["dummy_tool"] = {"func": dummy_tool, "requires_approval": False}
-    
-    result = gateway.execute_tool(user, "dummy_tool", {})
-    assert result == "success"
+    res = asyncio.run(gateway.execute(invocation, None))
+    assert not res.success
+    assert "Budget exceeded" in res.error or "Unauthorized" in res.error

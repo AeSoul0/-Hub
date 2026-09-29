@@ -2,9 +2,7 @@
 @file backend/app/core/models.py
 @description Core module for A.U.R.O.R.A. System
 
-Implements primary logic and architectural constraints.
-Architectural constraints and responsibilities apply here.
-Testability and dependency separation are enforced.
+Implements core logic and architectural definitions.
 """
 
 from enum import Enum
@@ -42,6 +40,8 @@ class ModelRouter:
 
     @staticmethod
     def _init_cache():
+        # Initialize the LangChain Redis cache exactly once to share LLM responses
+        # Initialize the LangChain Redis cache exactly once to share LLM responses
         if not ModelRouter._cache_initialized:
             import os
             try:
@@ -59,6 +59,8 @@ class ModelRouter:
 
     @staticmethod
     def get_model(provider: ModelProvider, model_name: str, temperature: float = 0.75) -> BaseChatModel:
+        # Factory method to return the appropriate LangChain ChatModel instance for the specified provider
+        # Factory method to return the appropriate LangChain ChatModel instance for the specified provider
         import os
         ModelRouter._init_cache()
         

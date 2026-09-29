@@ -1,10 +1,8 @@
 """
 @file tests/unit/test_memory_models.py
-@description Core module for A.U.R.O.R.A. System
+@description Unit tests for memory models.
 
-Implements primary logic and architectural constraints.
-Architectural constraints and responsibilities apply here.
-Testability and dependency separation are enforced.
+Implements core logic and architectural definitions.
 """
 
 from app.core.model_router import ModelRouter

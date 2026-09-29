@@ -1,11 +1,8 @@
 """
 @file backend/app/skills/sandbox_skill.py
-@description Core module for A.U.R.O.R.A. System
+@description Core module for A.U.R.O.R.A. System - Sandbox Skill
 
-Implements primary logic and architectural constraints.
-
-Architectural constraints and responsibilities apply here.
-Testability and dependency separation are enforced.
+Implements core logic and architectural definitions.
 """
 
 from typing import Callable, Dict, List, Optional
@@ -24,9 +21,12 @@ async def execute_python_code(code: str) -> str:
     Usa questo strumento per eseguire calcoli complessi, analizzare dati o testare algoritmi.
     Ritorna lo stdout, lo stderr e l'exit code dell'esecuzione.
     """
+    # Execute python code in the sandbox manager
     result = await sandbox_manager.execute_python(code)
+    # Return standard output on success
     if result.exit_code == 0:
         return f"Output:\n{result.stdout}"
+    # Return standard output and error on failure
     return f"Execution Failed (Exit Code {result.exit_code}):\nStdout: {result.stdout}\nStderr: {result.stderr}"
 
 @tool
@@ -35,15 +35,19 @@ async def execute_shell_script(command: str) -> str:
     Esegue un comando shell (bash) in un ambiente sandbox isolato, sicuro e usa-e-getta (senza rete).
     Usa questo strumento per manipolazione dati di base o utility Unix-like.
     """
+    # Execute shell command in the sandbox manager
     result = await sandbox_manager.execute_shell(command)
+    # Return standard output on success
     if result.exit_code == 0:
         return f"Output:\n{result.stdout}"
+    # Return standard output and error on failure
     return f"Command Failed (Exit Code {result.exit_code}):\nStdout: {result.stdout}\nStderr: {result.stderr}"
 
 
 class SandboxSkill(BaseSkill):
     @property
     def metadata(self) -> SkillMetadata:
+        # Define the skill metadata
         return SkillMetadata(
             name="sandbox",
             description="Provides the agent with isolated code and shell execution capabilities.",
@@ -52,9 +56,11 @@ class SandboxSkill(BaseSkill):
         
     @property
     def tools(self) -> List[Callable]:
+        # Expose the available tools
         return [execute_python_code, execute_shell_script]
         
     def get_tool_metadata(self) -> Dict[str, ToolMetadata]:
+        # Return specific metadata and risk levels for each tool
         return {
             "execute_python_code": ToolMetadata(
                 name="execute_python_code",
@@ -72,6 +78,7 @@ class SandboxSkill(BaseSkill):
         
     @property
     def system_prompt_extension(self) -> Optional[str]:
+        # Provide prompt context for the LLM regarding how and when to use these tools
         return (
             "You have access to a secure Sandbox execution environment. "
             "Whenever you need to perform complex mathematical calculations, data analysis, "
@@ -82,4 +89,5 @@ class SandboxSkill(BaseSkill):
         )
 
 def get_skill() -> BaseSkill:
+    # Factory function to instantiate the skill
     return SandboxSkill()

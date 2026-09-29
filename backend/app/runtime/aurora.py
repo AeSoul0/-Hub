@@ -2,10 +2,7 @@
 @file backend/app/runtime/aurora.py
 @description Core module for A.U.R.O.R.A. System
 
-Implements primary logic and architectural constraints.
-
-Architectural constraints and responsibilities apply here.
-Testability and dependency separation are enforced.
+Implements core logic and architectural definitions.
 """
 
 import operator
@@ -53,6 +50,8 @@ sensitive_tool_node = ToolNode(sensitive_tools) if sensitive_tools else None
 
 # Node: Agent
 async def agent_node(state: AuroraState):
+    # Initialize the specific LLM model instance for the agent using the ModelRouter
+    # Initialize the specific LLM model instance for the agent using the ModelRouter
     messages = state["messages"]
     session_id = state.get("session_id", "default-session")
     
@@ -105,10 +104,12 @@ async def agent_node(state: AuroraState):
     response = await llm_with_tools.ainvoke(full_messages)
     return {"messages": [response]}
 
-from app.runtime.tool_gateway import ToolGateway, ToolInvocation, ToolSpec, RiskLevel
+from app.runtime.tool_gateway import ToolGateway, ToolInvocation, ToolSpec
 
 # Node: Execute Tools via Gateway
 async def execute_tools_node(state: AuroraState):
+    # Iterate through tool calls requested by the LLM in the last message
+    # Iterate through tool calls requested by the LLM in the last message
     messages = state["messages"]
     last_message = messages[-1]
     principal = state.get("principal")
@@ -133,7 +134,7 @@ async def execute_tools_node(state: AuroraState):
             spec = ToolSpec(
                 name=tool_name,
                 description=tool_instance.description,
-                risk_level=RiskLevel.HIGH if (meta and meta.requires_approval) else RiskLevel.LOW,
+                risk_level="HIGH" if (meta and meta.requires_approval) else "LOW",
                 approval_required=meta.requires_approval if meta else False
             )
             
@@ -187,6 +188,8 @@ _aurora_app = None
 _pool = None
 
 async def get_aurora_app():
+    # Setup PostgreSQL Checkpointer for LangGraph and compile the workflow
+    # Setup PostgreSQL Checkpointer for LangGraph and compile the workflow
     """Lazily initializes the LangGraph application with PostgreSQL Checkpointer."""
     global _aurora_app, _pool
     if _aurora_app is not None:

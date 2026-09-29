@@ -1,11 +1,8 @@
 /**
  * @file frontend/src/components/widgets/CoreOrchestratorWidget.tsx
- * @description Core module for A.U.R.O.R.A. System
+ * @description Core orchestrator widget serving as the central command interface with integrated voice and text input pipelines.
  *
- * Implements primary logic and architectural constraints.
- *
- * Architectural constraints and responsibilities apply here.
- * Testability and dependency separation are enforced.
+ * Implements core logic and architectural definitions.
  */
 
 "use client";
@@ -47,6 +44,8 @@ export default function CoreOrchestratorWidget() {
     // Operation handling states for tracking telemetry, hardware access, and backend nodes
     const [isListening, setIsListening] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
+    // State for managing the current user text input
+    // State for managing the current user text input
     const [inputText, setInputText] = useState("");
 
     // ==============================================================================

@@ -1,14 +1,12 @@
 """
 @file tests/e2e/test_100_100_gates.py
-@description Core module for A.U.R.O.R.A. System
+@description End-to-end tests for 100/100 gates compliance.
 
-Implements primary logic and architectural constraints.
-Architectural constraints and responsibilities apply here.
-Testability and dependency separation are enforced.
+Implements core logic and architectural definitions.
 """
 
 from fastapi.testclient import TestClient
-from app.main import app
+from main import app
 
 client = TestClient(app)
 

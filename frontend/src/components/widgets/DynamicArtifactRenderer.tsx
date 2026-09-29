@@ -1,11 +1,8 @@
 /**
  * @file frontend/src/components/widgets/DynamicArtifactRenderer.tsx
- * @description Core module for A.U.R.O.R.A. System
+ * @description Dynamic artifact renderer responsible for lazy-loading and rendering specific widget components based on the artifact type.
  *
- * Implements primary logic and architectural constraints.
- *
- * Architectural constraints and responsibilities apply here.
- * Testability and dependency separation are enforced.
+ * Implements core logic and architectural definitions.
  */
 
 "use client";
@@ -60,6 +57,8 @@ const WidgetLoader = () => (
 );
 
 export function DynamicArtifactRenderer({ artifact }: DynamicArtifactRendererProps) {
+  // Render the corresponding widget based on the parsed artifact type
+  // Render the corresponding widget based on the parsed artifact type
   switch (artifact.type) {
     case "weather":
       return <WeatherWidget {...artifact.data} />;

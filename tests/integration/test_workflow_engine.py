@@ -1,10 +1,11 @@
+from unittest.mock import patch
+from app.core.celery_app import celery_app
+celery_app.conf.update(task_always_eager=True, result_backend='cache+memory://')
 """
 @file tests/integration/test_workflow_engine.py
-@description Core module for A.U.R.O.R.A. System
+@description Integration tests for the workflow engine.
 
-Implements primary logic and architectural constraints.
-Architectural constraints and responsibilities apply here.
-Testability and dependency separation are enforced.
+Implements core logic and architectural definitions.
 """
 
 import pytest
@@ -50,7 +51,8 @@ def sample_workflow(db_session):
     db_session.commit()
     return version
 
-def test_start_workflow(db_session, sample_workflow):
+@patch("app.workflows.engine.celery_app.send_task")
+def test_start_workflow(mock_send, db_session, sample_workflow):
     """M10: Test that a workflow can be started and checkpoints correctly."""
     engine = WorkflowEngine(db_session)
     run = engine.start_workflow(version_id=sample_workflow.id, session_id="session-456", input_data={"url": "http://test.com"})
@@ -60,7 +62,8 @@ def test_start_workflow(db_session, sample_workflow):
     assert run.state_checkpoint["variables"]["url"] == "http://test.com"
     assert len(run.state_checkpoint["completed_steps"]) == 0
 
-def test_workflow_human_approval_pause(db_session, sample_workflow):
+@patch("app.workflows.engine.celery_app.send_task")
+def test_workflow_human_approval_pause(mock_send, db_session, sample_workflow):
     """M10: Test that workflow pauses correctly on WAITING_APPROVAL."""
     engine = WorkflowEngine(db_session)
     run = engine.start_workflow(version_id=sample_workflow.id, session_id="session-456", input_data={})
@@ -76,7 +79,8 @@ def test_workflow_human_approval_pause(db_session, sample_workflow):
     assert run.status == WorkflowState.WAITING_APPROVAL
     assert run.current_step == "step_2"
 
-def test_workflow_resume_from_approval(db_session, sample_workflow):
+@patch("app.workflows.engine.celery_app.send_task")
+def test_workflow_resume_from_approval(mock_send, db_session, sample_workflow):
     """M10: Test that workflow resumes from checkpoint when human approves."""
     wf_engine = WorkflowEngine(db_session)
     run = wf_engine.start_workflow(version_id=sample_workflow.id, session_id="session-456", input_data={})
@@ -86,7 +90,7 @@ def test_workflow_resume_from_approval(db_session, sample_workflow):
     run.current_step = "step_2"
     db_session.commit()
     
-    principal = Principal(id="admin-99", roles=["admin"], workspace_id="ws-123")
+    principal = Principal(id="admin-99", role="admin", workspace_id="ws-123")
     
     # Resume
     wf_engine.resume_from_approval(run.id, approved=True, approved_by=principal)

@@ -1,11 +1,8 @@
 """
 @file backend/app/skills/web_search.py
-@description Core module for A.U.R.O.R.A. System
+@description Core module for A.U.R.O.R.A. System - Web Search Skill
 
-Implements primary logic and architectural constraints.
-
-Architectural constraints and responsibilities apply here.
-Testability and dependency separation are enforced.
+Implements core logic and architectural definitions.
 """
 
 import json
@@ -21,6 +18,7 @@ from .base import BaseSkill, SkillMetadata
 def perform_web_search(query: str) -> str:
     """Cerca informazioni su internet in tempo reale. Usa questo tool per rispondere a domande su notizie recenti, meteo, o informazioni non presenti nel tuo contesto."""
     try:
+        # Fetch the top 3 web results matching the query
         results = DDGS().text(query, max_results=3)
         return json.dumps(results, ensure_ascii=False) if results else "No results found."
     except Exception as e:
@@ -30,6 +28,7 @@ def perform_web_search(query: str) -> str:
 class WebSearchSkill(BaseSkill):
     @property
     def metadata(self) -> SkillMetadata:
+        # Define the skill metadata
         return SkillMetadata(
             name="web_search",
             description="Provides capabilities to search the internet for real-time information using DuckDuckGo.",
@@ -38,10 +37,12 @@ class WebSearchSkill(BaseSkill):
         
     @property
     def tools(self) -> List[Callable]:
+        # Expose the web search tool
         return [perform_web_search]
         
     @property
     def system_prompt_extension(self) -> Optional[str]:
+        # Prompt context explaining when to rely on web search
         return (
             "You have access to a web search tool. "
             "Use it when you need to answer questions about current events, "
@@ -49,4 +50,5 @@ class WebSearchSkill(BaseSkill):
         )
 
 def get_skill() -> BaseSkill:
+    # Factory function to instantiate the skill
     return WebSearchSkill()

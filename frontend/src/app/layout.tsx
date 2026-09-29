@@ -1,17 +1,15 @@
 /**
  * @file frontend/src/app/layout.tsx
- * @description Core module for A.U.R.O.R.A. System
+ * @description Root layout component for the ÆHub frontend.
  *
- * Implements primary logic and architectural constraints.
- *
- * Architectural constraints and responsibilities apply here.
- * Testability and dependency separation are enforced.
+ * Implements core logic and architectural definitions.
  */
 
 import type { Metadata } from "next";
 import { Quicksand, Nunito } from "next/font/google";
 import "./style/globals.css";
 
+// Configure Quicksand font with specified weights for headings and specific UI elements
 const quicksand = Quicksand({
     variable: "--font-quicksand",
     subsets: ["latin"],
@@ -24,11 +22,13 @@ const nunito = Nunito({
     weight: ["300", "400", "500", "700"],
 });
 
+// Define application metadata for SEO and browser tab display
 export const metadata: Metadata = {
     title: "ÆHub",
     description: "Core Orchestrator Interface",
 };
 
+// Root layout component that wraps all application pages
 export default function RootLayout({
     children,
 }: Readonly<{

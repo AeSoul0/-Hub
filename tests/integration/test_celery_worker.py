@@ -1,10 +1,8 @@
 """
 @file tests/integration/test_celery_worker.py
-@description Core module for A.U.R.O.R.A. System
+@description Integration tests for Celery worker processes.
 
-Implements primary logic and architectural constraints.
-Architectural constraints and responsibilities apply here.
-Testability and dependency separation are enforced.
+Implements core logic and architectural definitions.
 """
 
 import pytest

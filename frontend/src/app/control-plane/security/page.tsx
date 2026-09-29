@@ -1,6 +1,28 @@
 /**
- * @file frontend/src/app/control-plane/security/page.tsx
- * @description Core module for A.U.R.O.R.A. System
+ *
+ * Implements core logic and architectural definitions.
+ * *
+ * Implements core logic and architectural definitions.
+ @file *
+ * Implements core logic and architectural definitions.
+ frontend/src/app/control-plane/security/page.tsx
+ *
+ * Implements core logic and architectural definitions.
+ * *
+ * Implements core logic and architectural definitions.
+ @description *
+ * Implements core logic and architectural definitions.
+ Core *
+ * Implements core logic and architectural definitions.
+ module *
+ * Implements core logic and architectural definitions.
+ for *
+ * Implements core logic and architectural definitions.
+ A.U.R.O.R.A. *
+ * Implements core logic and architectural definitions.
+ System
+ *
+ * Implements core logic and architectural definitions.
  */
 "use client";
 import React from 'react';

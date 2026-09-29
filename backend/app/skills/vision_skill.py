@@ -1,11 +1,8 @@
 """
 @file backend/app/skills/vision_skill.py
-@description Core module for A.U.R.O.R.A. System
+@description Core module for A.U.R.O.R.A. System - Vision Skill
 
-Implements primary logic and architectural constraints.
-
-Architectural constraints and responsibilities apply here.
-Testability and dependency separation are enforced.
+Implements core logic and architectural definitions.
 """
 
 import base64
@@ -22,12 +19,13 @@ from app.skills.base import BaseSkill, RiskLevel, SkillMetadata, ToolMetadata
 class VisionSkill(BaseSkill):
     def __init__(self):
         super().__init__()
-        # PyAutoGUI fail-safe config
+        # PyAutoGUI fail-safe config - aborts if mouse is thrown to the corner
         pyautogui.FAILSAFE = True
         pyautogui.PAUSE = 0.5
 
     @property
     def metadata(self) -> SkillMetadata:
+        # Define the skill metadata
         return SkillMetadata(
             name="computer_vision",
             description="Allows A.U.R.O.R.A. to perceive the screen and control the mouse/keyboard.",
@@ -35,6 +33,7 @@ class VisionSkill(BaseSkill):
         )
         
     def get_tool_metadata(self) -> Dict[str, ToolMetadata]:
+        # Define tool configurations, marking UI actions as high risk
         return {
             "take_screenshot": ToolMetadata(
                 name="take_screenshot",
@@ -56,10 +55,12 @@ class VisionSkill(BaseSkill):
 
     @property
     def tools(self) -> List[Callable]:
+        # Return all vision and UI manipulation tools
         return [take_screenshot, execute_ui_action, find_text_on_screen]
         
     @property
     def system_prompt_extension(self) -> str:
+        # Provide instruction to the LLM on using screen capabilities responsibly
         return (
             "You have direct vision of the host computer. You can use 'take_screenshot' to see the screen.\n"
             "If you need to click on specific text, DO NOT guess the coordinates. Use 'find_text_on_screen' to get the exact X, Y coordinates.\n"
@@ -75,16 +76,18 @@ def find_text_on_screen(text_to_find: str) -> str:
     import numpy as np
     
     try:
+        # Initialize OCR reader and grab current screen
         reader = easyocr.Reader(['en', 'it'], gpu=False)
         image = ImageGrab.grab()
         img_np = np.array(image)
         
+        # Extract text elements
         results = reader.readtext(img_np)
         
         matches = []
         for (bbox, text, prob) in results:
             if text_to_find.lower() in text.lower():
-                # calculate center of bounding box
+                # calculate center of bounding box to allow clicking
                 x = int((bbox[0][0] + bbox[1][0]) / 2)
                 y = int((bbox[0][1] + bbox[2][1]) / 2)
                 matches.append(f"Found '{text}' at X={x}, Y={y} (confidence: {prob:.2f})")
@@ -105,6 +108,7 @@ def take_screenshot() -> str:
     max_size = (1280, 720)
     image.thumbnail(max_size, Image.Resampling.LANCZOS)
     
+    # Convert image to base64 format for the LLM
     buffered = BytesIO()
     image.save(buffered, format="JPEG", quality=80)
     img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
@@ -122,18 +126,21 @@ def execute_ui_action(action: str, x: int = None, y: int = None, text: str = Non
     - amount: integer for scroll amount
     """
     try:
+        # Handle left click interactions
         if action == "click":
             if x is None or y is None:
                 return "Error: x and y coordinates required for click."
             pyautogui.click(x=x, y=y)
             return f"Clicked at ({x}, {y})"
             
+        # Handle keyboard typing
         elif action == "type":
             if text is None:
                 return "Error: text required for type."
             pyautogui.write(text, interval=0.05)
             return f"Typed: '{text}'"
             
+        # Handle shortcut hotkeys
         elif action == "hotkey":
             if keys is None:
                 return "Error: keys required for hotkey."
@@ -141,6 +148,7 @@ def execute_ui_action(action: str, x: int = None, y: int = None, text: str = Non
             pyautogui.hotkey(*key_list)
             return f"Executed hotkey: {keys}"
             
+        # Handle mouse scrolling
         elif action == "scroll":
             if amount is None:
                 return "Error: amount required for scroll."
@@ -152,4 +160,5 @@ def execute_ui_action(action: str, x: int = None, y: int = None, text: str = Non
         return f"UI Automation Error: {str(e)}"
 
 def get_skill():
+    # Factory function to instantiate the skill
     return VisionSkill()

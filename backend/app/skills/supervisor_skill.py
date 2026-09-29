@@ -1,11 +1,8 @@
 """
 @file backend/app/skills/supervisor_skill.py
-@description Core module for A.U.R.O.R.A. System
+@description Core module for A.U.R.O.R.A. System - Supervisor Skill
 
-Implements primary logic and architectural constraints.
-
-Architectural constraints and responsibilities apply here.
-Testability and dependency separation are enforced.
+Implements core logic and architectural definitions.
 """
 
 from typing import Callable, Dict, List, Optional
@@ -24,6 +21,7 @@ RESEARCHER_PROMPT = (
     "Do not stop at the first result if the topic requires deep context."
 )
 
+# Instantiate the research subagent with the appropriate prompt and tools
 research_agent = SubagentFactory.create_subagent(
     role_name="Researcher",
     system_prompt=RESEARCHER_PROMPT,
@@ -37,12 +35,14 @@ async def delegate_to_researcher(task: str) -> str:
     Usa questo tool quando devi fare ricerche approfondite che richiedono tempo e analisi di più fonti.
     """
     print(f"[Supervisor] Delegating to Researcher: {task}")
+    # Execute the research agent and return the findings
     result = await SubagentFactory.run_subagent(research_agent, task)
     return f"Research Results:\n{result}"
 
 class SupervisorSkill(BaseSkill):
     @property
     def metadata(self) -> SkillMetadata:
+        # Define the skill metadata
         return SkillMetadata(
             name="supervisor",
             description="Grants A.U.R.O.R.A. the ability to delegate tasks to specialized subagents.",
@@ -51,9 +51,11 @@ class SupervisorSkill(BaseSkill):
         
     @property
     def tools(self) -> List[Callable]:
+        # Expose the available tools
         return [delegate_to_researcher]
         
     def get_tool_metadata(self) -> Dict[str, ToolMetadata]:
+        # Provide metadata and risk levels for the exposed tools
         return {
             "delegate_to_researcher": ToolMetadata(
                 name="delegate_to_researcher",
@@ -64,6 +66,7 @@ class SupervisorSkill(BaseSkill):
         
     @property
     def system_prompt_extension(self) -> Optional[str]:
+        # Inform the agent how to delegate complex tasks properly
         return (
             "You are acting as a Supervisor. If a request is extremely complex or requires "
             "deep, exhaustive research, DO NOT try to answer it yourself immediately. "
@@ -72,4 +75,5 @@ class SupervisorSkill(BaseSkill):
         )
 
 def get_skill() -> BaseSkill:
+    # Factory function to instantiate the skill
     return SupervisorSkill()
