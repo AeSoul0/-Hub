@@ -10,10 +10,24 @@
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker)](https://www.docker.com/)
 
 ## Overview
+## Architecture: ÆHub Agent Engine v1
+
+The system has been completely rebuilt into a deterministic, enterprise-grade Agent Execution Kernel, replacing legacy black-box frameworks (e.g., LangGraph) with explicit control loops:
+
+1. **Agent Kernel**: Operates on a native Orchestration Loop (Worker -> Checker -> Retry), entirely isolating the planner from the executor and the verifier.
+2. **Tool Gateway v2**: Centralizes all side-effects. Before any tool runs, it passes through strict Validation -> Identity -> Permission -> Risk -> Budget -> Approval -> Idempotency -> Sandbox -> Audit layers.
+3. **Policy Engine**: Decouples formal authorization from the LLM, ensuring that subagents only operate within strictly delegated SubagentCapabilitySet bounds.
+4. **Durable Checkpointing**: The AgentStateManager dumps all states to disk, allowing paused executions (Human-in-the-Loop) and instantaneous recovery from fatal process crashes midway through a task.
+5. **Guardrails**: A 3-layer architecture (InputGuardrail -> ToolGuardrail -> OutputGuardrail) defends against prompt injection, blocks catastrophic parameters (e.g., 
+m -rf), and prevents secret exfiltration.
+6. **Memory Engine v1**: Manages partitioned Episodic, Semantic, and Execution memory via pgvector, retrieved dynamically using a hybrid scoring algorithm (Relevance * Importance * Confidence * Recency Decay).
+7. **Resource Management**: The Phase 13 ResourceManager classifies tasks (Light, Heavy, Vision, etc.) and dynamically budgets RAM, concurrency, and timeouts prior to execution.
+8. **Model Adapters & Circuit Breakers**: Completely abstracts LLMs into the ModelProvider interface. Orchestrator, Worker, and Checker can run on completely different providers. If an API fails (e.g., OpenAI 503), the Engine's native **Circuit Breaker** automatically reroutes the task to a fallback provider (e.g., Groq) without dropping the state.
+
 
 ÆHub is a full-stack platform for experimenting with and operating **AI agents** that can reason over a task, invoke tools, maintain session context, delegate work to specialized subagents, and interact with external services.
 
-The project combines a **Next.js frontend** with a **FastAPI backend** and an agent runtime built around **LangChain, LangGraph, and Groq-hosted LLMs**.
+The project combines a **Next.js frontend** with a **FastAPI backend** and an advanced proprietary agent runtime (**ÆHub Agent Engine v1**) featuring dynamic resource management, explicit orchestration, strict security gateways, and unified multi-provider adapters (OpenAI, Groq, Anthropic, etc.).
 
 Rather than treating an LLM as a simple text-generation endpoint, ÆHub models the LLM as a decision-making component inside a broader runtime:
 
