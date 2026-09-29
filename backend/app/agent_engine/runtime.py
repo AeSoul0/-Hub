@@ -262,6 +262,16 @@ class AgentRuntime:
         )
         
         # [Phase 11 & 12] Inject Adapter and create native worker
+        # [Phase 13] Dynamic Resource Allocation
+        try:
+            profile = ResourceManager.allocate(task.get("description", str(task)))
+            # Override timeout based on class
+            deadline = datetime.utcnow() + __import__("datetime").timedelta(seconds=profile.max_runtime)
+            timeout = profile.max_runtime
+        except Exception as e:
+            # System exhaustion queueing logic would go here
+            raise
+            
         worker_adapter = OpenAIAdapter(model_name=model)
         worker = SubagentFactory.create_subagent(
             role_name=role, 

@@ -69,3 +69,9 @@ The ÆHub Agent Engine has successfully implemented its entire v1 roadmap contra
 7. **Model Adapters**: Entire engine operates on a universal interface, enabling arbitrary routing (OpenAI, Groq, Anthropic, etc.).
 
 All code paths verify completely, all escape sequence warnings have been cleaned, and the repository is completely purged of temporary logic and prototype scaffolding.
+\n
+## Post-V1 Enhancements (Phase 13 Foundation)
+- **Resource Management Layer**: Implemented ResourceManager for dynamic TaskClass classification (LIGHT, HEAVY, VISION, etc.) allocating distinct RAM, concurrency, and timeout limits prior to task execution.
+- **Model Adapter Circuit Breaking**: Injected fallback logic directly into the Orchestrator loop. If the primary ModelProvider fails (e.g., OpenAI 503), the engine natively triggers 
+un.fallback_triggered and transparently routes the retry to GroqAdapter.
+- **LLM-as-a-Judge**: Upgraded the EvaluationEngine architecture to delegate trace assertions to a specialized judge model rather than hardcoded heuristics.

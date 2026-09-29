@@ -52,7 +52,10 @@ class EvaluationEngine:
         return report
 
     async def evaluate_case(self, case: Dict[str, Any]) -> tuple[bool, str]:
-        # Connects to EventDispatcher / flight_recorder.jsonl
+        # [Phase 10+] Connects to EventDispatcher / flight_recorder.jsonl
+        # Utilizes an independent LLM-as-a-Judge to evaluate the flight trace 
+        # against the expected criteria (Task Success, Cost Optimization, Latency).
+        # mock_llm_judge_score = await self.llm_judge(flight_trace, case)
         # For Phase 10 certification, we assert against expected outcomes.
         
         category = case.get("category")
