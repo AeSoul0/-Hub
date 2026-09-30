@@ -1,104 +1,169 @@
 """
 @file backend/app/core/models.py
-@description Implements models.py. Core components: ModelProvider, ModelCapabilities, ModelUsage, ModelRequest, ModelResponse, ModelRouter.
+@description Framework-agnostic model contracts for A.U.R.O.R.A.
 
-This module manages the internal business logic for ModelProvider, ModelCapabilities, ModelUsage, ModelRequest, ModelResponse, ModelRouter.
-It provides specialized functionality to handle: _init_cache, get_model.
+This module contains shared Pydantic contracts used by model routing,
+request validation, capability negotiation, usage accounting, and response
+normalization. It intentionally has no dependency on LangChain or LangGraph.
 """
+
+from __future__ import annotations
+
 from enum import Enum
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel
-from langchain_core.language_models.chat_models import BaseChatModel
+
+from pydantic import BaseModel, Field
+
+
+# ==============================================================================
+# MODEL PROVIDERS
+# ==============================================================================
+
 
 class ModelProvider(str, Enum):
     """
-    Represents the ModelProvider entity and its core operations.
+    Supported logical model providers.
     """
-    GROQ = "groq"
+
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
+    GROQ = "groq"
     LOCAL = "local"
+
+
+# ==============================================================================
+# MODEL CAPABILITIES
+# ==============================================================================
+
 
 class ModelCapabilities(BaseModel):
     """
-    Represents the ModelCapabilities entity and its core operations.
+    Describe the capabilities exposed by a model.
     """
+
     vision: bool = False
     function_calling: bool = False
     json_mode: bool = False
+    streaming: bool = False
+
+
+# ==============================================================================
+# MODEL USAGE
+# ==============================================================================
+
 
 class ModelUsage(BaseModel):
     """
-    Represents the ModelUsage entity and its core operations.
+    Normalized token and resource usage for one model invocation.
     """
-    prompt_tokens: int
-    completion_tokens: int
-    total_tokens: int
+
+    prompt_tokens: int = Field(
+        default=0,
+        ge=0,
+    )
+
+    completion_tokens: int = Field(
+        default=0,
+        ge=0,
+    )
+
+    total_tokens: int = Field(
+        default=0,
+        ge=0,
+    )
+
+    estimated_cost: float = Field(
+        default=0.0,
+        ge=0.0,
+    )
+
+
+# ==============================================================================
+# MODEL REQUEST
+# ==============================================================================
+
 
 class ModelRequest(BaseModel):
     """
-    Represents the ModelRequest entity and its core operations.
+    Framework-agnostic model invocation request.
     """
-    messages: List[Dict[str, Any]]
-    temperature: float = 0.7
-    max_tokens: int = 1000
+
+    messages: List[Dict[str, Any]] = Field(
+        default_factory=list,
+    )
+
+    temperature: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=2.0,
+    )
+
+    max_tokens: int = Field(
+        default=1000,
+        gt=0,
+    )
+
+    model: Optional[str] = None
+
+    provider: Optional[ModelProvider] = None
+
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict,
+    )
+
+
+# ==============================================================================
+# MODEL RESPONSE
+# ==============================================================================
+
 
 class ModelResponse(BaseModel):
     """
-    Represents the ModelResponse entity and its core operations.
+    Framework-agnostic normalized model response.
     """
-    content: str
-    usage: Optional[ModelUsage] = None
 
-class ModelRouter:
+    content: str = ""
+
+    usage: ModelUsage = Field(
+        default_factory=ModelUsage,
+    )
+
+    model: Optional[str] = None
+
+    provider: Optional[ModelProvider] = None
+
+    finish_reason: Optional[str] = None
+
+    tool_calls: List[Dict[str, Any]] = Field(
+        default_factory=list,
+    )
+
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict,
+    )
+
+
+# ==============================================================================
+# ROUTING REQUEST
+# ==============================================================================
+
+
+class ModelRoutingRequest(BaseModel):
     """
-    Represents the ModelRouter entity and its core operations.
+    Describe model-routing requirements independently from a provider SDK.
     """
-    _cache_initialized = False
 
-    @staticmethod
-    def _init_cache():
-        """
-        Executes _init_cache logic.
-        """
-        # Initialize the LangChain Redis cache exactly once to share LLM responses
-        # Initialize the LangChain Redis cache exactly once to share LLM responses
-        if not ModelRouter._cache_initialized:
-            import os
-            try:
-                from langchain.globals import set_llm_cache
-                from langchain_community.cache import RedisCache
-                import redis
-                
-                redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-                redis_client = redis.Redis.from_url(redis_url)
-                set_llm_cache(RedisCache(redis_=redis_client))
-                ModelRouter._cache_initialized = True
-                print("[OK] Distributed Redis LLM Caching initialized.")
-            except ImportError:
-                print("[WARN] langchain_community not installed, skipping Redis LLM caching.")
+    prompt: str
 
-    @staticmethod
-    def get_model(provider: ModelProvider, model_name: str, temperature: float = 0.75) -> BaseChatModel:
-        """
-        Executes get_model logic.
-        """
-        # Factory method to return the appropriate LangChain ChatModel instance for the specified provider
-        # Factory method to return the appropriate LangChain ChatModel instance for the specified provider
-        import os
-        ModelRouter._init_cache()
-        
-        if provider == ModelProvider.GROQ:
-            from langchain_groq import ChatGroq
-            return ChatGroq(model=model_name, temperature=temperature, api_key=os.getenv("GROQ_API_KEY"))
-        elif provider == ModelProvider.OPENAI:
-            from langchain_openai import ChatOpenAI
-            return ChatOpenAI(model=model_name, temperature=temperature, api_key=os.getenv("OPENAI_API_KEY"))
-        elif provider == ModelProvider.ANTHROPIC:
-            from langchain_anthropic import ChatAnthropic
-            return ChatAnthropic(model_name=model_name, temperature=temperature, api_key=os.getenv("ANTHROPIC_API_KEY"))
-        elif provider == ModelProvider.LOCAL:
-            from langchain_openai import ChatOpenAI
-            return ChatOpenAI(model=model_name, temperature=temperature, api_key="not-needed", base_url="http://localhost:11434/v1")
-        else:
-            raise ValueError(f"Unsupported provider: {provider}")
+    requires_vision: bool = False
+    requires_function_calling: bool = False
+    requires_json: bool = False
+
+    max_cost: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+    )
+
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict,
+    )

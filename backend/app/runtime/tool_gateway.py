@@ -20,11 +20,11 @@ from typing import Any, Callable, Dict, Optional
 from pydantic import BaseModel, Field
 
 from app.agent_engine.approval.manager import ApprovalManager
+from app.agent_engine.budget import BudgetManager
 from app.agent_engine.errors import ApprovalRequiredError
 from app.agent_engine.guardrails import ToolGuardrail
 from app.agent_engine.models import ToolProposal, ToolSpec
 from app.agent_engine.state.idempotency import IdempotencyManager
-from app.agent_engine.budget import BudgetManager
 from app.core.security import (
     BudgetState,
     PolicyEngine,
@@ -38,6 +38,7 @@ from app.runtime.task_manager import TaskManager, TaskState
 # ==============================================================================
 # INVOCATION / RESULT CONTRACTS
 # ==============================================================================
+
 
 class ToolInvocation(BaseModel):
     """
@@ -68,6 +69,7 @@ class ToolResult(BaseModel):
 # TOOL GATEWAY
 # ==============================================================================
 
+
 class ToolGateway:
     """
     Centralized policy and side-effect execution boundary.
@@ -76,20 +78,29 @@ class ToolGateway:
     @staticmethod
     def _idempotency_key(invocation: ToolInvocation) -> str:
         """
-        Creates a deterministic SHA-256 idempotency key.
+        Create a deterministic SHA-256 idempotency key scoped to the exact
+        principal, workspace, run, and tool-call context.
         """
         payload = {
             "workspace_id": invocation.principal.workspace_id,
+            "principal_id": invocation.principal.id,
+            "run_id": invocation.run_id,
+            "tool_call_id": invocation.tool_call_id,
             "tool": invocation.tool_name,
             "arguments": invocation.arguments,
         }
+
         canonical = json.dumps(
             payload,
             sort_keys=True,
             separators=(",", ":"),
             ensure_ascii=False,
+            default=str,
         )
-        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+        return hashlib.sha256(
+            canonical.encode("utf-8")
+        ).hexdigest()
 
     @staticmethod
     def _audit_and_fail(
@@ -98,7 +109,7 @@ class ToolGateway:
         decision: str = "DENY",
     ) -> ToolResult:
         """
-        Records a rejected invocation and returns a normalized failure.
+        Record a rejected invocation and return a normalized failure.
         """
         audit_id = ToolGateway._log_audit(
             invocation=invocation,
@@ -106,6 +117,7 @@ class ToolGateway:
             error=error_message,
             decision=decision,
         )
+
         return ToolResult(
             success=False,
             output=None,
@@ -123,7 +135,7 @@ class ToolGateway:
         duration: Optional[str] = None,
     ) -> str:
         """
-        Persists a structured audit record without leaking raw arguments.
+        Persist a structured audit record without storing raw arguments.
         """
         try:
             from app.core.db import SessionLocal
@@ -135,6 +147,7 @@ class ToolGateway:
                     sort_keys=True,
                     separators=(",", ":"),
                     ensure_ascii=False,
+                    default=str,
                 ).encode("utf-8")
             ).hexdigest()
 
@@ -154,13 +167,15 @@ class ToolGateway:
                     duration=duration,
                     error=error,
                 )
+
                 db.add(record)
                 db.commit()
                 db.refresh(record)
+
                 return record.id
+
         except Exception:
-            # Observability failure must not expose database internals to the
-            # caller. The execution result remains independently normalized.
+            # Audit persistence must never leak database internals.
             return "audit_failed"
 
     @staticmethod
@@ -170,10 +185,11 @@ class ToolGateway:
         task_context: Optional[TaskExecutionContext] = None,
     ) -> ToolResult:
         """
-        Executes a tool through the complete security pipeline.
+        Execute a tool through the complete security pipeline.
 
-        The executor is never called before policy, input guardrails, schema,
-        budget, approval, and idempotency checks have completed.
+        The executor is never called before policy, input guardrails,
+        schema validation, budget checks, approval, and idempotency checks
+        have completed successfully.
         """
         if invocation.principal is None:
             return ToolGateway._audit_and_fail(
@@ -274,6 +290,7 @@ class ToolGateway:
                     decision="CACHED",
                     execution_result=str(cached),
                 )
+
                 return ToolResult(
                     success=True,
                     output=cached,
@@ -284,11 +301,12 @@ class ToolGateway:
         # 5. Budget preflight
         # ----------------------------------------------------------------------
         if invocation.spec.max_cost > 0:
-            remaining = BudgetManager.get_remaining_budget(
-                invocation.principal.id
+            can_afford = BudgetManager.check_budget(
+                invocation.principal.id,
+                invocation.spec.max_cost,
             )
 
-            if remaining < invocation.spec.max_cost:
+            if not can_afford:
                 return ToolGateway._audit_and_fail(
                     invocation,
                     "Budget exceeded for this principal.",
@@ -298,24 +316,30 @@ class ToolGateway:
         # ----------------------------------------------------------------------
         # 6. Human approval
         # ----------------------------------------------------------------------
-        if invocation.spec.requires_approval or decision_value == "REQUIRE_APPROVAL":
+        if (
+            invocation.spec.requires_approval
+            or decision_value == "REQUIRE_APPROVAL"
+        ):
             status = await ApprovalManager.check_approval_status(
                 session_id=invocation.session_id,
+                workspace_id=invocation.principal.workspace_id,
+                principal_id=invocation.principal.id,
+                run_id=invocation.run_id,
                 tool_name=invocation.tool_name,
                 arguments=invocation.arguments,
-                workspace_id=invocation.principal.workspace_id,
             )
 
             if status in {"NONE", "EXPIRED"}:
                 await ApprovalManager.request_approval(
                     session_id=invocation.session_id,
+                    workspace_id=invocation.principal.workspace_id,
+                    principal_id=invocation.principal.id,
+                    run_id=invocation.run_id,
                     tool_name=invocation.tool_name,
                     arguments=invocation.arguments,
-                    principal_id=invocation.principal.id,
-                    workspace_id=invocation.principal.workspace_id,
                     risk=invocation.spec.risk_level,
-                    run_id=invocation.run_id,
                 )
+
                 raise ApprovalRequiredError(
                     f"Tool '{invocation.tool_name}' requires human approval."
                 )
@@ -329,6 +353,13 @@ class ToolGateway:
                 return ToolGateway._audit_and_fail(
                     invocation,
                     "Tool approval was denied.",
+                    decision="DENY",
+                )
+
+            if status != "APPROVED":
+                return ToolGateway._audit_and_fail(
+                    invocation,
+                    "Approval state is invalid or unresolved.",
                     decision="DENY",
                 )
 
@@ -390,6 +421,7 @@ class ToolGateway:
             # 10. Output size limit
             # ------------------------------------------------------------------
             normalized_output = str(guarded_result)
+
             if len(normalized_output) > invocation.spec.max_output:
                 normalized_output = (
                     normalized_output[: invocation.spec.max_output]
@@ -457,3 +489,10 @@ class ToolGateway:
                 error=str(exc),
                 audit_id=audit_id,
             )
+
+
+__all__ = [
+    "ToolGateway",
+    "ToolInvocation",
+    "ToolResult",
+]

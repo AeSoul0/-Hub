@@ -1,117 +1,195 @@
 """
 @file backend/app/skills/sandbox_skill.py
-@description Implements sandbox_skill.py. Core components: SandboxSkill.
+@description Native isolated execution skill for A.U.R.O.R.A.
 
-This module manages the internal business logic for SandboxSkill.
-It provides specialized functionality to handle: execute_python_code, execute_shell_script, metadata, tools, get_tool_metadata, system_prompt_extension, get_skill.
+Provides controlled Python and shell execution through the existing sandbox
+manager. The skill exposes regular Python callables and does not depend on
+an external tool-decorator framework.
 """
-from typing import Callable, Dict, List, Optional
 
-from langchain_core.tools import tool
+from __future__ import annotations
+
+from typing import Callable, Dict, List, Optional
 
 from app.workers.sandbox import sandbox_manager
 
-from .base import BaseSkill, RiskLevel, SkillMetadata, ToolMetadata
+from .base import (
+    BaseSkill,
+    RiskLevel,
+    SkillMetadata,
+    ToolMetadata,
+)
 
 
-@tool
+# ==============================================================================
+# PYTHON SANDBOX TOOL
+# ==============================================================================
+
+
 async def execute_python_code(code: str) -> str:
     """
-    Executes execute_python_code logic.
+    Execute Python code inside the isolated sandbox.
     """
-    """
-    Esegue codice Python 3.11 in un ambiente sandbox isolato, sicuro e usa-e-getta.
-    Usa questo strumento per eseguire calcoli complessi, analizzare dati o testare algoritmi.
-    Ritorna lo stdout, lo stderr e l'exit code dell'esecuzione.
-    """
-    # Execute python code in the sandbox manager
-    result = await sandbox_manager.execute_python(code)
-    # Return standard output on success
-    if result.exit_code == 0:
-        return f"Output:\n{result.stdout}"
-    # Return standard output and error on failure
-    return f"Execution Failed (Exit Code {result.exit_code}):\nStdout: {result.stdout}\nStderr: {result.stderr}"
+    result = await sandbox_manager.execute_python(
+        code,
+    )
 
-@tool
+    if result.exit_code == 0:
+        return (
+            "Output:\n"
+            f"{result.stdout}"
+        )
+
+    return (
+        f"Execution failed (exit code {result.exit_code}):\n"
+        f"Stdout:\n{result.stdout}\n"
+        f"Stderr:\n{result.stderr}"
+    )
+
+
+# ==============================================================================
+# SHELL SANDBOX TOOL
+# ==============================================================================
+
+
 async def execute_shell_script(command: str) -> str:
     """
-    Executes execute_shell_script logic.
+    Execute a shell command inside the isolated sandbox.
     """
-    """
-    Esegue un comando shell (bash) in un ambiente sandbox isolato, sicuro e usa-e-getta (senza rete).
-    Usa questo strumento per manipolazione dati di base o utility Unix-like.
-    """
-    # Execute shell command in the sandbox manager
-    result = await sandbox_manager.execute_shell(command)
-    # Return standard output on success
+    result = await sandbox_manager.execute_shell(
+        command,
+    )
+
     if result.exit_code == 0:
-        return f"Output:\n{result.stdout}"
-    # Return standard output and error on failure
-    return f"Command Failed (Exit Code {result.exit_code}):\nStdout: {result.stdout}\nStderr: {result.stderr}"
+        return (
+            "Output:\n"
+            f"{result.stdout}"
+        )
+
+    return (
+        f"Command failed (exit code {result.exit_code}):\n"
+        f"Stdout:\n{result.stdout}\n"
+        f"Stderr:\n{result.stderr}"
+    )
+
+
+# ==============================================================================
+# SANDBOX SKILL
+# ==============================================================================
 
 
 class SandboxSkill(BaseSkill):
     """
-    Represents the SandboxSkill entity and its core operations.
+    Provides isolated code and shell execution capabilities.
     """
+
     @property
     def metadata(self) -> SkillMetadata:
         """
-        Executes metadata logic.
+        Return the sandbox skill metadata.
         """
-        # Define the skill metadata
         return SkillMetadata(
             name="sandbox",
-            description="Provides the agent with isolated code and shell execution capabilities.",
-            version="1.0.0"
+            description=(
+                "Provides isolated Python and shell execution through "
+                "the A.U.R.O.R.A. sandbox manager."
+            ),
+            version="1.0.0",
         )
-        
+
     @property
     def tools(self) -> List[Callable]:
         """
-        Executes tools logic.
+        Return the executable sandbox tools.
         """
-        # Expose the available tools
-        return [execute_python_code, execute_shell_script]
-        
+        return [
+            execute_python_code,
+            execute_shell_script,
+        ]
+
     def get_tool_metadata(self) -> Dict[str, ToolMetadata]:
         """
-        Executes get_tool_metadata logic.
+        Return security and execution metadata for sandbox tools.
         """
-        # Return specific metadata and risk levels for each tool
         return {
             "execute_python_code": ToolMetadata(
                 name="execute_python_code",
-                description="Esegue Python isolato.",
-                risk_level=RiskLevel.MEDIUM, # Might require approval based on config
-                requires_approval=False
+                description=(
+                    "Execute Python code in an isolated sandbox."
+                ),
+                risk_level=RiskLevel.MEDIUM,
+                requires_approval=False,
+                permissions_required=[],
+                network_access=False,
+                filesystem_access=False,
+                max_runtime=30,
+                max_output=10_000,
+                max_cost=0.0,
+                idempotent=False,
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "code": {
+                            "type": "string",
+                        }
+                    },
+                    "required": ["code"],
+                    "additionalProperties": False,
+                },
+                output_schema={
+                    "type": "string",
+                },
+                sandbox_profile="python",
+                audit_policy="standard",
             ),
             "execute_shell_script": ToolMetadata(
                 name="execute_shell_script",
-                description="Esegue Bash isolato.",
-                risk_level=RiskLevel.HIGH, # Shell execution is high risk
-                requires_approval=True
-            )
+                description=(
+                    "Execute a shell command in the isolated sandbox."
+                ),
+                risk_level=RiskLevel.HIGH,
+                requires_approval=True,
+                permissions_required=[],
+                network_access=False,
+                filesystem_access=False,
+                max_runtime=30,
+                max_output=10_000,
+                max_cost=0.0,
+                idempotent=False,
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string",
+                        }
+                    },
+                    "required": ["command"],
+                    "additionalProperties": False,
+                },
+                output_schema={
+                    "type": "string",
+                },
+                sandbox_profile="shell",
+                audit_policy="standard",
+            ),
         }
-        
+
     @property
     def system_prompt_extension(self) -> Optional[str]:
         """
-        Executes system_prompt_extension logic.
+        Return sandbox-specific system instructions.
         """
-        # Provide prompt context for the LLM regarding how and when to use these tools
         return (
-            "You have access to a secure Sandbox execution environment. "
-            "Whenever you need to perform complex mathematical calculations, data analysis, "
-            "or string manipulations that are better suited for code, write a python script "
-            "and execute it using the `execute_python_code` tool instead of calculating mentally. "
-            "If a command requires shell execution, use `execute_shell_script`, but note that "
-            "network access is disabled for security reasons."
+            "You have access to an isolated execution sandbox. "
+            "Use 'execute_python_code' for calculations, data processing, "
+            "or controlled code execution. Use 'execute_shell_script' only "
+            "when shell execution is necessary. Shell execution requires "
+            "explicit approval and sandbox policy enforcement."
         )
+
 
 def get_skill() -> BaseSkill:
     """
-    Executes get_skill logic.
+    Create the sandbox skill instance.
     """
-    # Factory function to instantiate the skill
     return SandboxSkill()

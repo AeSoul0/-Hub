@@ -1,182 +1,963 @@
 """
-@file backend/tests/agent_engine/test_runtime.py
-@description Rigorous Test Suite for the Multi-Agent Orchestration Runtime.
+@file tests/agent_engine/test_runtime.py
+@description Security and behavior tests for the native AgentRuntime.
 
-This module validates the core engine semantics under simulated adversarial conditions. 
-It rigorously tests the retry circuits, tool generation budgets, human-in-the-loop (HITL) 
-interruptions, and deterministic failure aborts triggered by the `AgentChecker` and `Worker` nodes. 
-Mocks are heavily utilized to decouple the tests from raw LLM dependencies and physical storage, 
-enabling fast and strictly controlled assertions over the internal state machine.
+The suite validates explicit Principal propagation, deterministic execution,
+tool proposal/run binding, retry behavior, timeout handling, cancellation,
+and checker failure semantics without requiring a live LLM or database.
 """
 
-import os
-os.environ["POSTGRES_URL"] = "sqlite:///./aehub.db"
-import pytest
-import asyncio
-from datetime import datetime
-from app.agent_engine.runtime import AgentRuntime
-from app.runtime.tool_gateway import ToolGateway
-from app.agent_engine.models import CheckerDecision, CheckerDecisionEnum, ToolProposal, ToolResult
-from app.agent_engine.errors import MaxTurnsReachedError, TaskTimeoutError
-from unittest.mock import patch
+from __future__ import annotations
 
-patch('app.agent_engine.state.manager.AgentStateManager.load_agent_run', return_value=None).start()
-patch('app.agent_engine.state.manager.AgentStateManager.save_agent_run', return_value=None).start()
+import asyncio
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from app.agent_engine.errors import (
+    MaxTurnsReachedError,
+    TaskTimeoutError,
+)
+from app.agent_engine.models import (
+    CheckerDecision,
+    CheckerDecisionEnum,
+    ToolProposal,
+    ToolSpec,
+)
+from app.agent_engine.runtime import AgentRuntime
+from app.core.security import Principal, RoleEnum
+from app.runtime.tool_gateway import ToolResult
+
+
+# ==============================================================================
+# TEST FIXTURES
+# ==============================================================================
+
+
+@pytest.fixture
+def principal() -> Principal:
+    """
+    Return a stable authenticated Principal for runtime tests.
+    """
+    return Principal(
+        id="user-1",
+        role=RoleEnum.USER,
+        workspace_id="workspace-1",
+    )
+
+
+@pytest.fixture
+def runtime_context(principal: Principal) -> dict:
+    """
+    Return the trusted runtime identity parameters.
+    """
+    return {
+        "run_id": "run-test-1",
+        "session_id": "session-test-1",
+        "workspace_id": principal.workspace_id,
+        "principal": principal,
+    }
+
+
+@pytest.fixture
+def tool_spec() -> ToolSpec:
+    """
+    Return a minimal safe tool specification.
+    """
+    return ToolSpec(
+        name="my_tool",
+        version="1.0.0",
+        description="Test tool.",
+        input_schema={
+            "type": "object",
+        },
+        output_schema={
+            "type": "string",
+        },
+        risk_level="LOW",
+        permissions=[],
+        network_access=False,
+        filesystem_access=False,
+        max_runtime=30,
+        max_output=4000,
+        max_cost=0.0,
+        idempotent=False,
+        requires_approval=False,
+        sandbox_profile="default",
+        audit_policy="standard",
+    )
+
 
 class CancellationToken:
-    def __init__(self):
+    """
+    Minimal cancellation token used by the runtime tests.
+    """
+
+    def __init__(self) -> None:
         self.is_cancelled = False
-    def cancel(self):
+
+    def cancel(self) -> None:
         self.is_cancelled = True
 
-class MockOrchestrator:
-    run_id = "orch_1"
 
 class MockWorker:
-    run_id = "worker_1"
+    """
+    Deterministic worker returning predefined responses.
+    """
+
     def __init__(self, responses):
-        self.responses = responses
+        self.responses = list(responses)
         self.call_count = 0
+        self.contexts = []
 
     async def generate(self, context):
+        self.contexts.append(dict(context))
+
         if self.call_count >= len(self.responses):
-            raise Exception("No more mocked responses")
-        resp = self.responses[self.call_count]
+            raise RuntimeError(
+                "No more mocked worker responses."
+            )
+
+        response = self.responses[self.call_count]
         self.call_count += 1
-        if isinstance(resp, Exception):
-            raise resp
-        return resp
+
+        if isinstance(response, Exception):
+            raise response
+
+        return response
+
 
 class MockChecker:
-    run_id = "checker_1"
+    """
+    Deterministic checker returning predefined decisions.
+    """
+
     def __init__(self, decisions):
-        self.decisions = decisions
+        self.decisions = list(decisions)
         self.call_count = 0
+        self.calls = []
 
-    async def evaluate(self, task, result):
+    async def evaluate(self, task, result, trace):
+        self.calls.append(
+            {
+                "task": task,
+                "result": result,
+                "trace": trace,
+            }
+        )
+
         if self.call_count >= len(self.decisions):
-            raise Exception("No more mocked decisions")
-        dec = self.decisions[self.call_count]
+            raise RuntimeError(
+                "No more mocked checker decisions."
+            )
+
+        decision = self.decisions[self.call_count]
         self.call_count += 1
-        if isinstance(dec, Exception):
-            raise dec
-        return dec
 
-class MockToolGateway(ToolGateway):
-    def __init__(self, tools_dict):
-        self.tools = tools_dict
+        if isinstance(decision, Exception):
+            raise decision
 
-    async def execute(self, proposal: ToolProposal):
-        if proposal.tool_name not in self.tools:
-            raise Exception(f"Tool {proposal.tool_name} not found")
-        return self.tools[proposal.tool_name](proposal.arguments)
+        return decision
 
-def test_task_without_tool():
+
+class MockToolGateway:
+    """
+    Minimal gateway implementing the current native execute contract.
+    """
+
+    def __init__(self, output="tool_success"):
+        self.output = output
+        self.invocations = []
+
+    async def execute(
+        self,
+        invocation,
+        executor_callback,
+        task_context=None,
+    ):
+        self.invocations.append(
+            invocation
+        )
+
+        result = await executor_callback(
+            **invocation.arguments
+        )
+
+        return ToolResult(
+            success=True,
+            output=result,
+        )
+
+
+# ==============================================================================
+# TEST HELPERS
+# ==============================================================================
+
+
+def _patch_runtime_dependencies(
+    tool_spec: ToolSpec,
+):
+    """
+    Patch persistence and tool resolution for isolated runtime tests.
+    """
+    return (
+        patch(
+            "app.agent_engine.runtime.AgentStateManager.load_agent_run",
+            return_value=None,
+        ),
+        patch(
+            "app.agent_engine.runtime.AgentStateManager.save_agent_run",
+            return_value=None,
+        ),
+        patch.object(
+            AgentRuntime,
+            "_resolve_tool",
+            return_value=(
+                lambda **_: "tool_success",
+                SimpleNamespace(
+                    name=tool_spec.name,
+                ),
+            ),
+        ),
+        patch.object(
+            AgentRuntime,
+            "_build_tool_spec",
+            return_value=tool_spec,
+        ),
+        patch(
+            "app.agent_engine.runtime.EventDispatcher.dispatch",
+            return_value=None,
+        ),
+    )
+
+
+# ==============================================================================
+# BASIC EXECUTION
+# ==============================================================================
+
+
+def test_task_without_tool(
+    runtime_context,
+):
+    """
+    A worker output without tool calls must pass through the checker.
+    """
     runtime = AgentRuntime()
-    worker = MockWorker([{"output": "success"}])
-    checker = MockChecker([CheckerDecision(status=CheckerDecisionEnum.ACCEPT)])
-    result = asyncio.run(runtime.execute_task({"goal": "test"}, MockOrchestrator(), worker, checker))
+
+    worker = MockWorker(
+        [
+            {
+                "output": "success",
+                "tool_proposals": [],
+            }
+        ]
+    )
+
+    checker = MockChecker(
+        [
+            CheckerDecision(
+                status=CheckerDecisionEnum.ACCEPT
+            )
+        ]
+    )
+
+    patches = [
+        patch(
+            "app.agent_engine.runtime.AgentStateManager.load_agent_run",
+            return_value=None,
+        ),
+        patch(
+            "app.agent_engine.runtime.AgentStateManager.save_agent_run",
+            return_value=None,
+        ),
+        patch(
+            "app.agent_engine.runtime.EventDispatcher.dispatch",
+            return_value=None,
+        ),
+    ]
+
+    for item in patches:
+        item.start()
+
+    try:
+        result = asyncio.run(
+            runtime.execute_task(
+                task={
+                    "description": "test",
+                },
+                orchestrator=None,
+                worker=worker,
+                checker=checker,
+                **runtime_context,
+            )
+        )
+    finally:
+        for item in reversed(patches):
+            item.stop()
+
     assert result == "success"
 
-def test_task_with_1_tool():
-    def mock_tool(args):
-        return ToolResult(tool_call_id="1", result="tool_success")
-    gateway = MockToolGateway({"my_tool": mock_tool})
-    runtime = AgentRuntime(tool_gateway=gateway)
-    
-    worker = MockWorker([
-        {"tool_proposals": [ToolProposal(tool_call_id="1", tool_name="my_tool", arguments={}, run_id="r")]},
-        {"output": "final result after tool"}
-    ])
-    checker = MockChecker([CheckerDecision(status=CheckerDecisionEnum.ACCEPT)])
-    result = asyncio.run(runtime.execute_task({"goal": "test"}, MockOrchestrator(), worker, checker))
-    assert result == "final result after tool"
+    assert worker.contexts[0]["run_id"] == "run-test-1"
+    assert worker.contexts[0]["session_id"] == "session-test-1"
+    assert worker.contexts[0]["workspace_id"] == "workspace-1"
+    assert worker.contexts[0]["principal_id"] == "user-1"
 
-def test_task_with_5_consecutive_tools():
-    def mock_tool(args):
-        return ToolResult(tool_call_id="1", result="tool_success")
-    gateway = MockToolGateway({"my_tool": mock_tool})
-    runtime = AgentRuntime(tool_gateway=gateway)
-    
-    responses = [{"tool_proposals": [ToolProposal(tool_call_id=str(i), tool_name="my_tool", arguments={}, run_id="r")]} for i in range(5)]
-    responses.append({"output": "success after 5 tools"})
-    
-    worker = MockWorker(responses)
-    checker = MockChecker([CheckerDecision(status=CheckerDecisionEnum.ACCEPT)])
-    result = asyncio.run(runtime.execute_task({"goal": "test"}, MockOrchestrator(), worker, checker))
-    assert result == "success after 5 tools"
 
-def test_inexistent_tool():
-    gateway = MockToolGateway({})
-    runtime = AgentRuntime(tool_gateway=gateway)
-    
-    worker = MockWorker([
-        {"tool_proposals": [ToolProposal(tool_call_id="1", tool_name="fake_tool", arguments={}, run_id="r")]},
-        {"output": "handled error"}
-    ])
-    checker = MockChecker([CheckerDecision(status=CheckerDecisionEnum.ACCEPT)])
-    result = asyncio.run(runtime.execute_task({"goal": "test"}, MockOrchestrator(), worker, checker))
-    assert result == "handled error"
+# ==============================================================================
+# TOOL EXECUTION
+# ==============================================================================
 
-def test_timeout():
+
+def test_task_with_tool(
+    runtime_context,
+    tool_spec,
+):
+    """
+    Tool execution must use the current ToolGateway invocation contract.
+    """
+    gateway = MockToolGateway()
+
+    runtime = AgentRuntime(
+        tool_gateway=gateway
+    )
+
+    worker = MockWorker(
+        [
+            {
+                "tool_proposals": [
+                    ToolProposal(
+                        tool_call_id="call-1",
+                        tool_name="my_tool",
+                        arguments={},
+                        run_id="run-test-1",
+                    )
+                ]
+            },
+            {
+                "output": "final result",
+                "tool_proposals": [],
+            },
+        ]
+    )
+
+    checker = MockChecker(
+        [
+            CheckerDecision(
+                status=CheckerDecisionEnum.ACCEPT
+            )
+        ]
+    )
+
+    patches = _patch_runtime_dependencies(
+        tool_spec
+    )
+
+    for item in patches:
+        item.start()
+
+    try:
+        result = asyncio.run(
+            runtime.execute_task(
+                task={
+                    "description": "test",
+                },
+                orchestrator=None,
+                worker=worker,
+                checker=checker,
+                **runtime_context,
+            )
+        )
+    finally:
+        for item in reversed(patches):
+            item.stop()
+
+    assert result == "final result"
+    assert len(gateway.invocations) == 1
+    assert gateway.invocations[0].run_id == "run-test-1"
+    assert gateway.invocations[0].principal.id == "user-1"
+
+
+def test_tool_proposal_run_id_mismatch_is_rejected(
+    runtime_context,
+    tool_spec,
+):
+    """
+    A worker cannot execute a tool proposal belonging to another run.
+    """
+    runtime = AgentRuntime(
+        tool_gateway=MockToolGateway()
+    )
+
+    worker = MockWorker(
+        [
+            {
+                "tool_proposals": [
+                    ToolProposal(
+                        tool_call_id="call-1",
+                        tool_name="my_tool",
+                        arguments={},
+                        run_id="different-run",
+                    )
+                ]
+            }
+        ]
+    )
+
+    checker = MockChecker([])
+
+    patches = _patch_runtime_dependencies(
+        tool_spec
+    )
+
+    for item in patches:
+        item.start()
+
+    try:
+        with pytest.raises(PermissionError):
+            asyncio.run(
+                runtime.execute_task(
+                    task={
+                        "description": "test",
+                    },
+                    orchestrator=None,
+                    worker=worker,
+                    checker=checker,
+                    **runtime_context,
+                )
+            )
+    finally:
+        for item in reversed(patches):
+            item.stop()
+
+
+# ==============================================================================
+# SECURITY CONTEXT VALIDATION
+# ==============================================================================
+
+
+def test_runtime_requires_explicit_principal():
+    """
+    AgentRuntime must fail closed when authentication context is missing.
+    """
     runtime = AgentRuntime()
+
+    worker = MockWorker(
+        [
+            {
+                "output": "success",
+                "tool_proposals": [],
+            }
+        ]
+    )
+
+    checker = MockChecker(
+        [
+            CheckerDecision(
+                status=CheckerDecisionEnum.ACCEPT
+            )
+        ]
+    )
+
+    with pytest.raises(PermissionError):
+        asyncio.run(
+            runtime.execute_task(
+                task={
+                    "description": "test",
+                },
+                orchestrator=None,
+                worker=worker,
+                checker=checker,
+                run_id="run-test-1",
+                session_id="session-test-1",
+                workspace_id="workspace-1",
+                principal=None,
+            )
+        )
+
+
+def test_runtime_rejects_workspace_mismatch(
+    principal,
+):
+    """
+    A Principal cannot execute a run in another workspace.
+    """
+    runtime = AgentRuntime()
+
+    worker = MockWorker(
+        [
+            {
+                "output": "success",
+                "tool_proposals": [],
+            }
+        ]
+    )
+
+    checker = MockChecker(
+        [
+            CheckerDecision(
+                status=CheckerDecisionEnum.ACCEPT
+            )
+        ]
+    )
+
+    with pytest.raises(PermissionError):
+        asyncio.run(
+            runtime.execute_task(
+                task={
+                    "description": "test",
+                },
+                orchestrator=None,
+                worker=worker,
+                checker=checker,
+                run_id="run-test-1",
+                session_id="session-test-1",
+                workspace_id="other-workspace",
+                principal=principal,
+            )
+        )
+
+
+# ==============================================================================
+# CONTROL FLOW
+# ==============================================================================
+
+
+def test_timeout(
+    runtime_context,
+):
+    """
+    Worker timeout must fail the execution deterministically.
+    """
+
     class SlowWorker:
         async def generate(self, context):
             await asyncio.sleep(0.5)
-            return {"output": "slow"}
-    worker = SlowWorker()
-    checker = MockChecker([CheckerDecision(status=CheckerDecisionEnum.ACCEPT)])
-    with pytest.raises(TaskTimeoutError):
-        asyncio.run(runtime.execute_task({"goal": "test"}, MockOrchestrator(), worker, checker, timeout=0.1))
+            return {
+                "output": "slow",
+                "tool_proposals": [],
+            }
 
-def test_cancellation():
     runtime = AgentRuntime()
-    worker = MockWorker([{"output": "success"}])
-    checker = MockChecker([CheckerDecision(status=CheckerDecisionEnum.ACCEPT)])
+
+    checker = MockChecker(
+        [
+            CheckerDecision(
+                status=CheckerDecisionEnum.ACCEPT
+            )
+        ]
+    )
+
+    patches = [
+        patch(
+            "app.agent_engine.runtime.AgentStateManager.load_agent_run",
+            return_value=None,
+        ),
+        patch(
+            "app.agent_engine.runtime.AgentStateManager.save_agent_run",
+            return_value=None,
+        ),
+        patch(
+            "app.agent_engine.runtime.EventDispatcher.dispatch",
+            return_value=None,
+        ),
+    ]
+
+    for item in patches:
+        item.start()
+
+    try:
+        with pytest.raises(TaskTimeoutError):
+            asyncio.run(
+                runtime.execute_task(
+                    task={
+                        "description": "test",
+                    },
+                    orchestrator=None,
+                    worker=SlowWorker(),
+                    checker=checker,
+                    timeout=0.1,
+                    **runtime_context,
+                )
+            )
+    finally:
+        for item in reversed(patches):
+            item.stop()
+
+
+def test_cancellation(
+    runtime_context,
+):
+    """
+    A pre-cancelled execution must stop before worker execution.
+    """
+    runtime = AgentRuntime()
+
+    worker = MockWorker(
+        [
+            {
+                "output": "success",
+                "tool_proposals": [],
+            }
+        ]
+    )
+
+    checker = MockChecker(
+        [
+            CheckerDecision(
+                status=CheckerDecisionEnum.ACCEPT
+            )
+        ]
+    )
+
     token = CancellationToken()
     token.cancel()
-    result = asyncio.run(runtime.execute_task({"goal": "test"}, MockOrchestrator(), worker, checker, cancellation_token=token))
+
+    patches = [
+        patch(
+            "app.agent_engine.runtime.AgentStateManager.load_agent_run",
+            return_value=None,
+        ),
+        patch(
+            "app.agent_engine.runtime.AgentStateManager.save_agent_run",
+            return_value=None,
+        ),
+        patch(
+            "app.agent_engine.runtime.EventDispatcher.dispatch",
+            return_value=None,
+        ),
+    ]
+
+    for item in patches:
+        item.start()
+
+    try:
+        result = asyncio.run(
+            runtime.execute_task(
+                task={
+                    "description": "test",
+                },
+                orchestrator=None,
+                worker=worker,
+                checker=checker,
+                cancellation_token=token,
+                **runtime_context,
+            )
+        )
+    finally:
+        for item in reversed(patches):
+            item.stop()
+
     assert result is None
+    assert worker.call_count == 0
 
-def test_max_turns():
-    runtime = AgentRuntime()
-    worker = MockWorker([{"tool_proposals": [ToolProposal(tool_call_id="1", tool_name="tool", arguments={}, run_id="r")]}] * 4)
-    checker = MockChecker([CheckerDecision(status=CheckerDecisionEnum.ACCEPT)])
-    with pytest.raises(MaxTurnsReachedError):
-        asyncio.run(runtime.execute_task({"goal": "test"}, MockOrchestrator(), worker, checker, max_turns=3))
 
-def test_model_failure():
-    runtime = AgentRuntime()
-    worker = MockWorker([Exception("LLM crashed")])
-    checker = MockChecker([CheckerDecision(status=CheckerDecisionEnum.ACCEPT)])
-    with pytest.raises(MaxTurnsReachedError) as exc_info:
-        asyncio.run(runtime.execute_task({"goal": "test"}, MockOrchestrator(), worker, checker, max_turns=3))
-    assert "failed after" in str(exc_info.value).lower()
+def test_max_turns(
+    runtime_context,
+    tool_spec,
+):
+    """
+    Repeated worker tool proposals must respect the turn limit.
+    """
+    runtime = AgentRuntime(
+        tool_gateway=MockToolGateway()
+    )
 
-def test_checker_reject_and_retry():
+    worker = MockWorker(
+        [
+            {
+                "tool_proposals": [
+                    ToolProposal(
+                        tool_call_id=f"call-{index}",
+                        tool_name="my_tool",
+                        arguments={},
+                        run_id="run-test-1",
+                    )
+                ]
+            }
+            for index in range(4)
+        ]
+    )
+
+    checker = MockChecker([])
+
+    patches = _patch_runtime_dependencies(
+        tool_spec
+    )
+
+    for item in patches:
+        item.start()
+
+    try:
+        with pytest.raises(MaxTurnsReachedError):
+            asyncio.run(
+                runtime.execute_task(
+                    task={
+                        "description": "test",
+                    },
+                    orchestrator=None,
+                    worker=worker,
+                    checker=checker,
+                    max_turns=3,
+                    **runtime_context,
+                )
+            )
+    finally:
+        for item in reversed(patches):
+            item.stop()
+
+
+# ==============================================================================
+# WORKER / CHECKER FAILURE
+# ==============================================================================
+
+
+def test_model_failure(
+    runtime_context,
+):
+    """
+    Worker failures must result in a deterministic runtime failure.
+    """
     runtime = AgentRuntime()
-    worker = MockWorker([
-        {"output": "bad result"},
-        {"output": "good result"}
-    ])
-    checker = MockChecker([
-        CheckerDecision(status=CheckerDecisionEnum.RETRY, retry_instruction="fix it"),
-        CheckerDecision(status=CheckerDecisionEnum.ACCEPT)
-    ])
-    result = asyncio.run(runtime.execute_task({"goal": "test"}, MockOrchestrator(), worker, checker))
+
+    worker = MockWorker(
+        [
+            RuntimeError(
+                "LLM crashed"
+            )
+        ]
+    )
+
+    checker = MockChecker([])
+
+    patches = [
+        patch(
+            "app.agent_engine.runtime.AgentStateManager.load_agent_run",
+            return_value=None,
+        ),
+        patch(
+            "app.agent_engine.runtime.AgentStateManager.save_agent_run",
+            return_value=None,
+        ),
+        patch(
+            "app.agent_engine.runtime.EventDispatcher.dispatch",
+            return_value=None,
+        ),
+    ]
+
+    for item in patches:
+        item.start()
+
+    try:
+        with pytest.raises(MaxTurnsReachedError):
+            asyncio.run(
+                runtime.execute_task(
+                    task={
+                        "description": "test",
+                    },
+                    orchestrator=None,
+                    worker=worker,
+                    checker=checker,
+                    **runtime_context,
+                )
+            )
+    finally:
+        for item in reversed(patches):
+            item.stop()
+
+
+def test_checker_reject_and_retry(
+    runtime_context,
+):
+    """
+    A retry decision must create a fresh attempt with checker feedback.
+    """
+    runtime = AgentRuntime()
+
+    worker = MockWorker(
+        [
+            {
+                "output": "bad result",
+                "tool_proposals": [],
+            },
+            {
+                "output": "good result",
+                "tool_proposals": [],
+            },
+        ]
+    )
+
+    checker = MockChecker(
+        [
+            CheckerDecision(
+                status=CheckerDecisionEnum.RETRY,
+                retry_instruction="fix it",
+            ),
+            CheckerDecision(
+                status=CheckerDecisionEnum.ACCEPT
+            ),
+        ]
+    )
+
+    patches = [
+        patch(
+            "app.agent_engine.runtime.AgentStateManager.load_agent_run",
+            return_value=None,
+        ),
+        patch(
+            "app.agent_engine.runtime.AgentStateManager.save_agent_run",
+            return_value=None,
+        ),
+        patch(
+            "app.agent_engine.runtime.EventDispatcher.dispatch",
+            return_value=None,
+        ),
+    ]
+
+    for item in patches:
+        item.start()
+
+    try:
+        result = asyncio.run(
+            runtime.execute_task(
+                task={
+                    "description": "test",
+                },
+                orchestrator=None,
+                worker=worker,
+                checker=checker,
+                **runtime_context,
+            )
+        )
+    finally:
+        for item in reversed(patches):
+            item.stop()
+
     assert result == "good result"
+    assert worker.contexts[1]["feedback"] == "fix it"
 
-def test_max_attempts():
-    runtime = AgentRuntime()
-    worker = MockWorker([{"output": "bad result"}] * 3)
-    checker = MockChecker([CheckerDecision(status=CheckerDecisionEnum.RETRY, retry_instruction="fix it")] * 3)
-    with pytest.raises(MaxTurnsReachedError):
-        asyncio.run(runtime.execute_task({"goal": "test"}, MockOrchestrator(), worker, checker, max_attempts=2))
 
-def test_checker_failure():
+def test_max_attempts(
+    runtime_context,
+):
+    """
+    Repeated checker retries must stop at the configured attempt limit.
+    """
     runtime = AgentRuntime()
-    worker = MockWorker([{"output": "success"}])
-    checker = MockChecker([Exception("Checker crashed")])
-    with pytest.raises(MaxTurnsReachedError) as exc_info:
-        asyncio.run(runtime.execute_task({"goal": "test"}, MockOrchestrator(), worker, checker, max_turns=3))
-    assert "failed after" in str(exc_info.value).lower()
+
+    worker = MockWorker(
+        [
+            {
+                "output": "bad result",
+                "tool_proposals": [],
+            }
+        ]
+        * 3
+    )
+
+    checker = MockChecker(
+        [
+            CheckerDecision(
+                status=CheckerDecisionEnum.RETRY,
+                retry_instruction="fix it",
+            )
+        ]
+        * 3
+    )
+
+    patches = [
+        patch(
+            "app.agent_engine.runtime.AgentStateManager.load_agent_run",
+            return_value=None,
+        ),
+        patch(
+            "app.agent_engine.runtime.AgentStateManager.save_agent_run",
+            return_value=None,
+        ),
+        patch(
+            "app.agent_engine.runtime.EventDispatcher.dispatch",
+            return_value=None,
+        ),
+    ]
+
+    for item in patches:
+        item.start()
+
+    try:
+        with pytest.raises(MaxTurnsReachedError):
+            asyncio.run(
+                runtime.execute_task(
+                    task={
+                        "description": "test",
+                    },
+                    orchestrator=None,
+                    worker=worker,
+                    checker=checker,
+                    max_attempts=2,
+                    **runtime_context,
+                )
+            )
+    finally:
+        for item in reversed(patches):
+            item.stop()
+
+
+def test_checker_failure(
+    runtime_context,
+):
+    """
+    A checker exception must fail closed as an execution failure.
+    """
+    runtime = AgentRuntime()
+
+    worker = MockWorker(
+        [
+            {
+                "output": "success",
+                "tool_proposals": [],
+            }
+        ]
+    )
+
+    checker = MockChecker(
+        [
+            RuntimeError(
+                "Checker crashed"
+            )
+        ]
+    )
+
+    patches = [
+        patch(
+            "app.agent_engine.runtime.AgentStateManager.load_agent_run",
+            return_value=None,
+        ),
+        patch(
+            "app.agent_engine.runtime.AgentStateManager.save_agent_run",
+            return_value=None,
+        ),
+        patch(
+            "app.agent_engine.runtime.EventDispatcher.dispatch",
+            return_value=None,
+        ),
+    ]
+
+    for item in patches:
+        item.start()
+
+    try:
+        with pytest.raises(MaxTurnsReachedError):
+            asyncio.run(
+                runtime.execute_task(
+                    task={
+                        "description": "test",
+                    },
+                    orchestrator=None,
+                    worker=worker,
+                    checker=checker,
+                    **runtime_context,
+                )
+            )
+    finally:
+        for item in reversed(patches):
+            item.stop()

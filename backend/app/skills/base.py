@@ -1,89 +1,145 @@
 """
 @file backend/app/skills/base.py
-@description Implements base.py. Core components: RiskLevel, ToolMetadata, SkillMetadata, BaseSkill.
+@description Native skill and tool metadata contracts for A.U.R.O.R.A.
 
-This module manages the internal business logic for RiskLevel, ToolMetadata, SkillMetadata, BaseSkill.
-It provides specialized functionality to handle: metadata, tools, get_tool_metadata, system_prompt_extension, get_permission_scopes.
+This module defines framework-agnostic skill metadata and executable tool
+contracts. Skills expose regular Python callables; the AgentRuntime decides
+how those callables are executed and does not require a specific LLM framework.
 """
+
+from __future__ import annotations
+
 from enum import Enum
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
 
+# ==============================================================================
+# SKILL METADATA
+# ==============================================================================
+
+
 class RiskLevel(str, Enum):
     """
-    Represents the RiskLevel entity and its core operations.
+    Defines the execution risk associated with a registered tool.
     """
-    LOW = "low"         # automatic
-    MEDIUM = "medium"   # configurable
-    HIGH = "high"       # approval required
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
 
 class ToolMetadata(BaseModel):
     """
-    Represents the ToolMetadata entity and its core operations.
+    Describes one executable tool exposed by a skill.
+
+    Security-sensitive execution properties are part of the metadata contract
+    so they can be propagated into the canonical ToolSpec without being lost.
     """
+
     name: str
     description: str
+
     risk_level: RiskLevel = RiskLevel.LOW
     requires_approval: bool = False
-    permissions_required: List[str] = []
+
+    permissions_required: List[str] = Field(
+        default_factory=list,
+    )
+
+    network_access: bool = False
+    filesystem_access: bool = False
+
+    max_runtime: int = 30
+    max_output: int = 4000
+    max_cost: float = 0.0
+
+    idempotent: bool = False
+
+    input_schema: Dict[str, Any] = Field(
+        default_factory=dict,
+    )
+    output_schema: Dict[str, Any] = Field(
+        default_factory=dict,
+    )
+
+    sandbox_profile: str = "default"
+    audit_policy: str = "standard"
+
 
 class SkillMetadata(BaseModel):
     """
-    Represents the SkillMetadata entity and its core operations.
+    Describes an installed A.U.R.O.R.A. skill.
     """
-    name: str = Field(..., description="Unique identifier for the skill (e.g., 'browser', 'filesystem')")
-    description: str = Field(..., description="Human-readable description of what this skill does")
+
+    name: str = Field(
+        ...,
+        description="Unique identifier for the skill.",
+    )
+
+    description: str = Field(
+        ...,
+        description="Human-readable description of the skill.",
+    )
+
     version: str = "1.0.0"
     author: str = "AeSoul"
 
+
+# ==============================================================================
+# BASE SKILL CONTRACT
+# ==============================================================================
+
+
 class BaseSkill:
     """
-    Represents the BaseSkill entity and its core operations.
+    Framework-agnostic base class for A.U.R.O.R.A. skills.
+
+    A skill may expose:
+    - executable Python callables;
+    - tool metadata used by authorization;
+    - additional system instructions;
+    - permission requirements.
+
+    The runtime does not assume that the callable is decorated by LangChain
+    or any other external orchestration framework.
     """
-    """
-    Abstract base class for A.U.R.O.R.A. Skills.
-    A Skill is a modular capability that provides tools, context, and permissions.
-    """
-    
+
     @property
     def metadata(self) -> SkillMetadata:
         """
-        Executes metadata logic.
+        Return the metadata describing this skill.
         """
-        """Must return the metadata defining this skill."""
-        raise NotImplementedError
-        
+        raise NotImplementedError(
+            "BaseSkill subclasses must implement the metadata property."
+        )
+
     @property
     def tools(self) -> List[Callable]:
         """
-        Executes tools logic.
+        Return the executable Python callables exposed by this skill.
         """
-        """Must return a list of LangChain @tool decorated functions."""
         return []
-        
+
     def get_tool_metadata(self) -> Dict[str, ToolMetadata]:
         """
-        Executes get_tool_metadata logic.
+        Return metadata for every executable tool exposed by the skill.
+
+        The dictionary key must match the callable/tool name used by the
+        SkillRegistry and AgentRuntime.
         """
-        """Returns metadata for the tools, specifically risk levels."""
         return {}
-        
+
     @property
     def system_prompt_extension(self) -> Optional[str]:
         """
-        Executes system_prompt_extension logic.
-        """
-        """
-        Optional additional instructions added to the core JARVIS system prompt 
-        when this skill is active.
+        Return optional system-level instructions contributed by this skill.
         """
         return None
-        
+
     def get_permission_scopes(self) -> List[str]:
         """
-        Executes get_permission_scopes logic.
+        Return the permission scopes required by the skill.
         """
-        """Returns the list of permissions required by this skill."""
         return []

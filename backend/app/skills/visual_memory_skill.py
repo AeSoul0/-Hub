@@ -1,114 +1,245 @@
 """
 @file backend/app/skills/visual_memory_skill.py
-@description Implements visual_memory_skill.py. Core components: VisualMemorySkill.
+@description Native workspace-scoped visual memory skill.
 
-This module manages the internal business logic for VisualMemorySkill.
-It provides specialized functionality to handle: metadata, get_tool_metadata, tools, system_prompt_extension, search_photos, index_folder_for_vision, get_skill.
+Provides semantic image search and authenticated background indexing.
+Filesystem-affecting operations are explicitly permission-gated.
 """
-from typing import Callable, Dict, List
 
-from langchain_core.tools import tool
+from __future__ import annotations
 
-from app.skills.base import BaseSkill, RiskLevel, SkillMetadata, ToolMetadata
+from typing import Callable, Dict, List, Optional
+
+from app.core.security import Permission
+
+from .base import (
+    BaseSkill,
+    RiskLevel,
+    SkillMetadata,
+    ToolMetadata,
+)
+from .memory_skill import _require_memory_context
+
+
+# ==============================================================================
+# VISUAL MEMORY TOOLS
+# ==============================================================================
+
+
+def search_photos(
+    query: str,
+) -> str:
+    """
+    Search indexed images inside the authenticated workspace.
+    """
+    if not query.strip():
+        raise ValueError(
+            "Photo search query cannot be empty."
+        )
+
+    try:
+        from app.workers.vision_indexer import search_images
+
+        _, workspace_id = _require_memory_context()
+
+        results = search_images(
+            query=query,
+            workspace_id=workspace_id,
+        )
+
+        ids = results.get(
+            "ids",
+            [],
+        )
+
+        if not ids or not ids[0]:
+            return "No matching photos found."
+
+        metadata = results.get(
+            "metadatas",
+            [],
+        )
+
+        if not metadata or not metadata[0]:
+            return (
+                "Matching photos were found "
+                "without usable metadata."
+            )
+
+        matches = []
+
+        for item in metadata[0]:
+            path = item.get(
+                "path",
+                "[unknown path]",
+            )
+
+            matches.append(
+                f"Path: {path}"
+            )
+
+        return (
+            "Found matching photos:\n"
+            + "\n".join(matches)
+        )
+
+    except Exception as exc:
+        return f"Visual search error: {exc}"
+
+
+def index_folder_for_vision(
+    folder_path: str,
+) -> str:
+    """
+    Queue authenticated visual indexing for a workspace folder.
+    """
+    if not folder_path.strip():
+        raise ValueError(
+            "Folder path cannot be empty."
+        )
+
+    session_id, _ = _require_memory_context()
+
+    from app.core.celery_app import celery_app
+
+    celery_app.send_task(
+        "vision.index_folder",
+        args=[
+            session_id,
+            folder_path,
+        ],
+    )
+
+    return (
+        "Visual indexing job queued successfully."
+    )
+
+
+# ==============================================================================
+# VISUAL MEMORY SKILL
+# ==============================================================================
 
 
 class VisualMemorySkill(BaseSkill):
     """
-    Represents the VisualMemorySkill entity and its core operations.
+    Provides authenticated semantic image search and folder indexing.
     """
-    def __init__(self):
-        """
-        Executes __init__ logic.
-        """
-        super().__init__()
 
     @property
     def metadata(self) -> SkillMetadata:
         """
-        Executes metadata logic.
+        Return visual-memory skill metadata.
         """
-        # Define the skill metadata
         return SkillMetadata(
             name="visual_memory",
-            description="Allows A.U.R.O.R.A. to semantically search user's photos and files using CLIP embeddings.",
-            version="1.0.0"
-        )
-        
-    def get_tool_metadata(self) -> Dict[str, ToolMetadata]:
-        """
-        Executes get_tool_metadata logic.
-        """
-        # Return specific metadata and risk levels for memory tools
-        return {
-            "search_photos": ToolMetadata(
-                name="search_photos",
-                description="Searches indexed images by semantic description.",
-                risk_level=RiskLevel.LOW
+            description=(
+                "Provides workspace-scoped semantic photo search "
+                "and authenticated image indexing."
             ),
-            "index_folder_for_vision": ToolMetadata(
-                name="index_folder_for_vision",
-                description="Triggers a background indexing job for a folder.",
-                risk_level=RiskLevel.MEDIUM
-            )
-        }
+            version="1.0.0",
+        )
 
     @property
     def tools(self) -> List[Callable]:
         """
-        Executes tools logic.
+        Return executable visual-memory tools.
         """
-        # Expose the search and indexing tools
-        return [search_photos, index_folder_for_vision]
-        
+        return [
+            search_photos,
+            index_folder_for_vision,
+        ]
+
+    def get_tool_metadata(self) -> Dict[str, ToolMetadata]:
+        """
+        Return security and execution metadata for visual-memory tools.
+        """
+        return {
+            "search_photos": ToolMetadata(
+                name="search_photos",
+                description=(
+                    "Search indexed images inside the authenticated "
+                    "workspace using semantic similarity."
+                ),
+                risk_level=RiskLevel.LOW,
+                requires_approval=False,
+                permissions_required=[
+                    Permission.READ_MEMORY.value,
+                ],
+                network_access=False,
+                filesystem_access=False,
+                max_runtime=30,
+                max_output=8_000,
+                max_cost=0.0,
+                idempotent=True,
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "minLength": 1,
+                        }
+                    },
+                    "required": ["query"],
+                    "additionalProperties": False,
+                },
+                output_schema={
+                    "type": "string",
+                },
+                sandbox_profile="default",
+                audit_policy="standard",
+            ),
+            "index_folder_for_vision": ToolMetadata(
+                name="index_folder_for_vision",
+                description=(
+                    "Queue semantic indexing for an authenticated "
+                    "workspace folder."
+                ),
+                risk_level=RiskLevel.HIGH,
+                requires_approval=True,
+                permissions_required=[
+                    Permission.FILESYSTEM_ACCESS.value,
+                ],
+                network_access=False,
+                filesystem_access=True,
+                max_runtime=60,
+                max_output=2_000,
+                max_cost=0.0,
+                idempotent=False,
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "folder_path": {
+                            "type": "string",
+                            "minLength": 1,
+                        }
+                    },
+                    "required": ["folder_path"],
+                    "additionalProperties": False,
+                },
+                output_schema={
+                    "type": "string",
+                },
+                sandbox_profile="vision-indexing",
+                audit_policy="standard",
+            ),
+        }
+
     @property
-    def system_prompt_extension(self) -> str:
+    def system_prompt_extension(self) -> Optional[str]:
         """
-        Executes system_prompt_extension logic.
+        Return visual-memory system instructions.
         """
-        # Inform the agent how to utilize the visual search engine
         return (
-            "You have access to a semantic visual search engine. If the user asks to find a photo "
-            "like 'the photo of my dog on the beach', use 'search_photos'. If they want to add a folder "
-            "to the search, use 'index_folder_for_vision'."
+            "You have access to authenticated visual memory. "
+            "Use 'search_photos' to search images inside the current "
+            "workspace. Use 'index_folder_for_vision' only when the "
+            "user explicitly requests indexing. Filesystem access and "
+            "human approval are enforced by the runtime."
         )
 
-@tool
-def search_photos(query: str) -> str:
-    """
-    Executes search_photos logic.
-    """
-    """Searches indexed images by semantic description (e.g. 'a dog on the beach')."""
-    try:
-        from app.workers.vision_indexer import search_images
-        # Perform the actual embedding search
-        results = search_images(query)
-        if not results['ids'] or not results['ids'][0]:
-            return "No matching photos found."
-        
-        # Extract and compile the matching file paths
-        matches = [f"Path: {meta['path']}" for meta in results['metadatas'][0]]
-        return "Found matching photos:\n" + "\n".join(matches)
-    except Exception as e:
-        return f"Search Error: {str(e)}"
 
-@tool
-def index_folder_for_vision(folder_path: str) -> str:
+def get_skill() -> BaseSkill:
     """
-    Executes index_folder_for_vision logic.
+    Create the visual-memory skill instance.
     """
-    """Triggers a background indexing job for a folder to make its images searchable."""
-    from app.core.celery_app import celery_app
-    from app.skills.memory_skill import current_session_id
-    
-    # Retrieve current user session context
-    session_id = current_session_id.get("default-session")
-    # Dispatch an asynchronous task to index images without blocking
-    celery_app.send_task("vision.index_folder", args=[session_id, folder_path])
-    return f"Started secure indexing folder: {folder_path} in the background."
-
-def get_skill():
-    """
-    Executes get_skill logic.
-    """
-    # Factory function to instantiate the skill
     return VisualMemorySkill()

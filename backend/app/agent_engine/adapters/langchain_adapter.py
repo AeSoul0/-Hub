@@ -1,85 +1,424 @@
 """
 @file backend/app/agent_engine/adapters/langchain_adapter.py
-@description Implements langchain_adapter.py. Core components: LangchainModelAdapter.
+@description Framework-agnostic compatibility adapter for legacy model integrations.
 
-This module manages the internal business logic for LangchainModelAdapter.
-It provides specialized functionality to handle: generate.
+The historical implementation depended directly on LangChain message classes.
+The native A.U.R.O.R.A. runtime now communicates through the ModelProvider
+interface, so this adapter intentionally accepts a generic async model object.
+
+Expected model contract:
+
+    await model.ainvoke(payload)
+
+The returned payload may be a dictionary or an object exposing:
+    - output
+    - content
+    - tool_calls
+
+No LangChain package is imported or required here.
 """
-from typing import Dict, Any, List
-from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
+
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional
+
 from app.agent_engine.adapters.base import ModelProvider
 from app.agent_engine.models import ToolProposal
 
+
+# ==============================================================================
+# NATIVE COMPATIBILITY ADAPTER
+# ==============================================================================
+
+
 class LangchainModelAdapter(ModelProvider):
     """
-    Represents the LangchainModelAdapter entity and its core operations.
-    """
-    """
-    Implements the ModelProvider interface by delegating execution to a 
-    LangChain BaseChatModel instance. Manages message history formatting 
-    and translates LangChain tool calls into native ToolProposal objects.
-    """
-    
-    def __init__(self, model: BaseChatModel, tools: List[Any] = None, **kwargs):
-        """
-        Executes __init__ logic.
-        """
-        """
-        Initializes the adapter with a specific LangChain model and an optional toolset.
-        Binds the tools to the model if provided.
-        """
-        super().__init__(model_name=model.model_name if hasattr(model, 'model_name') else "unknown", **kwargs)
-        self.model = model
-        self.tools = tools or []
-        
-        # Bind tools to the model to enable function calling capabilities
-        if self.tools:
-            self.model_with_tools = self.model.bind_tools(self.tools)
-        else:
-            self.model_with_tools = self.model
+    Compatibility adapter preserving the historical class name.
 
-    async def generate(self, context: Dict[str, Any]) -> Dict[str, Any]:
+    The implementation is intentionally independent from LangChain. Existing
+    callers can keep importing LangchainModelAdapter while progressively
+    migrating to native ModelProvider implementations.
+    """
+
+    def __init__(
+        self,
+        model: Any,
+        tools: Optional[List[Any]] = None,
+        **kwargs: Any,
+    ) -> None:
         """
-        Executes generate logic.
+        Initialize the adapter around a generic async model provider.
         """
+        if model is None:
+            raise ValueError(
+                "A model provider instance is required."
+            )
+
+        model_name = getattr(
+            model,
+            "model_name",
+            None,
+        ) or getattr(
+            model,
+            "model",
+            None,
+        ) or "compatibility-model"
+
+        super().__init__(
+            model_name=str(model_name),
+            **kwargs,
+        )
+
+        self.model = model
+        self.tools = list(
+            tools or []
+        )
+
+    # ==========================================================================
+    # GENERATION
+    # ==========================================================================
+
+    async def generate(
+        self,
+        context: Dict[str, Any],
+    ) -> Dict[str, Any]:
         """
-        Processes the internal task context and generates a response using the LangChain model.
-        It translates internal observations and feedback into LangChain message primitives.
+        Execute one model turn through a native async invocation contract.
         """
-        # Extract task details and constraints from the execution context
-        task = context.get("task", {}).get("description", str(context.get("task", "")))
-        observations = context.get("observations", [])
-        feedback = context.get("feedback")
-        system_prompt = context.get("system_prompt", "You are an intelligent agent.")
-        
-        # Construct the conversation history for the LLM
-        messages = [SystemMessage(content=system_prompt)]
-        messages.append(HumanMessage(content=task))
-        
-        # Append checker feedback if the previous execution iteration was rejected
-        if feedback:
-            messages.append(HumanMessage(content=f"Checker Feedback: {feedback}"))
-            
-        # Append tool execution results (observations) from the sandbox
-        for obs in observations:
-            messages.append(ToolMessage(tool_call_id=obs.tool_call_id, content=str(obs.content), name="tool"))
-            
-        # Invoke the LangChain model asynchronously
-        response = await self.model_with_tools.ainvoke(messages)
-        
-        tool_proposals = []
-        # Parse LangChain tool calls and map them to native ToolProposal structures
-        if hasattr(response, "tool_calls") and response.tool_calls:
-            for tc in response.tool_calls:
-                tool_proposals.append(ToolProposal(
-                    tool_call_id=tc["id"],
-                    tool_name=tc["name"],
-                    arguments=tc["args"],
-                    run_id="run_placeholder" # Expected to be injected by the runtime environment
-                ))
-                
-        return {
-            "output": response.content,
-            "tool_proposals": tool_proposals
+        task_value = context.get(
+            "task",
+            "",
+        )
+
+        if isinstance(
+            task_value,
+            dict,
+        ):
+            task = str(
+                task_value.get(
+                    "description",
+                    "",
+                )
+            )
+        else:
+            task = str(
+                task_value
+            )
+
+        system_prompt = str(
+            context.get(
+                "system_prompt",
+                "You are an intelligent agent.",
+            )
+        )
+
+        feedback = context.get(
+            "feedback"
+        )
+
+        observations = []
+
+        for observation in context.get(
+            "observations",
+            [],
+        ):
+            if isinstance(
+                observation,
+                dict,
+            ):
+                observations.append(
+                    {
+                        "tool_call_id": observation.get(
+                            "tool_call_id"
+                        ),
+                        "content": str(
+                            observation.get(
+                                "content",
+                                "",
+                            )
+                        ),
+                    }
+                )
+            else:
+                observations.append(
+                    {
+                        "tool_call_id": getattr(
+                            observation,
+                            "tool_call_id",
+                            None,
+                        ),
+                        "content": str(
+                            getattr(
+                                observation,
+                                "content",
+                                observation,
+                            )
+                        ),
+                    }
+                )
+
+        payload: Dict[str, Any] = {
+            "system_prompt": system_prompt,
+            "task": task,
+            "feedback": (
+                str(feedback)
+                if feedback is not None
+                else None
+            ),
+            "observations": observations,
+            "tools": self.tools,
+            "run_id": context.get(
+                "run_id"
+            ),
+            "session_id": context.get(
+                "session_id"
+            ),
+            "workspace_id": context.get(
+                "workspace_id"
+            ),
+            "principal_id": context.get(
+                "principal_id"
+            ),
+            "role": context.get(
+                "role"
+            ),
+            "capabilities": context.get(
+                "capabilities"
+            ),
         }
+
+        ainvoke = getattr(
+            self.model,
+            "ainvoke",
+            None,
+        )
+
+        if ainvoke is None:
+            raise TypeError(
+                "The compatibility model must expose an async 'ainvoke' method."
+            )
+
+        response = await ainvoke(
+            payload
+        )
+
+        output, raw_tool_calls = self._normalize_response(
+            response
+        )
+
+        run_id = str(
+            context.get(
+                "run_id",
+                "",
+            )
+        )
+
+        if not run_id:
+            raise ValueError(
+                "Model execution context is missing run_id."
+            )
+
+        proposals = []
+
+        for index, tool_call in enumerate(
+            raw_tool_calls
+        ):
+            normalized = self._normalize_tool_call(
+                tool_call,
+                index=index,
+            )
+
+            if normalized is None:
+                continue
+
+            proposals.append(
+                ToolProposal(
+                    tool_call_id=normalized["tool_call_id"],
+                    tool_name=normalized["tool_name"],
+                    arguments=normalized["arguments"],
+                    run_id=run_id,
+                )
+            )
+
+        return {
+            "output": output,
+            "tool_proposals": proposals,
+        }
+
+    # ==========================================================================
+    # RESPONSE NORMALIZATION
+    # ==========================================================================
+
+    @staticmethod
+    def _normalize_response(
+        response: Any,
+    ) -> tuple[Any, List[Any]]:
+        """
+        Normalize dictionary- or object-based model responses.
+        """
+        if isinstance(
+            response,
+            dict,
+        ):
+            output = response.get(
+                "output",
+                response.get(
+                    "content",
+                    "",
+                ),
+            )
+
+            tool_calls = response.get(
+                "tool_calls",
+                response.get(
+                    "tool_proposals",
+                    [],
+                ),
+            )
+
+            return (
+                output,
+                list(
+                    tool_calls or []
+                ),
+            )
+
+        output = getattr(
+            response,
+            "output",
+            None,
+        )
+
+        if output is None:
+            output = getattr(
+                response,
+                "content",
+                "",
+            )
+
+        tool_calls = getattr(
+            response,
+            "tool_calls",
+            [],
+        )
+
+        return (
+            output,
+            list(
+                tool_calls or []
+            ),
+        )
+
+    @staticmethod
+    def _normalize_tool_call(
+        tool_call: Any,
+        index: int,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Normalize one model tool-call representation.
+        """
+        if isinstance(
+            tool_call,
+            ToolProposal,
+        ):
+            return {
+                "tool_call_id": tool_call.tool_call_id,
+                "tool_name": tool_call.tool_name,
+                "arguments": dict(
+                    tool_call.arguments
+                ),
+            }
+
+        if isinstance(
+            tool_call,
+            dict,
+        ):
+            tool_call_id = (
+                tool_call.get("tool_call_id")
+                or tool_call.get("id")
+                or tool_call.get("call_id")
+            )
+
+            tool_name = (
+                tool_call.get("tool_name")
+                or tool_call.get("name")
+            )
+
+            arguments = tool_call.get(
+                "arguments",
+                tool_call.get(
+                    "args",
+                    {},
+                ),
+            )
+
+        else:
+            tool_call_id = (
+                getattr(
+                    tool_call,
+                    "tool_call_id",
+                    None,
+                )
+                or getattr(
+                    tool_call,
+                    "id",
+                    None,
+                )
+                or getattr(
+                    tool_call,
+                    "call_id",
+                    None,
+                )
+            )
+
+            tool_name = (
+                getattr(
+                    tool_call,
+                    "tool_name",
+                    None,
+                )
+                or getattr(
+                    tool_call,
+                    "name",
+                    None,
+                )
+            )
+
+            arguments = getattr(
+                tool_call,
+                "arguments",
+                getattr(
+                    tool_call,
+                    "args",
+                    {},
+                ),
+            )
+
+        if not tool_name:
+            return None
+
+        if not isinstance(
+            arguments,
+            dict,
+        ):
+            raise ValueError(
+                f"Tool call '{tool_name}' returned non-object arguments."
+            )
+
+        return {
+            "tool_call_id": str(
+                tool_call_id
+                or f"tool_call_{index + 1}"
+            ),
+            "tool_name": str(
+                tool_name
+            ),
+            "arguments": dict(
+                arguments
+            ),
+        }
+
+
+__all__ = [
+    "LangchainModelAdapter",
+]

@@ -1,194 +1,409 @@
 """
 @file backend/app/skills/vision_skill.py
-@description Implements vision_skill.py. Core components: VisionSkill.
+@description Native desktop vision and UI automation skill.
 
-This module manages the internal business logic for VisionSkill.
-It provides specialized functionality to handle: metadata, get_tool_metadata, tools, system_prompt_extension, find_text_on_screen, take_screenshot, execute_ui_action, get_skill.
+Provides screenshot capture, OCR-based text detection, and controlled
+mouse/keyboard actions through regular Python callables. UI-changing actions
+remain approval-gated by the ToolGateway.
 """
+
+from __future__ import annotations
+
 import base64
 from io import BytesIO
-from typing import Callable, Dict, List
+from typing import Callable, Dict, List, Optional
 
 import pyautogui
-from langchain_core.tools import tool
 from PIL import Image, ImageGrab
 
-from app.skills.base import BaseSkill, RiskLevel, SkillMetadata, ToolMetadata
+from app.skills.base import (
+    BaseSkill,
+    RiskLevel,
+    SkillMetadata,
+    ToolMetadata,
+)
+
+
+# ==============================================================================
+# VISION TOOLS
+# ==============================================================================
+
+
+def find_text_on_screen(
+    text_to_find: str,
+) -> str:
+    """
+    Locate matching text on the current screen using OCR.
+    """
+    if not text_to_find.strip():
+        raise ValueError(
+            "Text to find cannot be empty."
+        )
+
+    try:
+        import easyocr
+        import numpy as np
+
+        reader = easyocr.Reader(
+            ["en", "it"],
+            gpu=False,
+        )
+
+        image = ImageGrab.grab()
+        image_array = np.array(image)
+
+        results = reader.readtext(
+            image_array
+        )
+
+        matches: List[str] = []
+
+        for bbox, detected_text, confidence in results:
+            if text_to_find.lower() not in detected_text.lower():
+                continue
+
+            x = int(
+                (
+                    bbox[0][0]
+                    + bbox[1][0]
+                )
+                / 2
+            )
+
+            y = int(
+                (
+                    bbox[0][1]
+                    + bbox[2][1]
+                )
+                / 2
+            )
+
+            matches.append(
+                (
+                    f"Found '{detected_text}' at "
+                    f"X={x}, Y={y} "
+                    f"(confidence: {confidence:.2f})"
+                )
+            )
+
+        if not matches:
+            return (
+                f"Text '{text_to_find}' "
+                "was not found on screen."
+            )
+
+        return "\n".join(matches)
+
+    except ImportError:
+        return "OCR Error: easyocr is not installed."
+
+    except Exception as exc:
+        return f"OCR Error: {exc}"
+
+
+def take_screenshot() -> str:
+    """
+    Capture the primary display and return a compact base64 JPEG payload.
+    """
+    try:
+        image = ImageGrab.grab()
+
+        image.thumbnail(
+            (1280, 720),
+            Image.Resampling.LANCZOS,
+        )
+
+        buffer = BytesIO()
+
+        image.save(
+            buffer,
+            format="JPEG",
+            quality=80,
+        )
+
+        encoded = base64.b64encode(
+            buffer.getvalue()
+        ).decode("utf-8")
+
+        return (
+            "data:image/jpeg;base64,"
+            f"{encoded}"
+        )
+
+    except Exception as exc:
+        return f"Screenshot Error: {exc}"
+
+
+def execute_ui_action(
+    action: str,
+    x: Optional[int] = None,
+    y: Optional[int] = None,
+    text: Optional[str] = None,
+    keys: Optional[str] = None,
+    amount: Optional[int] = None,
+) -> str:
+    """
+    Execute one explicit desktop UI action.
+
+    Supported actions:
+    - click
+    - type
+    - hotkey
+    - scroll
+    """
+    try:
+        if action == "click":
+            if x is None or y is None:
+                return (
+                    "Error: x and y coordinates "
+                    "are required for click."
+                )
+
+            pyautogui.click(
+                x=x,
+                y=y,
+            )
+
+            return f"Clicked at ({x}, {y})."
+
+        if action == "type":
+            if text is None:
+                return (
+                    "Error: text is required "
+                    "for type."
+                )
+
+            pyautogui.write(
+                text,
+                interval=0.05,
+            )
+
+            return "Text input completed."
+
+        if action == "hotkey":
+            if not keys:
+                return (
+                    "Error: keys are required "
+                    "for hotkey."
+                )
+
+            key_list = [
+                key.strip()
+                for key in keys.split(",")
+                if key.strip()
+            ]
+
+            if not key_list:
+                return "Error: no valid hotkey keys provided."
+
+            pyautogui.hotkey(
+                *key_list
+            )
+
+            return "Hotkey executed successfully."
+
+        if action == "scroll":
+            if amount is None:
+                return (
+                    "Error: amount is required "
+                    "for scroll."
+                )
+
+            pyautogui.scroll(
+                amount
+            )
+
+            return "Scroll action completed."
+
+        return (
+            f"Unknown UI action '{action}'."
+        )
+
+    except Exception as exc:
+        return f"UI automation error: {exc}"
+
+
+# ==============================================================================
+# VISION SKILL
+# ==============================================================================
 
 
 class VisionSkill(BaseSkill):
     """
-    Represents the VisionSkill entity and its core operations.
+    Provides controlled screen perception and UI interaction.
     """
-    def __init__(self):
+
+    def __init__(self) -> None:
         """
-        Executes __init__ logic.
+        Initialize the desktop automation safety settings.
         """
         super().__init__()
-        # PyAutoGUI fail-safe config - aborts if mouse is thrown to the corner
+
         pyautogui.FAILSAFE = True
         pyautogui.PAUSE = 0.5
 
     @property
     def metadata(self) -> SkillMetadata:
         """
-        Executes metadata logic.
+        Return desktop vision skill metadata.
         """
-        # Define the skill metadata
         return SkillMetadata(
             name="computer_vision",
-            description="Allows A.U.R.O.R.A. to perceive the screen and control the mouse/keyboard.",
-            version="1.0.0"
+            description=(
+                "Provides screen capture, OCR-based text detection, "
+                "and approval-gated desktop UI interaction."
+            ),
+            version="1.0.0",
         )
-        
-    def get_tool_metadata(self) -> Dict[str, ToolMetadata]:
-        """
-        Executes get_tool_metadata logic.
-        """
-        # Define tool configurations, marking UI actions as high risk
-        return {
-            "take_screenshot": ToolMetadata(
-                name="take_screenshot",
-                description="Captures the current screen. Returns a base64 encoded image.",
-                risk_level=RiskLevel.LOW
-            ),
-            "execute_ui_action": ToolMetadata(
-                name="execute_ui_action",
-                description="Executes a mouse or keyboard action. Actions: 'click', 'type', 'hotkey', 'scroll'.",
-                risk_level=RiskLevel.HIGH,
-                requires_approval=True
-            ),
-            "find_text_on_screen": ToolMetadata(
-                name="find_text_on_screen",
-                description="Finds text coordinates on screen using OCR.",
-                risk_level=RiskLevel.LOW
-            )
-        }
 
     @property
     def tools(self) -> List[Callable]:
         """
-        Executes tools logic.
+        Return executable vision tools.
         """
-        # Return all vision and UI manipulation tools
-        return [take_screenshot, execute_ui_action, find_text_on_screen]
-        
+        return [
+            take_screenshot,
+            execute_ui_action,
+            find_text_on_screen,
+        ]
+
+    def get_tool_metadata(self) -> Dict[str, ToolMetadata]:
+        """
+        Return security and execution metadata for all vision tools.
+        """
+        return {
+            "take_screenshot": ToolMetadata(
+                name="take_screenshot",
+                description=(
+                    "Capture the current primary display "
+                    "as a base64 JPEG image."
+                ),
+                risk_level=RiskLevel.MEDIUM,
+                requires_approval=False,
+                permissions_required=[],
+                network_access=False,
+                filesystem_access=False,
+                max_runtime=15,
+                max_output=2_000_000,
+                max_cost=0.0,
+                idempotent=False,
+                input_schema={
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": False,
+                },
+                output_schema={
+                    "type": "string",
+                },
+                sandbox_profile="desktop-vision",
+                audit_policy="standard",
+            ),
+            "find_text_on_screen": ToolMetadata(
+                name="find_text_on_screen",
+                description=(
+                    "Use OCR to locate matching text "
+                    "on the current display."
+                ),
+                risk_level=RiskLevel.MEDIUM,
+                requires_approval=False,
+                permissions_required=[],
+                network_access=False,
+                filesystem_access=False,
+                max_runtime=30,
+                max_output=8_000,
+                max_cost=0.0,
+                idempotent=False,
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "text_to_find": {
+                            "type": "string",
+                            "minLength": 1,
+                        }
+                    },
+                    "required": [
+                        "text_to_find"
+                    ],
+                    "additionalProperties": False,
+                },
+                output_schema={
+                    "type": "string",
+                },
+                sandbox_profile="desktop-vision",
+                audit_policy="standard",
+            ),
+            "execute_ui_action": ToolMetadata(
+                name="execute_ui_action",
+                description=(
+                    "Perform a mouse or keyboard action "
+                    "on the host desktop."
+                ),
+                risk_level=RiskLevel.HIGH,
+                requires_approval=True,
+                permissions_required=[],
+                network_access=False,
+                filesystem_access=False,
+                max_runtime=15,
+                max_output=2_000,
+                max_cost=0.0,
+                idempotent=False,
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "action": {
+                            "type": "string",
+                            "enum": [
+                                "click",
+                                "type",
+                                "hotkey",
+                                "scroll",
+                            ],
+                        },
+                        "x": {
+                            "type": "integer",
+                        },
+                        "y": {
+                            "type": "integer",
+                        },
+                        "text": {
+                            "type": "string",
+                        },
+                        "keys": {
+                            "type": "string",
+                        },
+                        "amount": {
+                            "type": "integer",
+                        },
+                    },
+                    "required": [
+                        "action"
+                    ],
+                    "additionalProperties": False,
+                },
+                output_schema={
+                    "type": "string",
+                },
+                sandbox_profile="desktop-control",
+                audit_policy="standard",
+            ),
+        }
+
     @property
-    def system_prompt_extension(self) -> str:
+    def system_prompt_extension(self) -> Optional[str]:
         """
-        Executes system_prompt_extension logic.
+        Return desktop-vision instructions.
         """
-        # Provide instruction to the LLM on using screen capabilities responsibly
         return (
-            "You have direct vision of the host computer. You can use 'take_screenshot' to see the screen.\n"
-            "If you need to click on specific text, DO NOT guess the coordinates. Use 'find_text_on_screen' to get the exact X, Y coordinates.\n"
-            "To interact, you can use 'execute_ui_action' with actions like 'click' (provide x, y), "
-            "'type' (provide text), 'hotkey' (provide keys separated by comma, e.g. 'ctrl,c'), 'scroll' (provide amount).\n"
-            "Always rely on 'find_text_on_screen' for precise UI interactions."
+            "You have controlled access to the host display. "
+            "Use 'take_screenshot' to inspect the screen and "
+            "'find_text_on_screen' to locate visible text precisely. "
+            "Never guess UI coordinates. Any mouse or keyboard action "
+            "is high risk and requires explicit approval."
         )
 
-@tool
-def find_text_on_screen(text_to_find: str) -> str:
-    """
-    Executes find_text_on_screen logic.
-    """
-    """Finds the exact X, Y coordinates of specific text on the screen using OCR."""
-    import easyocr
-    import numpy as np
-    
-    try:
-        # Initialize OCR reader and grab current screen
-        reader = easyocr.Reader(['en', 'it'], gpu=False)
-        image = ImageGrab.grab()
-        img_np = np.array(image)
-        
-        # Extract text elements
-        results = reader.readtext(img_np)
-        
-        matches = []
-        for (bbox, text, prob) in results:
-            if text_to_find.lower() in text.lower():
-                # calculate center of bounding box to allow clicking
-                x = int((bbox[0][0] + bbox[1][0]) / 2)
-                y = int((bbox[0][1] + bbox[2][1]) / 2)
-                matches.append(f"Found '{text}' at X={x}, Y={y} (confidence: {prob:.2f})")
-                
-        if not matches:
-            return f"Text '{text_to_find}' not found on screen."
-            
-        return "\n".join(matches)
-    except Exception as e:
-        return f"OCR Error: {str(e)}"
 
-@tool
-def take_screenshot() -> str:
+def get_skill() -> BaseSkill:
     """
-    Executes take_screenshot logic.
+    Create the computer vision skill instance.
     """
-    """Captures the primary monitor screen and returns the image as a base64 string."""
-    image = ImageGrab.grab()
-    
-    # Resize if too large to save tokens and speed up parsing
-    max_size = (1280, 720)
-    image.thumbnail(max_size, Image.Resampling.LANCZOS)
-    
-    # Convert image to base64 format for the LLM
-    buffered = BytesIO()
-    image.save(buffered, format="JPEG", quality=80)
-    img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-    
-    return f"data:image/jpeg;base64,{img_str}"
-
-@tool
-def execute_ui_action(action: str, x: int = None, y: int = None, text: str = None, keys: str = None, amount: int = None) -> str:
-    """
-    Executes execute_ui_action logic.
-    """
-    """
-    Executes a UI automation action.
-    - action: 'click', 'type', 'hotkey', 'scroll'
-    - x, y: coordinates for click
-    - text: string to type
-    - keys: comma separated keys for hotkey (e.g. 'ctrl,c')
-    - amount: integer for scroll amount
-    """
-    try:
-        # Handle left click interactions
-        if action == "click":
-            if x is None or y is None:
-                return "Error: x and y coordinates required for click."
-            pyautogui.click(x=x, y=y)
-            return f"Clicked at ({x}, {y})"
-            
-        # Handle keyboard typing
-        elif action == "type":
-            if text is None:
-                return "Error: text required for type."
-            pyautogui.write(text, interval=0.05)
-            return f"Typed: '{text}'"
-            
-        # Handle shortcut hotkeys
-        elif action == "hotkey":
-            if keys is None:
-                return "Error: keys required for hotkey."
-            key_list = [k.strip() for k in keys.split(",")]
-            pyautogui.hotkey(*key_list)
-            return f"Executed hotkey: {keys}"
-            
-        # Handle mouse scrolling
-        elif action == "scroll":
-            if amount is None:
-                return "Error: amount required for scroll."
-            pyautogui.scroll(amount)
-            return f"Scrolled by {amount}"
-            
-        return f"Unknown action: {action}"
-    except Exception as e:
-        return f"UI Automation Error: {str(e)}"
-
-def get_skill():
-    """
-    Executes get_skill logic.
-    """
-    # Factory function to instantiate the skill
     return VisionSkill()

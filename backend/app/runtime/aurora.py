@@ -2,43 +2,43 @@
 @file backend/app/runtime/aurora.py
 @description Native compatibility facade for the A.U.R.O.R.A. Agent Engine.
 
-This module replaces the former LangGraph-based runtime with the native
-AgentRuntime execution kernel.
+This module exposes the historical Aurora application interface while routing
+all execution through the native AgentRuntime.
 
-Compatibility is intentionally preserved through:
-    get_aurora_app().ainvoke(...)
+The compatibility layer intentionally avoids LangGraph as an execution
+authority. A request is represented by an authenticated Principal and an
+explicit execution run ID.
 
-Existing callers can therefore migrate incrementally without retaining
-LangGraph as an execution authority.
+Execution path:
 
-The native execution path is:
-
-    Input -> AgentRuntime -> Native Worker -> Checker -> Durable Run State
-
-No graph compiler, graph checkpoint, ToolNode, or LangGraph runtime is used.
+    Request -> NativeAuroraApplication -> AgentRuntime
+            -> Native Worker -> ToolGateway -> Checker
+            -> Durable Run State
 """
 
 from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any, Dict, Optional
+from uuid import uuid4
 
-from app.agent_engine.checker import AgentChecker
 from app.agent_engine.adapters.openai_adapter import OpenAIAdapter
+from app.agent_engine.checker import AgentChecker
 from app.agent_engine.runtime import AgentRuntime
-from app.core.security import Principal, RoleEnum
+from app.core.security import Principal
 
 
-DEFAULT_SYSTEM_PRINCIPAL = Principal(
-    id="system",
-    role=RoleEnum.SYSTEM,
-    workspace_id="system",
-)
+# ==============================================================================
+# NATIVE WORKER
+# ==============================================================================
 
 
 class NativeAuroraWorker:
     """
     Native worker adapter used by the Aurora compatibility facade.
+
+    The worker receives the complete trusted execution context from
+    AgentRuntime and forwards it to the configured model provider.
     """
 
     def __init__(
@@ -59,21 +59,23 @@ class NativeAuroraWorker:
         worker_context = dict(context)
 
         worker_context["system_prompt"] = self.system_prompt
-        worker_context.setdefault(
-            "role",
-            "aurora",
-        )
+        worker_context.setdefault("role", "aurora")
 
-        return await self.model_provider.generate(
-            worker_context
-        )
+        return await self.model_provider.generate(worker_context)
+
+
+# ==============================================================================
+# AURORA APPLICATION FACADE
+# ==============================================================================
 
 
 class NativeAuroraApplication:
     """
     Compatibility application exposing an async invoke API.
 
-    Internally all execution is delegated to AgentRuntime.
+    All execution is delegated to AgentRuntime. No client-controlled
+    identity or thread identifier is allowed to override the authenticated
+    execution Principal.
     """
 
     def __init__(
@@ -108,24 +110,30 @@ class NativeAuroraApplication:
     ) -> Dict[str, Any]:
         """
         Invoke the native AgentRuntime using the historical Aurora state shape.
+
+        The run identifier may be supplied explicitly by a trusted caller for
+        resume/recovery semantics. A client thread identifier is never treated
+        as an execution run identifier.
         """
         config = config or {}
 
         session_id = str(
             input_state.get(
                 "session_id",
-                "default_session",
+                "",
             )
         )
 
-        principal = input_state.get("principal")
+        if not session_id:
+            raise ValueError(
+                "Aurora invocation requires a valid session_id."
+            )
 
-        if principal is None:
-            principal = DEFAULT_SYSTEM_PRINCIPAL
+        principal = input_state.get("principal")
 
         if not isinstance(principal, Principal):
             raise ValueError(
-                "Aurora invocation requires a valid Principal."
+                "Aurora invocation requires a valid authenticated Principal."
             )
 
         messages = input_state.get(
@@ -138,7 +146,7 @@ class NativeAuroraApplication:
             self._extract_last_message(messages),
         )
 
-        if not intent:
+        if not intent or not str(intent).strip():
             raise ValueError(
                 "Aurora invocation requires a non-empty task."
             )
@@ -148,12 +156,10 @@ class NativeAuroraApplication:
             {},
         )
 
-        run_id = configurable.get(
-            "thread_id"
+        run_id = (
+            input_state.get("run_id")
+            or configurable.get("run_id")
         )
-
-        if not run_id:
-            run_id = None
 
         task = {
             "description": str(intent),
@@ -164,9 +170,10 @@ class NativeAuroraApplication:
             orchestrator=None,
             worker=self.worker,
             checker=self.checker,
-            run_id=run_id,
+            run_id=str(run_id) if run_id else None,
             session_id=session_id,
             workspace_id=principal.workspace_id,
+            principal=principal,
         )
 
         message = SimpleNamespace(
@@ -178,6 +185,11 @@ class NativeAuroraApplication:
             "session_id": session_id,
             "current_intent": str(intent),
             "principal": principal,
+            "run_id": (
+                str(run_id)
+                if run_id
+                else None
+            ),
         }
 
     @staticmethod
@@ -185,7 +197,8 @@ class NativeAuroraApplication:
         messages: list[Any],
     ) -> str:
         """
-        Extract textual content without requiring LangChain message classes.
+        Extract textual content without requiring framework-specific message
+        classes.
         """
         if not messages:
             return ""
@@ -209,6 +222,11 @@ class NativeAuroraApplication:
         )
 
 
+# ==============================================================================
+# SINGLETON COMPATIBILITY ACCESSOR
+# ==============================================================================
+
+
 _aurora_app: Optional[NativeAuroraApplication] = None
 
 
@@ -224,45 +242,57 @@ async def get_aurora_app() -> NativeAuroraApplication:
     return _aurora_app
 
 
+# ==============================================================================
+# DIRECT AURORA EXECUTION ENTRY POINT
+# ==============================================================================
+
+
 async def run_aurora_agent(
     session_id: str,
     transcript: str,
     principal: Principal,
 ) -> Dict[str, Any]:
     """
-    Execute one native Aurora interaction for the authenticated principal.
+    Execute one native Aurora interaction for the authenticated Principal.
+
+    Every invocation receives a fresh execution run ID. Resume operations must
+    explicitly provide the persisted run ID through the higher-level invoke
+    interface instead of deriving it from session or thread identifiers.
     """
     if not session_id:
         raise ValueError(
-            "session_id is required"
+            "session_id is required."
         )
 
     if not transcript or not transcript.strip():
         raise ValueError(
-            "transcript is required"
+            "transcript is required."
         )
 
     if not isinstance(principal, Principal):
         raise ValueError(
-            "principal is required"
+            "principal is required."
         )
 
     app = await get_aurora_app()
+
+    run_id = f"run_{uuid4().hex}"
 
     return await app.ainvoke(
         {
             "messages": [
                 SimpleNamespace(
-                    content=transcript
+                    content=transcript,
                 )
             ],
             "session_id": session_id,
             "current_intent": transcript,
             "principal": principal,
+            "run_id": run_id,
         },
         config={
             "configurable": {
-                "thread_id": f"{session_id}:{principal.id}"
+                "run_id": run_id,
             }
         },
     )
@@ -270,6 +300,7 @@ async def run_aurora_agent(
 
 __all__ = [
     "NativeAuroraApplication",
+    "NativeAuroraWorker",
     "get_aurora_app",
     "run_aurora_agent",
 ]

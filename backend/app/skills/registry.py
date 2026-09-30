@@ -1,107 +1,332 @@
 """
 @file backend/app/skills/registry.py
-@description Implements registry.py. Core components: SkillRegistry.
+@description Native skill discovery and tool registration registry.
 
-This module manages the internal business logic for SkillRegistry.
-It provides specialized functionality to handle: register_skill, load_from_package, get_all_tools, get_system_prompt_extensions.
+The registry owns skill lifecycle, executable tool metadata, callable lookup,
+and prompt-extension aggregation. Runtime consumers must use the public
+accessors exposed here instead of reaching into private state.
 """
+
+from __future__ import annotations
+
 import importlib
 import pkgutil
-from typing import Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 from .base import BaseSkill, ToolMetadata
 
 
+# ==============================================================================
+# SKILL REGISTRY
+# ==============================================================================
+
+
 class SkillRegistry:
     """
-    Represents the SkillRegistry entity and its core operations.
+    Registry for active A.U.R.O.R.A. skills and executable tools.
+
+    The registry is deliberately framework-agnostic. Registered tools are
+    ordinary Python callables and may be synchronous or asynchronous.
     """
-    """
-    Registry for managing all active A.U.R.O.R.A. skills.
-    Handles discovery, loading, and capability extraction (tools/prompts).
-    """
-    
-    def __init__(self):
+
+    def __init__(self) -> None:
         """
-        Executes __init__ logic.
+        Initialize an empty registry.
         """
         self._skills: Dict[str, BaseSkill] = {}
         self._tool_metadata: Dict[str, ToolMetadata] = {}
-        
-    def register_skill(self, skill: BaseSkill):
+
+    # ==========================================================================
+    # REGISTRATION
+    # ==========================================================================
+
+    def register_skill(
+        self,
+        skill: BaseSkill,
+    ) -> None:
         """
-        Executes register_skill logic.
+        Register a skill and all of its declared tool metadata.
+
+        Duplicate skills and tools are rejected instead of silently replaced.
         """
-        """Registers an initialized skill instance."""
-        name = skill.metadata.name
-        if name in self._skills:
-            print(f"[Warning] Skill '{name}' is already registered. Overwriting.")
-        self._skills[name] = skill
-        
-        # Merge tool metadata
-        for tool_name, metadata in skill.get_tool_metadata().items():
+        skill_name = skill.metadata.name
+
+        if not skill_name:
+            raise ValueError(
+                "Skill name cannot be empty."
+            )
+
+        if skill_name in self._skills:
+            raise ValueError(
+                f"Skill '{skill_name}' is already registered."
+            )
+
+        metadata_map = skill.get_tool_metadata()
+
+        for tool_name, metadata in metadata_map.items():
+            if not tool_name:
+                raise ValueError(
+                    f"Skill '{skill_name}' declared an empty tool name."
+                )
+
+            if metadata.name != tool_name:
+                raise ValueError(
+                    f"Tool metadata key '{tool_name}' does not match "
+                    f"metadata name '{metadata.name}'."
+                )
+
+            if tool_name in self._tool_metadata:
+                raise ValueError(
+                    f"Tool '{tool_name}' is already registered."
+                )
+
+        self._skills[skill_name] = skill
+
+        for tool_name, metadata in metadata_map.items():
             self._tool_metadata[tool_name] = metadata
-            
-        print(f"[Skills] Registered '{name}' v{skill.metadata.version}")
-        
-    def load_from_package(self, package_name: str = "app.skills"):
-        """
-        Executes load_from_package logic.
-        """
-        """
-        Dynamically loads all skill modules from the specified package.
-        Assumes each module in the package exposes a 'get_skill()' function.
-        """
-        try:
-            package = importlib.import_module(package_name)
-        except ImportError as e:
-            print(f"[Error] Failed to load skills package '{package_name}': {e}")
-            return
 
-        # Iterate through all submodules in the package
-        if not hasattr(package, "__path__"):
-            return
-            
-        for _, module_name, is_pkg in pkgutil.iter_modules(package.__path__):
-            # Skip base, loader, registry etc
-            if module_name in ["base", "loader", "registry"] or is_pkg:
+    # ==========================================================================
+    # PACKAGE DISCOVERY
+    # ==========================================================================
+
+    def load_from_package(
+        self,
+        package_name: str = "app.skills",
+    ) -> None:
+        """
+        Discover and register BaseSkill factories from a Python package.
+
+        A module is considered a skill module only when it exposes a
+        zero-argument `get_skill()` factory returning BaseSkill.
+        """
+        package = importlib.import_module(
+            package_name
+        )
+
+        if not hasattr(
+            package,
+            "__path__",
+        ):
+            raise ValueError(
+                f"Package '{package_name}' is not a package."
+            )
+
+        excluded_modules = {
+            "base",
+            "loader",
+            "registry",
+        }
+
+        discovered_modules = sorted(
+            pkgutil.iter_modules(
+                package.__path__
+            ),
+            key=lambda item: item[1],
+        )
+
+        for _, module_name, is_package in discovered_modules:
+            if (
+                module_name in excluded_modules
+                or is_package
+            ):
                 continue
-                
-            full_module_name = f"{package_name}.{module_name}"
-            try:
-                module = importlib.import_module(full_module_name)
-                if hasattr(module, "get_skill"):
-                    skill_instance = module.get_skill()
-                    if isinstance(skill_instance, BaseSkill):
-                        self.register_skill(skill_instance)
-            except Exception as e:
-                print(f"[Error] Failed to load skill from {full_module_name}: {e}")
 
-    def get_all_tools(self) -> List:
+            full_module_name = (
+                f"{package_name}.{module_name}"
+            )
+
+            try:
+                module = importlib.import_module(
+                    full_module_name
+                )
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Failed to import skill module "
+                    f"'{full_module_name}'."
+                ) from exc
+
+            factory = getattr(
+                module,
+                "get_skill",
+                None,
+            )
+
+            if factory is None:
+                continue
+
+            try:
+                skill = factory()
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Skill factory '{full_module_name}.get_skill' "
+                    "failed during initialization."
+                ) from exc
+
+            if not isinstance(
+                skill,
+                BaseSkill,
+            ):
+                raise TypeError(
+                    f"Skill factory '{full_module_name}.get_skill' "
+                    "did not return a BaseSkill instance."
+                )
+
+            self.register_skill(
+                skill
+            )
+
+    # ==========================================================================
+    # SKILL LOOKUP
+    # ==========================================================================
+
+    def get_skill(
+        self,
+        name: str,
+    ) -> Optional[BaseSkill]:
         """
-        Executes get_all_tools logic.
+        Return a registered skill by name.
         """
-        """Returns an aggregated list of all @tool functions from all registered skills."""
-        all_tools = []
+        return self._skills.get(
+            name
+        )
+
+    def get_registered_skill_names(self) -> List[str]:
+        """
+        Return registered skill names in deterministic order.
+        """
+        return sorted(
+            self._skills
+        )
+
+    # ==========================================================================
+    # TOOL LOOKUP
+    # ==========================================================================
+
+    def get_tool_metadata(
+        self,
+        tool_name: str,
+    ) -> Optional[ToolMetadata]:
+        """
+        Return metadata for one registered tool.
+        """
+        return self._tool_metadata.get(
+            tool_name
+        )
+
+    def get_tool(
+        self,
+        tool_name: str,
+    ) -> Optional[Any]:
+        """
+        Return the executable implementation for a registered tool.
+
+        The metadata registry is checked first so an implementation cannot
+        become executable merely by being present on a Skill object.
+        """
+        if tool_name not in self._tool_metadata:
+            return None
+
         for skill in self._skills.values():
-            all_tools.extend(skill.tools)
-        return all_tools
-        
+            for tool in skill.tools:
+                candidate_name = (
+                    getattr(
+                        tool,
+                        "name",
+                        None,
+                    )
+                    or getattr(
+                        tool,
+                        "__name__",
+                        None,
+                    )
+                )
+
+                if candidate_name == tool_name:
+                    return tool
+
+        return None
+
+    def resolve_tool(
+        self,
+        tool_name: str,
+    ) -> Optional[
+        Tuple[Any, ToolMetadata]
+    ]:
+        """
+        Resolve executable implementation and metadata atomically.
+        """
+        metadata = self.get_tool_metadata(
+            tool_name
+        )
+
+        if metadata is None:
+            return None
+
+        tool = self.get_tool(
+            tool_name
+        )
+
+        if tool is None:
+            return None
+
+        return (
+            tool,
+            metadata,
+        )
+
+    def get_all_tools(self) -> List[Any]:
+        """
+        Return all executable tools exposed by registered skills.
+        """
+        tools: List[Any] = []
+
+        for skill_name in self.get_registered_skill_names():
+            tools.extend(
+                self._skills[
+                    skill_name
+                ].tools
+            )
+
+        return tools
+
+    # ==========================================================================
+    # PROMPT CONTEXT
+    # ==========================================================================
+
     def get_system_prompt_extensions(self) -> str:
         """
-        Executes get_system_prompt_extensions logic.
+        Return the combined system-prompt extensions from active skills.
         """
-        """Returns a concatenated string of all active skill prompt extensions."""
-        extensions = []
-        for skill in self._skills.values():
-            ext = skill.system_prompt_extension
-            if ext:
-                extensions.append(f"[{skill.metadata.name.upper()} SKILL]\n{ext}")
-        
+        extensions: List[str] = []
+
+        for skill_name in self.get_registered_skill_names():
+            skill = self._skills[
+                skill_name
+            ]
+
+            extension = (
+                skill.system_prompt_extension
+            )
+
+            if extension:
+                extensions.append(
+                    f"[{skill.metadata.name.upper()} SKILL]\n"
+                    f"{extension}"
+                )
+
         if not extensions:
             return ""
-            
-        return "\n\n--- ACTIVE SKILLS CONTEXT ---\n" + "\n\n".join(extensions)
 
-# Global singleton registry
+        return (
+            "\n\n--- ACTIVE SKILLS CONTEXT ---\n"
+            + "\n\n".join(
+                extensions
+            )
+        )
+
+
+# ==============================================================================
+# APPLICATION REGISTRY
+# ==============================================================================
+
 skill_registry = SkillRegistry()

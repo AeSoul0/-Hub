@@ -1,72 +1,150 @@
 """
 @file backend/app/skills/web_search.py
-@description Implements web_search.py. Core components: WebSearchSkill.
+@description Native web-search skill for A.U.R.O.R.A.
 
-This module manages the internal business logic for WebSearchSkill.
-It provides specialized functionality to handle: perform_web_search, metadata, tools, system_prompt_extension, get_skill.
+Provides controlled internet search through DuckDuckGo. Network capability
+is explicitly declared in tool metadata so the central policy engine can
+enforce it before execution.
 """
+
+from __future__ import annotations
+
 import json
-from typing import Callable, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from duckduckgo_search import DDGS
-from langchain_core.tools import tool
 
-from .base import BaseSkill, SkillMetadata
+from app.core.security import Permission
+from app.skills.base import (
+    BaseSkill,
+    RiskLevel,
+    SkillMetadata,
+    ToolMetadata,
+)
 
 
-@tool
-def perform_web_search(query: str) -> str:
+# ==============================================================================
+# WEB SEARCH TOOL
+# ==============================================================================
+
+
+def perform_web_search(
+    query: str,
+) -> str:
     """
-    Executes perform_web_search logic.
+    Search the public web and return a compact JSON result set.
     """
-    """Cerca informazioni su internet in tempo reale. Usa questo tool per rispondere a domande su notizie recenti, meteo, o informazioni non presenti nel tuo contesto."""
+    if not query.strip():
+        raise ValueError(
+            "Search query cannot be empty."
+        )
+
     try:
-        # Fetch the top 3 web results matching the query
-        results = DDGS().text(query, max_results=3)
-        return json.dumps(results, ensure_ascii=False) if results else "No results found."
-    except Exception as e:
-        return f"Error during web search: {str(e)}"
+        results = DDGS().text(
+            query,
+            max_results=3,
+        )
+
+        if not results:
+            return "No web results found."
+
+        return json.dumps(
+            results,
+            ensure_ascii=False,
+        )
+
+    except Exception as exc:
+        return f"Web search error: {exc}"
+
+
+# ==============================================================================
+# WEB SEARCH SKILL
+# ==============================================================================
 
 
 class WebSearchSkill(BaseSkill):
     """
-    Represents the WebSearchSkill entity and its core operations.
+    Provides controlled access to public web search.
     """
+
     @property
     def metadata(self) -> SkillMetadata:
         """
-        Executes metadata logic.
+        Return web-search skill metadata.
         """
-        # Define the skill metadata
         return SkillMetadata(
             name="web_search",
-            description="Provides capabilities to search the internet for real-time information using DuckDuckGo.",
-            version="1.0.0"
+            description=(
+                "Searches public web content for current or externally "
+                "verified information."
+            ),
+            version="1.0.0",
         )
-        
+
     @property
     def tools(self) -> List[Callable]:
         """
-        Executes tools logic.
+        Return the executable web-search tool.
         """
-        # Expose the web search tool
-        return [perform_web_search]
-        
+        return [
+            perform_web_search,
+        ]
+
+    def get_tool_metadata(self) -> Dict[str, ToolMetadata]:
+        """
+        Return web-search security and execution metadata.
+        """
+        return {
+            "perform_web_search": ToolMetadata(
+                name="perform_web_search",
+                description=(
+                    "Search the public internet using DuckDuckGo."
+                ),
+                risk_level=RiskLevel.MEDIUM,
+                requires_approval=False,
+                permissions_required=[
+                    Permission.NETWORK_ACCESS.value,
+                ],
+                network_access=True,
+                filesystem_access=False,
+                max_runtime=20,
+                max_output=8000,
+                max_cost=0.0,
+                idempotent=True,
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "minLength": 1,
+                        }
+                    },
+                    "required": ["query"],
+                    "additionalProperties": False,
+                },
+                output_schema={
+                    "type": "string",
+                },
+                sandbox_profile="network",
+                audit_policy="standard",
+            )
+        }
+
     @property
     def system_prompt_extension(self) -> Optional[str]:
         """
-        Executes system_prompt_extension logic.
+        Return web-search system instructions.
         """
-        # Prompt context explaining when to rely on web search
         return (
-            "You have access to a web search tool. "
-            "Use it when you need to answer questions about current events, "
-            "real-time data, or subjects you lack knowledge of."
+            "You have access to a controlled public web-search tool. "
+            "Use it when information must be checked against current or "
+            "external sources. Network access is enforced by the central "
+            "policy layer."
         )
+
 
 def get_skill() -> BaseSkill:
     """
-    Executes get_skill logic.
+    Create the web-search skill instance.
     """
-    # Factory function to instantiate the skill
     return WebSearchSkill()
