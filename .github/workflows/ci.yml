@@ -2,13 +2,14 @@ name: A.U.R.O.R.A. 100/100 Final CI Gate
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+
     services:
       postgres:
         image: pgvector/pgvector:pg15
@@ -18,70 +19,110 @@ jobs:
           POSTGRES_DB: aehub_db
         ports:
           - 5432:5432
+
       redis:
         image: redis:7-alpine
         ports:
           - 6379:6379
 
     steps:
-    - uses: actions/checkout@v3
+      # =========================================================================
+      # SOURCE CHECKOUT
+      # =========================================================================
 
-    - name: Set up Python 3.10
-      uses: actions/setup-python@v4
-      with:
-        python-version: "3.10"
+      - uses: actions/checkout@v3
 
-    - name: Set up Node.js 20
-      uses: actions/setup-node@v3
-      with:
-        node-version: "20"
+      # =========================================================================
+      # RUNTIME TOOLCHAINS
+      # =========================================================================
 
-    - name: Install Backend Dependencies
-      run: |
-        cd backend
-        python -m pip install --upgrade pip
-        pip install ruff pytest httpx
-        pip install -r requirements.txt
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
 
-    - name: Run Ruff Linter & Formatter Check
-      run: |
-        cd backend
-        ruff check .
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v3
+        with:
+          node-version: "20"
 
-    - name: Run Unit and E2E Tests (M16 Gates)
-      env:
-        POSTGRES_URL: postgresql://aehub_user:password@localhost:5432/aehub_db
-        REDIS_URL: redis://localhost:6379/0
-      run: |
-        pytest tests/ -v
+      # =========================================================================
+      # BACKEND DEPENDENCIES
+      # =========================================================================
 
-    - name: Install Frontend Dependencies
-      run: |
-        cd frontend
-        npm install
+      - name: Install Backend Dependencies
+        run: |
+          cd backend
+          python -m pip install --upgrade pip
+          pip install ruff pytest httpx
+          pip install -r requirements.txt
 
-    - name: Build Frontend
-      run: |
-        cd frontend
-        npm run build
+      # =========================================================================
+      # BACKEND CODE QUALITY
+      # =========================================================================
 
-    - name: Container Scanning (Trivy)
-      uses: aquasecurity/trivy-action@master
-      with:
-        scan-type: 'fs'
-        format: 'table'
-        exit-code: '0' # Temporarily 0 so CI doesn't block on existing vulns initially
-        ignore-unfixed: true
-        vuln-type: 'os,library'
-        severity: 'CRITICAL,HIGH'
+      - name: Run Ruff Linter & Formatter Check
+        working-directory: backend
+        run: |
+          ruff check .
 
-    - name: Secret Scanning (TruffleHog)
-      uses: trufflesecurity/trufflehog@main
-      with:
-        path: ./
-        base: ${{ github.event.repository.default_branch }}
-        head: HEAD
+      # =========================================================================
+      # BACKEND TEST SUITE
+      #
+      # The repository keeps application code under backend/app while the
+      # test suite lives at repository root under tests/. Running pytest from
+      # backend ensures the backend pyproject.toml is discovered and exposes
+      # backend/ as the Python import root for "app.*" imports.
+      # =========================================================================
 
-    - name: 100/100 Certification Script
-      run: |
-        python evals/certify_100_100.py
+      - name: Run Unit and E2E Tests (M16 Gates)
+        working-directory: backend
+        env:
+          POSTGRES_URL: postgresql://aehub_user:password@localhost:5432/aehub_db
+          REDIS_URL: redis://localhost:6379/0
+          PYTHONPATH: .
+        run: |
+          pytest ../tests/ -v
+
+      # =========================================================================
+      # FRONTEND
+      # =========================================================================
+
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: |
+          npm install
+
+      - name: Build Frontend
+        working-directory: frontend
+        run: |
+          npm run build
+
+      # =========================================================================
+      # SECURITY SCANNING
+      # =========================================================================
+
+      - name: Container Scanning (Trivy)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "fs"
+          format: "table"
+          exit-code: "0"
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+
+      - name: Secret Scanning (TruffleHog)
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+
+      # =========================================================================
+      # FINAL CERTIFICATION
+      # =========================================================================
+
+      - name: 100/100 Certification Script
+        run: |
+          python evals/certify_100_100.py
