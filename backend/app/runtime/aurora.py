@@ -1,212 +1,275 @@
 """
 @file backend/app/runtime/aurora.py
-@description Core module for A.U.R.O.R.A. System
+@description Native compatibility facade for the A.U.R.O.R.A. Agent Engine.
 
-Implements core logic and architectural definitions.
+This module replaces the former LangGraph-based runtime with the native
+AgentRuntime execution kernel.
+
+Compatibility is intentionally preserved through:
+    get_aurora_app().ainvoke(...)
+
+Existing callers can therefore migrate incrementally without retaining
+LangGraph as an execution authority.
+
+The native execution path is:
+
+    Input -> AgentRuntime -> Native Worker -> Checker -> Durable Run State
+
+No graph compiler, graph checkpoint, ToolNode, or LangGraph runtime is used.
 """
 
-import operator
-import os
-from typing import Annotated, Sequence, TypedDict
+from __future__ import annotations
 
-from langchain_core.messages import BaseMessage
-# ChatGroq import removed in favor of ModelRouter
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-from langgraph.graph import END, StateGraph
-from langgraph.prebuilt import ToolNode
-from psycopg_pool import AsyncConnectionPool
+from types import SimpleNamespace
+from typing import Any, Dict, Optional
 
-from app.core.security import PolicyEngine, Principal
+from app.agent_engine.checker import AgentChecker
+from app.agent_engine.adapters.openai_adapter import OpenAIAdapter
+from app.agent_engine.runtime import AgentRuntime
+from app.core.security import Principal, RoleEnum
 
 
-# Define the State for our Agentic System
-class AuroraState(TypedDict):
-    messages: Annotated[Sequence[BaseMessage], operator.add]
-    session_id: str
-    current_intent: str
-    principal: Principal
+DEFAULT_SYSTEM_PRINCIPAL = Principal(
+    id="system",
+    role=RoleEnum.SYSTEM,
+    workspace_id="system",
+)
 
-import app.skills.memory_skill as memory_skill_module
-from app.memory.manager import AuroraMemoryManager
-from app.skills import skill_registry
 
-# Load all skills dynamically
-skill_registry.load_from_package("app.skills")
+class NativeAuroraWorker:
+    """
+    Native worker adapter used by the Aurora compatibility facade.
+    """
 
-# Get aggregated tools
-tools = skill_registry.get_all_tools()
-safe_tools = []
-sensitive_tools = []
+    def __init__(
+        self,
+        model_provider: OpenAIAdapter,
+        system_prompt: str,
+    ) -> None:
+        self.model_provider = model_provider
+        self.system_prompt = system_prompt
 
-for t in tools:
-    meta = skill_registry._tool_metadata.get(t.name)
-    if meta and meta.requires_approval:
-        sensitive_tools.append(t)
-    else:
-        safe_tools.append(t)
+    async def generate(
+        self,
+        context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Generate one worker step through the native ModelProvider interface.
+        """
+        worker_context = dict(context)
 
-safe_tool_node = ToolNode(safe_tools) if safe_tools else None
-sensitive_tool_node = ToolNode(sensitive_tools) if sensitive_tools else None
+        worker_context["system_prompt"] = self.system_prompt
+        worker_context.setdefault(
+            "role",
+            "aurora",
+        )
 
-# Node: Agent
-async def agent_node(state: AuroraState):
-    # Initialize the specific LLM model instance for the agent using the ModelRouter
-    # Initialize the specific LLM model instance for the agent using the ModelRouter
-    messages = state["messages"]
-    session_id = state.get("session_id", "default-session")
-    
-    # Set the contextvar for tools that need it (like MemorySkill)
-    memory_skill_module.current_session_id.set(session_id)
-    
-    from app.core.models import ModelRouter, ModelProvider
-    from app.core.config import settings
-    llm = ModelRouter.get_model(
-        provider=ModelProvider.GROQ,
-        model_name=settings.DEFAULT_LLM_MODEL,
-        temperature=settings.DEFAULT_TEMPERATURE
-    )
-    
-    # Only bind tools if there are tools available
-    if tools:
-        llm_with_tools = llm.bind_tools(tools)
-    else:
-        llm_with_tools = llm
-    
-    # Retrieve memories with semantic search
-    memory_manager = AuroraMemoryManager(session_id)
-    current_intent = state.get("current_intent", "")
-    memories_text = memory_manager.fetch_all_context(current_intent)
-    
-    # Phase 5: Dynamic System Prompt based on Identity Role
-    principal = state.get("principal")
-    role_str = principal.role.value if principal else "USER"
-    
-    base_system_prompt = (
-        f"You are A.U.R.O.R.A. (Autonomous Uplink & Real-time Operations Robotic Assistant). "
-        f"You are operating with authority level: {role_str}. "
-        "Be concise, act as the core orchestrator. Always respond in Italian unless requested otherwise."
-    )
-    
-    skill_extensions = skill_registry.get_system_prompt_extensions()
-    
-    final_prompt = base_system_prompt
-    if memories_text:
-        final_prompt += "\n\n[CONTEXT MEMORY]\n" + memories_text
-        
-    if skill_extensions:
-        final_prompt += "\n\n[AVAILABLE CAPABILITIES]\n" + skill_extensions
-        
-    system_msg = {"role": "system", "content": final_prompt}
-    
-    # Prepend system message
-    full_messages = [system_msg] + list(messages)
-    
-    response = await llm_with_tools.ainvoke(full_messages)
-    return {"messages": [response]}
+        return await self.model_provider.generate(
+            worker_context
+        )
 
-from app.runtime.tool_gateway import ToolGateway, ToolInvocation, ToolSpec
 
-# Node: Execute Tools via Gateway
-async def execute_tools_node(state: AuroraState):
-    # Iterate through tool calls requested by the LLM in the last message
-    # Iterate through tool calls requested by the LLM in the last message
-    messages = state["messages"]
-    last_message = messages[-1]
-    principal = state.get("principal")
-    session_id = state.get("session_id", "default-session")
-    
-    if not principal:
-        return {"messages": []} # Fallback, should never happen
-        
-    if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-        results = []
-        for tc in last_message.tool_calls:
-            tool_name = tc["name"]
-            arguments = tc["args"]
-            
-            tool_instance = next((t for t in tools if t.name == tool_name), None)
-            if not tool_instance:
-                from langchain_core.messages import ToolMessage
-                results.append(ToolMessage(tool_call_id=tc["id"], name=tool_name, content="Error: Tool not found"))
-                continue
-                
-            meta = skill_registry._tool_metadata.get(tool_name)
-            spec = ToolSpec(
-                name=tool_name,
-                description=tool_instance.description,
-                risk_level="HIGH" if (meta and meta.requires_approval) else "LOW",
-                approval_required=meta.requires_approval if meta else False
+class NativeAuroraApplication:
+    """
+    Compatibility application exposing an async invoke API.
+
+    Internally all execution is delegated to AgentRuntime.
+    """
+
+    def __init__(
+        self,
+        model_name: str = "default",
+    ) -> None:
+        self.model_provider = OpenAIAdapter(
+            model_name=model_name,
+        )
+
+        self.worker = NativeAuroraWorker(
+            model_provider=self.model_provider,
+            system_prompt=(
+                "You are A.U.R.O.R.A., the native ÆHub orchestration worker. "
+                "Follow the task exactly, respect the execution context, and "
+                "return only the requested result."
+            ),
+        )
+
+        self.checker = AgentChecker(
+            model_provider=OpenAIAdapter(
+                model_name=model_name,
             )
-            
-            invocation = ToolInvocation(
-                tool_name=tool_name,
-                arguments=arguments,
-                principal=principal,
-                session_id=session_id,
-                spec=spec
+        )
+
+        self.runtime = AgentRuntime()
+
+    async def ainvoke(
+        self,
+        input_state: Dict[str, Any],
+        config: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Invoke the native AgentRuntime using the historical Aurora state shape.
+        """
+        config = config or {}
+
+        session_id = str(
+            input_state.get(
+                "session_id",
+                "default_session",
             )
-            
-            async def executor(**kwargs):
-                # Handle execution of LangChain BaseTool
-                if hasattr(tool_instance, "ainvoke"):
-                    return await tool_instance.ainvoke(kwargs)
-                else:
-                    return tool_instance.invoke(kwargs)
-                    
-            res = await ToolGateway.execute(invocation, executor)
-            
-            from langchain_core.messages import ToolMessage
-            if res.success:
-                results.append(ToolMessage(tool_call_id=tc["id"], name=tool_name, content=res.output))
-            else:
-                results.append(ToolMessage(tool_call_id=tc["id"], name=tool_name, content=f"Policy/Execution Error: {res.error}"))
-                
-        return {"messages": results}
-    
-    return {"messages": []}
+        )
 
-# Conditional edge from agent to tools
-def should_execute_tools(state: AuroraState):
-    messages = state["messages"]
-    last_message = messages[-1]
-    
-    if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-        return "execute_tools"
-    return END
+        principal = input_state.get("principal")
 
-# Build the Graph
-workflow = StateGraph(AuroraState)
-workflow.add_node("agent", agent_node)
-workflow.add_node("execute_tools", execute_tools_node)
+        if principal is None:
+            principal = DEFAULT_SYSTEM_PRINCIPAL
 
-workflow.add_conditional_edges("agent", should_execute_tools, {"execute_tools": "execute_tools", END: END})
-workflow.add_edge("execute_tools", "agent")
+        if not isinstance(principal, Principal):
+            raise ValueError(
+                "Aurora invocation requires a valid Principal."
+            )
 
-workflow.set_entry_point("agent")
+        messages = input_state.get(
+            "messages",
+            [],
+        )
 
-_aurora_app = None
-_pool = None
+        intent = input_state.get(
+            "current_intent",
+            self._extract_last_message(messages),
+        )
 
-async def get_aurora_app():
-    # Setup PostgreSQL Checkpointer for LangGraph and compile the workflow
-    # Setup PostgreSQL Checkpointer for LangGraph and compile the workflow
-    """Lazily initializes the LangGraph application with PostgreSQL Checkpointer."""
-    global _aurora_app, _pool
-    if _aurora_app is not None:
-        return _aurora_app
-        
-    from app.core.config import settings
-    
-    _pool = AsyncConnectionPool(
-        conninfo=settings.POSTGRES_URL,
-        max_size=20,
-        kwargs={"autocommit": True}
-    )
-    checkpointer = AsyncPostgresSaver(_pool)
-    await checkpointer.setup()
-    
-    _aurora_app = workflow.compile(
-        checkpointer=checkpointer,
-        interrupt_before=["sensitive_tools"] if sensitive_tool_node else None
-    )
+        if not intent:
+            raise ValueError(
+                "Aurora invocation requires a non-empty task."
+            )
+
+        configurable = config.get(
+            "configurable",
+            {},
+        )
+
+        run_id = configurable.get(
+            "thread_id"
+        )
+
+        if not run_id:
+            run_id = None
+
+        task = {
+            "description": str(intent),
+        }
+
+        result = await self.runtime.execute_task(
+            task=task,
+            orchestrator=None,
+            worker=self.worker,
+            checker=self.checker,
+            run_id=run_id,
+            session_id=session_id,
+            workspace_id=principal.workspace_id,
+        )
+
+        message = SimpleNamespace(
+            content=result if result is not None else ""
+        )
+
+        return {
+            "messages": [message],
+            "session_id": session_id,
+            "current_intent": str(intent),
+            "principal": principal,
+        }
+
+    @staticmethod
+    def _extract_last_message(
+        messages: list[Any],
+    ) -> str:
+        """
+        Extract textual content without requiring LangChain message classes.
+        """
+        if not messages:
+            return ""
+
+        last = messages[-1]
+
+        if isinstance(last, dict):
+            return str(
+                last.get(
+                    "content",
+                    "",
+                )
+            )
+
+        return str(
+            getattr(
+                last,
+                "content",
+                last,
+            )
+        )
+
+
+_aurora_app: Optional[NativeAuroraApplication] = None
+
+
+async def get_aurora_app() -> NativeAuroraApplication:
+    """
+    Return the singleton native Aurora application facade.
+    """
+    global _aurora_app
+
+    if _aurora_app is None:
+        _aurora_app = NativeAuroraApplication()
+
     return _aurora_app
+
+
+async def run_aurora_agent(
+    session_id: str,
+    transcript: str,
+    principal: Principal,
+) -> Dict[str, Any]:
+    """
+    Execute one native Aurora interaction for the authenticated principal.
+    """
+    if not session_id:
+        raise ValueError(
+            "session_id is required"
+        )
+
+    if not transcript or not transcript.strip():
+        raise ValueError(
+            "transcript is required"
+        )
+
+    if not isinstance(principal, Principal):
+        raise ValueError(
+            "principal is required"
+        )
+
+    app = await get_aurora_app()
+
+    return await app.ainvoke(
+        {
+            "messages": [
+                SimpleNamespace(
+                    content=transcript
+                )
+            ],
+            "session_id": session_id,
+            "current_intent": transcript,
+            "principal": principal,
+        },
+        config={
+            "configurable": {
+                "thread_id": f"{session_id}:{principal.id}"
+            }
+        },
+    )
+
+
+__all__ = [
+    "NativeAuroraApplication",
+    "get_aurora_app",
+    "run_aurora_agent",
+]

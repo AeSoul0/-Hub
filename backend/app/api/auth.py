@@ -19,8 +19,6 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 from app.core.cache import CacheService
 
-from app.core.cache import CacheService
-
 @router.post("/login")
 async def login(request: Request, response: Response, db: Session = Depends(get_db)):
 
@@ -44,7 +42,9 @@ async def login(request: Request, response: Response, db: Session = Depends(get_
             db.add(workspace)
             
         if not user:
-            user = User(username="admin", hashed_password="default-unsafe-key")
+            import hashlib
+            hashed_pw = hashlib.sha256(settings.AEHUB_SECRET_KEY.encode()).hexdigest()
+            user = User(username="admin", hashed_password=hashed_pw)
             db.add(user)
             db.flush()
             member = WorkspaceMembership(user_id=user.id, workspace_id=workspace.id, role=RoleEnum.ADMIN)

@@ -53,6 +53,6 @@ class AdvancedSecurityMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["Permissions-Policy"] = "geolocation=(), microphone=()"
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(self)"
 
         return response

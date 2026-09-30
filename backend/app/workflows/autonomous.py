@@ -1,70 +1,121 @@
 """
 @file backend/app/workflows/autonomous.py
-@description Implements autonomous.py. Core components: WorkflowEngine.
+@description Native autonomous workflow integration.
 
-This module manages the internal business logic for WorkflowEngine.
-It provides specialized functionality to handle: morning_briefing_routine, register_workflows.
+This module keeps the autonomous workflow API independent from LangChain and
+LangGraph. Workflows invoke the native Aurora compatibility facade and rely on
+the Agent Engine for durable execution and validation.
 """
-from langchain_core.messages import HumanMessage
+
+from __future__ import annotations
 
 from app.core.event_bus import event_bus
+from app.core.security import Principal, RoleEnum
 from app.runtime.aurora import get_aurora_app
+
+
+BACKGROUND_PRINCIPAL = Principal(
+    id="system-workflow",
+    role=RoleEnum.SYSTEM,
+    workspace_id="system",
+)
 
 
 class WorkflowEngine:
     """
-    Represents the WorkflowEngine entity and its core operations.
+    Execute long-running autonomous system workflows.
     """
-    """
-    Phase 13: Autonomous Workflows.
-    Allows A.U.R.O.R.A. to run long-term independent goals.
-    """
-    
-    @staticmethod
-    async def morning_briefing_routine():
-        """
-        Executes morning_briefing_routine logic.
-        """
-        """
-        An autonomous task that runs without user input.
-        It generates a briefing and pushes it to the UI via SSE.
-        """
-        print("[Workflow] Starting Autonomous Morning Briefing...")
-        
-        app_instance = await get_aurora_app()
-        # Session ID dedicated to background tasks
-        session_id = "background_workflow_daemon"
-        
-        initial_state = {
-            "messages": [HumanMessage(content="Fai una rapida ricerca sulle notizie tech più importanti di oggi e genera un report riassuntivo con i 3 punti chiave. Non aspettare input dell'utente.")],
-            "session_id": session_id,
-            "current_intent": "workflow_briefing"
-        }
-        
-        try:
-            # Let AURORA run the workflow autonomously
-            final_state = await app_instance.ainvoke(
-                initial_state,
-                config={"configurable": {"thread_id": session_id}}
-            )
-            
-            result = final_state["messages"][-1].content
-            
-            # Push proactively to the UI using the event bus
-            await event_bus.publish("global_alerts", "notification", {
-                "title": "Morning Briefing Ready",
-                "content": result
-            })
-            print("[Workflow] Morning Briefing completed and pushed to UI.")
-            
-        except Exception as e:
-            print(f"[Workflow] Error during autonomous task: {e}")
 
-def register_workflows():
+    @staticmethod
+    async def morning_briefing_routine() -> None:
+        """
+        Generate and publish the autonomous morning briefing.
+        """
+        session_id = "background_workflow_daemon"
+
+        app = await get_aurora_app()
+
+        initial_state = {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": (
+                        "Generate a concise morning briefing for the system "
+                        "operator. Summarize the most important available "
+                        "operational information and return three key points."
+                    ),
+                }
+            ],
+            "session_id": session_id,
+            "current_intent": "workflow_briefing",
+            "principal": BACKGROUND_PRINCIPAL,
+        }
+
+        try:
+            final_state = await app.ainvoke(
+                initial_state,
+                config={
+                    "configurable": {
+                        "thread_id": session_id,
+                    }
+                },
+            )
+
+            messages = final_state.get(
+                "messages",
+                [],
+            )
+
+            if not messages:
+                raise RuntimeError(
+                    "Autonomous workflow returned no messages."
+                )
+
+            result = getattr(
+                messages[-1],
+                "content",
+                str(messages[-1]),
+            )
+
+            await event_bus.publish(
+                "global_alerts",
+                "notification",
+                {
+                    "title": "Morning Briefing Ready",
+                    "content": result,
+                },
+            )
+
+        except Exception as exc:
+            await event_bus.publish(
+                "global_alerts",
+                "error",
+                {
+                    "title": "Morning Briefing Failed",
+                    "content": str(exc),
+                },
+            )
+            raise
+
+    @staticmethod
+    def register_workflows() -> None:
+        """
+        Register autonomous workflows with the application scheduler.
+
+        The scheduler integration remains explicit so importing this module
+        cannot silently start background jobs.
+        """
+        return None
+
+
+def register_workflows() -> None:
     """
-    Executes register_workflows logic.
+    Public compatibility entrypoint used by application startup.
     """
-    """Registers all autonomous jobs into the Proactive Scheduler."""
-    # Runs every 24 hours (86400 seconds) - for demo purposes, set to 60 seconds or triggered via API.
-    # proactive_scheduler.schedule_interval(86400, WorkflowEngine.morning_briefing_routine)
-    pass
+    WorkflowEngine.register_workflows()
+
+
+__all__ = [
+    "WorkflowEngine",
+    "register_workflows",
+]

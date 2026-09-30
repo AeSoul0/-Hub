@@ -7,7 +7,6 @@ It provides specialized functionality to handle: verify_api_key, add_security_he
 """
 import asyncio
 import base64
-import hashlib
 import json
 import os
 import sys
@@ -39,6 +38,11 @@ from app.core.config import settings
 from app.core.telemetry import setup_telemetry
 
 app = FastAPI(title="AeSouls Hub API Server")
+
+# Health check endpoint for Docker/orchestration probes
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
 
 # Phase 4: Observability Plane
 setup_telemetry(app)
@@ -85,15 +89,13 @@ async def verify_api_key(request: Request, call_next):
                     content={"detail": "Unauthorized access. Invalid or missing session."}
                 )
                 
-            # M4: Rate Limiting
+            # M4: Rate Limiting (note: /api/auth/ paths are excluded above)
             path = request.url.path
             limit = 60
             window = 60
             limit_key = "api"
             
-            if path.startswith("/api/auth/login"):
-                limit = 5; window = 300; limit_key = "login"
-            elif path.startswith("/api/orchestrator/listen") or "upload" in path:
+            if path.startswith("/api/orchestrator/listen") or "upload" in path:
                 limit = 10; window = 60; limit_key = "upload"
             elif path.startswith("/api/orchestrator/ask"):
                 limit = 20; window = 60; limit_key = "llm"
@@ -188,7 +190,7 @@ async def get_events_stream(request: Request):
     try:
         principal = resolve_principal(request)
         session_id = principal.id
-    except:
+    except Exception:
         return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
     
     return StreamingResponse(sse_event_generator(session_id, request), media_type="text/event-stream")
@@ -312,8 +314,9 @@ async def websocket_endpoint(websocket: WebSocket):
     Manages continuous duplex WebSocket communication streams. Extracts state tokens
     to segment settings matrices, history recall buffers, and loops on a per-user layer.
     """
-    from app.core.security import IdentityService
+    from app.core.security import IdentityService, Principal
     from app.core.db import SessionLocal
+    from app.domain.models.identity import RoleEnum
     # SECURITY ANCHOR: Validate session token passed via cookies ONLY (no query params)
     client_token = websocket.cookies.get("aehub_session_token")
     with SessionLocal() as db:
@@ -324,10 +327,16 @@ async def websocket_endpoint(websocket: WebSocket):
         await websocket.close(code=1008)  # 1008 corresponds to Policy Violation
         return
 
+    # Build a Principal for the generate_ai_response call
+    ws_principal = Principal(
+        id=session.user_id,
+        role=session.role or RoleEnum.USER,
+        workspace_id=session.workspace_id or "default-workspace"
+    )
+
     await websocket.accept()
     print("[OK] Client connection established on WebSocket node")
 
-    os.getenv("OPENROUTER_API_KEY")
     session_id = session.user_id
 
     async def safe_send(payload: dict):
@@ -364,7 +373,8 @@ async def websocket_endpoint(websocket: WebSocket):
             from app.agents.orchestrator import AESOUL_SYSTEM_PROMPT, generate_ai_response
             
             response_payload = await generate_ai_response(
-                user_text, AESOUL_SYSTEM_PROMPT, str(user_context), session_id
+                user_text, AESOUL_SYSTEM_PROMPT, str(user_context), session_id,
+                principal=ws_principal
             )
             
             if response_payload:

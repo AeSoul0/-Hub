@@ -1,82 +1,214 @@
 """
 @file backend/app/agent_engine/state/manager.py
-@description Implements manager.py. Core components: AgentStateManager.
+@description Durable PostgreSQL state management for native Agent Runtime runs.
 
-This module manages the internal business logic for AgentStateManager.
-It provides specialized functionality to handle: save_state, load_state, save_agent_run, load_agent_run.
+This module is responsible for serializing, persisting, loading, and restoring
+AgentRun checkpoints. Persistence is deliberately implemented behind a small
+manager boundary so the orchestration runtime never depends directly on ORM
+records or database-specific serialization details.
 """
+
 import json
-from typing import Dict, Any, Optional
 from datetime import datetime
+from typing import Any, Dict, Optional
+
+from app.agent_engine.models import AgentRun, AgentRunStatus
 from app.core.db import SessionLocal
 from app.domain.models.runtime_state import AgentRun as DbAgentRun
-from app.agent_engine.models import AgentRun, AgentRunStatus
+
+
+def _serialize_run(run: AgentRun) -> str:
+    """
+    Serialize a native AgentRun into a JSON snapshot.
+
+    Pydantic v2 is the supported runtime version. The fallback keeps the
+    manager compatible with legacy callers during the migration period.
+    """
+
+    if hasattr(run, "model_dump"):
+        payload = run.model_dump(mode="json")
+    else:
+        payload = run.dict()
+
+    return json.dumps(
+        payload,
+        ensure_ascii=False,
+        default=str,
+    )
+
+
+def _deserialize_result(result: Optional[str]) -> Any:
+    """
+    Restore a persisted result when it contains JSON.
+
+    Plain-text legacy values are returned unchanged.
+    """
+
+    if result is None:
+        return None
+
+    try:
+        return json.loads(result)
+    except (json.JSONDecodeError, TypeError):
+        return result
+
 
 class AgentStateManager:
     """
-    Represents the AgentStateManager entity and its core operations.
+    Durable persistence boundary for native Agent Runtime state.
     """
-    @classmethod
-    def save_state(cls, run_id: str, state: Dict[str, Any]):
-        """
-        Executes save_state logic.
-        """
-        with SessionLocal() as db:
-            record = db.query(DbAgentRun).filter(DbAgentRun.id == run_id).first()
-            if record:
-                # We store 'state' as result if it's the final dict, or somewhere else.
-                # In this architecture, state is merged with AgentRun
-                pass # Usually handled by save_agent_run
 
     @classmethod
-    def load_state(cls, run_id: str) -> Optional[Dict[str, Any]]:
+    def save_state(
+        cls,
+        run_id: str,
+        state: Dict[str, Any],
+    ) -> None:
         """
-        Executes load_state logic.
+        Replace the current runtime checkpoint for an existing run.
         """
-        return None
+
+        run = cls.load_agent_run(run_id)
+
+        if run is None:
+            raise ValueError(
+                f"Cannot save state: agent run '{run_id}' does not exist."
+            )
+
+        run.current_state = state
+        run.updated_at = datetime.utcnow()
+
+        cls.save_agent_run(run)
 
     @classmethod
-    def save_agent_run(cls, run: AgentRun):
+    def load_state(
+        cls,
+        run_id: str,
+    ) -> Optional[Dict[str, Any]]:
         """
-        Executes save_agent_run logic.
+        Load the serialized runtime checkpoint for a run.
         """
+
+        run = cls.load_agent_run(run_id)
+
+        if run is None:
+            return None
+
+        return run.current_state
+
+    @classmethod
+    def save_agent_run(
+        cls,
+        run: AgentRun,
+    ) -> None:
+        """
+        Persist the complete AgentRun snapshot.
+
+        The complete Pydantic model is stored in input_data so fields such as
+        workspace_id, current_state, task_attempts, metadata, and usage survive
+        process restarts without requiring a column migration for every runtime
+        feature.
+        """
+
+        serialized_snapshot = _serialize_run(run)
+
+        serialized_result = None
+        if run.result is not None:
+            serialized_result = json.dumps(
+                run.result,
+                ensure_ascii=False,
+                default=str,
+            )
+
         with SessionLocal() as db:
-            record = db.query(DbAgentRun).filter(DbAgentRun.id == run.run_id).first()
-            if not record:
+            record = (
+                db.query(DbAgentRun)
+                .filter(DbAgentRun.id == run.run_id)
+                .first()
+            )
+
+            if record is None:
                 record = DbAgentRun(
                     id=run.run_id,
                     session_id=run.session_id,
-                    principal_id="system", # fallback
+                    principal_id=run.principal_id or "system",
                     role=run.role,
-                    input_data=json.dumps(run.input_data) if isinstance(run.input_data, dict) else str(run.input_data),
+                    input_data=serialized_snapshot,
                     status=run.status.value,
-                    result=json.dumps(run.result) if run.result else None,
-                    error=run.error
+                    result=serialized_result,
+                    error=run.error,
+                    created_at=run.created_at,
+                    updated_at=run.updated_at,
                 )
                 db.add(record)
+
             else:
+                record.session_id = run.session_id
+                record.principal_id = (
+                    run.principal_id
+                    or record.principal_id
+                    or "system"
+                )
+                record.role = run.role
+                record.input_data = serialized_snapshot
                 record.status = run.status.value
-                record.result = json.dumps(run.result) if run.result else None
+                record.result = serialized_result
                 record.error = run.error
+                record.updated_at = run.updated_at
+
             db.commit()
 
     @classmethod
-    def load_agent_run(cls, run_id: str) -> Optional[AgentRun]:
+    def load_agent_run(
+        cls,
+        run_id: str,
+    ) -> Optional[AgentRun]:
         """
-        Executes load_agent_run logic.
+        Reconstruct a native AgentRun from its durable database snapshot.
+
+        Legacy records that predate the snapshot format are handled using a
+        conservative compatibility path rather than silently failing.
         """
+
         with SessionLocal() as db:
-            record = db.query(DbAgentRun).filter(DbAgentRun.id == run_id).first()
-            if record:
+            record = (
+                db.query(DbAgentRun)
+                .filter(DbAgentRun.id == run_id)
+                .first()
+            )
+
+            if record is None:
+                return None
+
+            try:
+                snapshot = json.loads(record.input_data)
+
+                snapshot["status"] = AgentRunStatus(record.status).value
+                snapshot["result"] = _deserialize_result(record.result)
+                snapshot["error"] = record.error
+                snapshot["updated_at"] = record.updated_at
+
+                if not snapshot.get("created_at"):
+                    snapshot["created_at"] = record.created_at
+
+                return AgentRun(**snapshot)
+
+            except (
+                json.JSONDecodeError,
+                TypeError,
+                ValueError,
+            ):
+                # Compatibility path for records written by the previous
+                # persistence implementation.
                 return AgentRun(
                     run_id=record.id,
                     session_id=record.session_id,
-                    role=record.role,
-                    input_data=json.loads(record.input_data) if record.input_data.startswith("{") else record.input_data,
+                    workspace_id="default_workspace",
+                    principal_id=record.principal_id,
+                    role=record.role or "agent",
                     status=AgentRunStatus(record.status),
-                    result=json.loads(record.result) if record.result else None,
+                    result=_deserialize_result(record.result),
                     error=record.error,
                     created_at=record.created_at,
-                    updated_at=record.updated_at
+                    updated_at=record.updated_at,
                 )
-        return None

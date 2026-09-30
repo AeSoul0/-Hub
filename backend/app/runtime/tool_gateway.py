@@ -1,191 +1,459 @@
 """
 @file backend/app/runtime/tool_gateway.py
-@description Implements tool_gateway.py. Core components: ToolInvocation, ToolResult, ToolGateway.
+@description Secure side-effect gateway for A.U.R.O.R.A. tool execution.
 
-This module manages the internal business logic for ToolInvocation, ToolResult, ToolGateway.
-It provides specialized functionality to handle: execute, _log_audit, _audit_and_fail.
+All executable tools cross this boundary before any external side effect:
+identity -> policy -> guardrail -> schema -> budget -> approval ->
+idempotency -> task tracking -> executor -> post-guardrail -> audit.
+
+The gateway is intentionally framework-agnostic and receives an executor
+callback from the native AgentRuntime.
 """
-from datetime import datetime
-from enum import Enum
-from typing import Any, Dict, Optional
-import json
+
+from __future__ import annotations
+
 import hashlib
-from app.agent_engine.state.idempotency import IdempotencyManager
-from app.agent_engine.guardrails import ToolGuardrail
+import json
+import time
+from typing import Any, Callable, Dict, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from app.core.security import PolicyEngine, Principal
-from app.runtime.task_manager import TaskManager, TaskState
-from app.agent_engine.models import ToolSpec
-from app.budget.manager import BudgetManager
 from app.agent_engine.approval.manager import ApprovalManager
 from app.agent_engine.errors import ApprovalRequiredError
+from app.agent_engine.guardrails import ToolGuardrail
+from app.agent_engine.models import ToolProposal, ToolSpec
+from app.agent_engine.state.idempotency import IdempotencyManager
+from app.agent_engine.budget import BudgetManager
+from app.core.security import (
+    BudgetState,
+    PolicyEngine,
+    Principal,
+    TaskExecutionContext,
+    WorkspacePolicy,
+)
+from app.runtime.task_manager import TaskManager, TaskState
+
+
+# ==============================================================================
+# INVOCATION / RESULT CONTRACTS
+# ==============================================================================
 
 class ToolInvocation(BaseModel):
     """
-    Represents the ToolInvocation entity and its core operations.
+    Represents one fully identified tool execution request.
     """
+
     tool_name: str
-    arguments: Dict[str, Any]
+    arguments: Dict[str, Any] = Field(default_factory=dict)
     principal: Principal
     session_id: str
-    spec: Optional[ToolSpec] = None
+    spec: ToolSpec
+    tool_call_id: str = "tool_call"
+    run_id: str = "run_unknown"
+
 
 class ToolResult(BaseModel):
     """
-    Represents the ToolResult entity and its core operations.
+    Normalized result returned by the ToolGateway.
     """
+
     success: bool
-    output: Any
+    output: Any = None
     error: Optional[str] = None
     audit_id: Optional[str] = None
 
+
+# ==============================================================================
+# TOOL GATEWAY
+# ==============================================================================
+
 class ToolGateway:
     """
-    Represents the ToolGateway entity and its core operations.
+    Centralized policy and side-effect execution boundary.
     """
-    """
-    Phase 2: Tool Gateway v2.
-    Implements a strict pipeline for ALL tool executions:
-    Schema validation -> Identity -> Permission -> Risk -> Budget -> Approval -> Idempotency -> Executor -> Output limits -> Audit
-    """
-    
-    # Simple memory storage for idempotency
-    _idempotency_cache: Dict[str, Any] = {}
-    
+
     @staticmethod
-    async def execute(invocation: ToolInvocation, executor_callback, task_context=None) -> ToolResult:
+    def _idempotency_key(invocation: ToolInvocation) -> str:
         """
-        Executes execute logic.
+        Creates a deterministic SHA-256 idempotency key.
         """
-        from app.core.security import TaskExecutionContext, WorkspacePolicy, BudgetState
-        if not task_context: task_context = TaskExecutionContext()
-        # 1. Identity is bound in ToolInvocation (invocation.principal)
-        if not invocation.principal:
-            return ToolResult(success=False, output=None, error="Unauthorized: Missing principal")
-            
-        # 2. Permission & Risk
-        is_sensitive = invocation.spec.risk_level == "HIGH" if invocation.spec else False
-        from app.agent_engine.models import ToolProposal
-        proposal = ToolProposal(tool_call_id="call_0", tool_name=invocation.tool_name, arguments=invocation.arguments, run_id="run_0")
-        decision = PolicyEngine.authorize_tool(invocation.principal, invocation.spec, proposal, WorkspacePolicy(), BudgetState(), task_context)
-        if decision.decision == "DENY":
-            return ToolGateway._audit_and_fail(invocation, f"Unauthorized: {decision.reason}")
-            
-        if invocation.spec:
-            # 3. Schema validation
-            if invocation.spec.input_schema:
-                import jsonschema
-                try:
-                    jsonschema.validate(instance=invocation.arguments, schema=invocation.spec.input_schema)
-                except jsonschema.exceptions.ValidationError as e:
-                    return ToolGateway._audit_and_fail(invocation, f"Schema validation failed: {e.message}")
-            
-            # 4. Budget
-            if invocation.spec.max_cost > 0:
-                has_budget = await BudgetManager.check_budget(invocation.session_id, invocation.spec.max_cost)
-                if not has_budget:
-                    return ToolGateway._audit_and_fail(invocation, "Budget exceeded for this session.")
-            
-            # 5. Approval
-            if invocation.spec.requires_approval:
-                status = await ApprovalManager.check_approval_status(invocation.session_id, invocation.tool_name, invocation.arguments)
-                if status != "APPROVED":
-                    if status == "NONE":
-                        await ApprovalManager.request_approval(invocation.session_id, invocation.tool_name, invocation.arguments)
-                    raise ApprovalRequiredError(f"Tool {invocation.tool_name} requires human approval.")
-                    
-            # 6. Idempotency
-            if invocation.spec.idempotent:
-                idem_key = hashlib.md5(json.dumps({'tool': invocation.tool_name, 'args': invocation.arguments}, sort_keys=True).encode()).hexdigest()
-                cached = IdempotencyManager.get_result(idem_key)
-                if cached is not None:
-                    return ToolResult(success=True, output=cached, audit_id="cached")
-                invocation.arguments['_idem_key'] = idem_key # pass to executor to save
-                
-        # 7. Sandbox routing & Executor
-        task = TaskManager.create_task(
-            session_id=invocation.session_id,
-            payload={"tool": invocation.tool_name, "args": invocation.arguments},
-            priority=1
+        payload = {
+            "workspace_id": invocation.principal.workspace_id,
+            "tool": invocation.tool_name,
+            "arguments": invocation.arguments,
+        }
+        canonical = json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
         )
-        TaskManager.update_state(task.id, TaskState.RUNNING)
-        
-        import time
-        start_time = time.time()
-        try:
-            # Execute via callback
-            result = await executor_callback(**invocation.arguments)
-            
-            duration_ms = int((time.time() - start_time) * 1000)
-            
-            # Save idempotency if requested
-            if invocation.spec and invocation.spec.idempotent:
-                idem_key = invocation.arguments.get('_idem_key')
-                if idem_key:
-                    cached = result
-            
-            # 8. Output Validation & Limits
-            normalized_output = str(result)
-            max_out = invocation.spec.max_output if invocation.spec else 4000
-            if len(normalized_output) > max_out:
-                normalized_output = normalized_output[:max_out] + "... [TRUNCATED]"
-            
-            # 9. Audit and Task completion
-            TaskManager.update_state(task.id, TaskState.COMPLETED)
-            audit_id = ToolGateway._log_audit(invocation, True, None, execution_result=normalized_output, duration=f"{duration_ms}ms")
-            
-            return ToolResult(
-                success=True, output=normalized_output, audit_id=audit_id
-            )
-            
-        except Exception as e:
-            duration_ms = int((time.time() - start_time) * 1000)
-            TaskManager.update_state(task.id, TaskState.FAILED, error_message=str(e))
-            audit_id = ToolGateway._log_audit(invocation, False, str(e), decision="DENY", duration=f"{duration_ms}ms")
-            return ToolResult(
-                success=False, output=None, error=str(e), audit_id=audit_id
-            )
-            
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
     @staticmethod
-    def _log_audit(invocation: ToolInvocation, success: bool, error: Optional[str], decision: str = "ALLOW", execution_result: str = None, duration: str = None) -> str:
+    def _audit_and_fail(
+        invocation: ToolInvocation,
+        error_message: str,
+        decision: str = "DENY",
+    ) -> ToolResult:
         """
-        Executes _log_audit logic.
+        Records a rejected invocation and returns a normalized failure.
+        """
+        audit_id = ToolGateway._log_audit(
+            invocation=invocation,
+            success=False,
+            error=error_message,
+            decision=decision,
+        )
+        return ToolResult(
+            success=False,
+            output=None,
+            error=error_message,
+            audit_id=audit_id,
+        )
+
+    @staticmethod
+    def _log_audit(
+        invocation: ToolInvocation,
+        success: bool,
+        error: Optional[str],
+        decision: str = "ALLOW",
+        execution_result: Optional[str] = None,
+        duration: Optional[str] = None,
+    ) -> str:
+        """
+        Persists a structured audit record without leaking raw arguments.
         """
         try:
             from app.core.db import SessionLocal
             from app.domain.models.audit import AuditLog
-            import hashlib
-            import json
-            
-            args_hash = hashlib.sha256(json.dumps(invocation.arguments, sort_keys=True).encode()).hexdigest()
-            risk_level = invocation.spec.risk_level if invocation.spec else "low"
-            
+
+            arguments_hash = hashlib.sha256(
+                json.dumps(
+                    invocation.arguments,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            ).hexdigest()
+
             with SessionLocal() as db:
-                audit_record = AuditLog(
+                record = AuditLog(
                     session_id=invocation.session_id,
+                    run_id=invocation.run_id,
+                    tool_call_id=invocation.tool_call_id,
                     principal_id=invocation.principal.id,
                     workspace_id=invocation.principal.workspace_id,
                     tool_name=invocation.tool_name,
-                    risk=risk_level,
-                    arguments_hash=args_hash,
+                    risk=invocation.spec.risk_level,
+                    arguments_hash=arguments_hash,
                     decision=decision,
                     success=success,
                     execution_result=execution_result,
                     duration=duration,
-                    error=error
+                    error=error,
                 )
-                db.add(audit_record)
+                db.add(record)
                 db.commit()
-                return audit_record.id
+                db.refresh(record)
+                return record.id
         except Exception:
+            # Observability failure must not expose database internals to the
+            # caller. The execution result remains independently normalized.
             return "audit_failed"
-            
+
     @staticmethod
-    def _audit_and_fail(invocation: ToolInvocation, error_msg: str, decision: str = "DENY") -> ToolResult:
+    async def execute(
+        invocation: ToolInvocation,
+        executor_callback: Callable[..., Any],
+        task_context: Optional[TaskExecutionContext] = None,
+    ) -> ToolResult:
         """
-        Executes _audit_and_fail logic.
+        Executes a tool through the complete security pipeline.
+
+        The executor is never called before policy, input guardrails, schema,
+        budget, approval, and idempotency checks have completed.
         """
-        audit_id = ToolGateway._log_audit(invocation, False, error_msg, decision=decision)
-        return ToolResult(success=False, output=None, error=error_msg, audit_id=audit_id)
+        if invocation.principal is None:
+            return ToolGateway._audit_and_fail(
+                invocation,
+                "Unauthorized: missing principal.",
+            )
+
+        if not invocation.principal.workspace_id:
+            return ToolGateway._audit_and_fail(
+                invocation,
+                "Unauthorized: missing workspace binding.",
+            )
+
+        if task_context is None:
+            task_context = TaskExecutionContext()
+
+        proposal = ToolProposal(
+            tool_call_id=invocation.tool_call_id,
+            tool_name=invocation.tool_name,
+            arguments=dict(invocation.arguments),
+            run_id=invocation.run_id,
+        )
+
+        # ----------------------------------------------------------------------
+        # 1. Identity / policy
+        # ----------------------------------------------------------------------
+        decision = PolicyEngine.authorize_tool(
+            principal=invocation.principal,
+            tool_spec=invocation.spec,
+            tool_proposal=proposal,
+            workspace_policy=WorkspacePolicy(),
+            budget_state=BudgetState(),
+            task_context=task_context,
+        )
+
+        decision_value = (
+            decision.decision.value
+            if hasattr(decision.decision, "value")
+            else str(decision.decision)
+        )
+
+        if decision_value == "DENY":
+            return ToolGateway._audit_and_fail(
+                invocation,
+                f"Unauthorized: {decision.reason}",
+                decision="DENY",
+            )
+
+        # ----------------------------------------------------------------------
+        # 2. Pre-execution guardrail
+        # ----------------------------------------------------------------------
+        try:
+            sanitized_arguments = ToolGuardrail.validate_pre_execution(
+                invocation.tool_name,
+                dict(invocation.arguments),
+            )
+        except Exception as exc:
+            return ToolGateway._audit_and_fail(
+                invocation,
+                f"Tool guardrail rejected invocation: {exc}",
+                decision="DENY",
+            )
+
+        invocation.arguments = dict(sanitized_arguments)
+
+        # ----------------------------------------------------------------------
+        # 3. Input schema validation
+        # ----------------------------------------------------------------------
+        if invocation.spec.input_schema:
+            try:
+                import jsonschema
+
+                jsonschema.validate(
+                    instance=invocation.arguments,
+                    schema=invocation.spec.input_schema,
+                )
+            except Exception as exc:
+                return ToolGateway._audit_and_fail(
+                    invocation,
+                    f"Schema validation failed: {exc}",
+                    decision="DENY",
+                )
+
+        # ----------------------------------------------------------------------
+        # 4. Idempotency lookup
+        # ----------------------------------------------------------------------
+        idem_key: Optional[str] = None
+
+        if invocation.spec.idempotent:
+            idem_key = ToolGateway._idempotency_key(invocation)
+            cached = IdempotencyManager.get_result(idem_key)
+
+            if cached is not None:
+                audit_id = ToolGateway._log_audit(
+                    invocation=invocation,
+                    success=True,
+                    error=None,
+                    decision="CACHED",
+                    execution_result=str(cached),
+                )
+                return ToolResult(
+                    success=True,
+                    output=cached,
+                    audit_id=audit_id,
+                )
+
+        # ----------------------------------------------------------------------
+        # 5. Budget preflight
+        # ----------------------------------------------------------------------
+        if invocation.spec.max_cost > 0:
+            remaining = BudgetManager.get_remaining_budget(
+                invocation.principal.id
+            )
+
+            if remaining < invocation.spec.max_cost:
+                return ToolGateway._audit_and_fail(
+                    invocation,
+                    "Budget exceeded for this principal.",
+                    decision="DENY",
+                )
+
+        # ----------------------------------------------------------------------
+        # 6. Human approval
+        # ----------------------------------------------------------------------
+        if invocation.spec.requires_approval or decision_value == "REQUIRE_APPROVAL":
+            status = await ApprovalManager.check_approval_status(
+                session_id=invocation.session_id,
+                tool_name=invocation.tool_name,
+                arguments=invocation.arguments,
+                workspace_id=invocation.principal.workspace_id,
+            )
+
+            if status in {"NONE", "EXPIRED"}:
+                await ApprovalManager.request_approval(
+                    session_id=invocation.session_id,
+                    tool_name=invocation.tool_name,
+                    arguments=invocation.arguments,
+                    principal_id=invocation.principal.id,
+                    workspace_id=invocation.principal.workspace_id,
+                    risk=invocation.spec.risk_level,
+                    run_id=invocation.run_id,
+                )
+                raise ApprovalRequiredError(
+                    f"Tool '{invocation.tool_name}' requires human approval."
+                )
+
+            if status == "WAITING_APPROVAL":
+                raise ApprovalRequiredError(
+                    f"Tool '{invocation.tool_name}' is waiting for human approval."
+                )
+
+            if status == "DENIED":
+                return ToolGateway._audit_and_fail(
+                    invocation,
+                    "Tool approval was denied.",
+                    decision="DENY",
+                )
+
+        # ----------------------------------------------------------------------
+        # 7. Atomic budget consumption
+        # ----------------------------------------------------------------------
+        if invocation.spec.max_cost > 0:
+            consumed = BudgetManager.consume(
+                invocation.principal.id,
+                invocation.spec.max_cost,
+            )
+
+            if not consumed:
+                return ToolGateway._audit_and_fail(
+                    invocation,
+                    "Budget became unavailable before execution.",
+                    decision="DENY",
+                )
+
+        # ----------------------------------------------------------------------
+        # 8. Durable task tracking
+        # ----------------------------------------------------------------------
+        task_record = TaskManager.create_task(
+            session_id=invocation.session_id,
+            payload={
+                "tool": invocation.tool_name,
+                "arguments": invocation.arguments,
+                "run_id": invocation.run_id,
+                "tool_call_id": invocation.tool_call_id,
+            },
+            priority=1,
+            idempotency_key=idem_key,
+        )
+
+        TaskManager.update_state(
+            task_record.id,
+            TaskState.RUNNING,
+        )
+
+        start_time = time.monotonic()
+
+        try:
+            if executor_callback is None:
+                raise RuntimeError("Tool executor callback is required.")
+
+            raw_result = await executor_callback(
+                **invocation.arguments,
+            )
+
+            # ------------------------------------------------------------------
+            # 9. Post-execution guardrail
+            # ------------------------------------------------------------------
+            guarded_result = ToolGuardrail.validate_post_execution(
+                invocation.tool_name,
+                raw_result,
+            )
+
+            # ------------------------------------------------------------------
+            # 10. Output size limit
+            # ------------------------------------------------------------------
+            normalized_output = str(guarded_result)
+            if len(normalized_output) > invocation.spec.max_output:
+                normalized_output = (
+                    normalized_output[: invocation.spec.max_output]
+                    + "... [TRUNCATED]"
+                )
+
+            # ------------------------------------------------------------------
+            # 11. Durable idempotency result
+            # ------------------------------------------------------------------
+            if idem_key is not None:
+                IdempotencyManager.save_result(
+                    idem_key,
+                    normalized_output,
+                )
+
+            duration_ms = int(
+                (time.monotonic() - start_time) * 1000
+            )
+
+            TaskManager.update_state(
+                task_record.id,
+                TaskState.COMPLETED,
+            )
+
+            audit_id = ToolGateway._log_audit(
+                invocation=invocation,
+                success=True,
+                error=None,
+                decision="ALLOW",
+                execution_result=normalized_output,
+                duration=f"{duration_ms}ms",
+            )
+
+            return ToolResult(
+                success=True,
+                output=normalized_output,
+                audit_id=audit_id,
+            )
+
+        except Exception as exc:
+            duration_ms = int(
+                (time.monotonic() - start_time) * 1000
+            )
+
+            try:
+                TaskManager.update_state(
+                    task_record.id,
+                    TaskState.FAILED,
+                    error_message=str(exc),
+                )
+            except Exception:
+                pass
+
+            audit_id = ToolGateway._log_audit(
+                invocation=invocation,
+                success=False,
+                error=str(exc),
+                decision="ERROR",
+                duration=f"{duration_ms}ms",
+            )
+
+            return ToolResult(
+                success=False,
+                output=None,
+                error=str(exc),
+                audit_id=audit_id,
+            )

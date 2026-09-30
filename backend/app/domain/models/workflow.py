@@ -11,7 +11,7 @@ import enum
 from datetime import datetime
 import uuid
 
-from app.core.db import Base
+from app.domain.models.identity import Base
 
 class TriggerType(str, enum.Enum):
     """

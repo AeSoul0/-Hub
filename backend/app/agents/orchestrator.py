@@ -158,7 +158,7 @@ async def generate_ai_response(
     """
     intent_str = user_intent[0]["text"] if isinstance(user_intent, list) else user_intent
         
-    database.get_settings(session_id)
+    session_settings = database.get_settings(session_id)
     
     # Publish diagnostic event for observability
     await event_bus.publish(session_id, "log", f"[System] Routing intent to A.U.R.O.R.A. Core: {intent_str[:30]}...")
@@ -218,14 +218,33 @@ async def process_orchestration_voice(
 ):
     try:
         from app.core.security import resolve_principal
-        principal = resolve_principal(request, x_session_id)
+        from app.core.db import SessionLocal
+        with SessionLocal() as db:
+            principal = resolve_principal(request, db)
         
         audio_bytes = await file.read()
-        import base64
-        base64_audio = base64.b64encode(audio_bytes).decode("utf-8")
+        import base64 as b64
+        base64_audio = b64.b64encode(audio_bytes).decode("utf-8")
 
-        from main import process_audio_to_text
-        user_intent = await process_audio_to_text(base64_audio)
+        # STT via Groq Whisper (inline to avoid circular import with main.py)
+        import tempfile, httpx
+        temp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp:
+                temp.write(audio_bytes)
+                temp_path = temp.name
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                with open(temp_path, "rb") as f:
+                    resp = await client.post(
+                        "https://api.groq.com/openai/v1/audio/transcriptions",
+                        files={"file": (os.path.basename(temp_path), f, "audio/webm")},
+                        data={"model": "whisper-large-v3"},
+                        headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+                    )
+            user_intent = resp.json().get("text", "") if resp.status_code == 200 else ""
+        finally:
+            if temp_path and os.path.exists(temp_path):
+                os.remove(temp_path)
 
         if not user_intent or user_intent == "Transcription error.":
             return {"transcription": "", "audio_base64": ""}
@@ -248,7 +267,9 @@ async def process_orchestration_text(
 ):
     try:
         from app.core.security import resolve_principal
-        principal = resolve_principal(request, x_session_id)
+        from app.core.db import SessionLocal
+        with SessionLocal() as db:
+            principal = resolve_principal(request, db)
 
         if text.strip().startswith("/"):
             return await execute_slash_command(text, principal.id)
