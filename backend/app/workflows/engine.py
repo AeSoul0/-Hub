@@ -1,10 +1,10 @@
 """
 @file backend/app/workflows/engine.py
-@description Core module for A.U.R.O.R.A. System
+@description Implements engine.py. Core components: WorkflowEngine.
 
-Implements core logic and architectural definitions.
+This module manages the internal business logic for WorkflowEngine.
+It provides specialized functionality to handle: start_workflow, execute_step, _route_action, resume_from_approval.
 """
-
 from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -15,13 +15,22 @@ from app.core.security import Principal
 
 class WorkflowEngine:
     """
+    Represents the WorkflowEngine entity and its core operations.
+    """
+    """
     M10 Automation / Workflow Engine.
     Manages execution of versioned workflows with support for checkpoints and human approvals.
     """
     def __init__(self, db: Session):
+        """
+        Executes __init__ logic.
+        """
         self.db = db
 
     def start_workflow(self, version_id: str, session_id: str, input_data: Dict[str, Any]) -> WorkflowRun:
+        """
+        Executes start_workflow logic.
+        """
         """Starts a new workflow run and persists it to the database."""
         version = self.db.query(WorkflowVersion).filter_by(id=version_id).first()
         if not version:
@@ -44,6 +53,9 @@ class WorkflowEngine:
         return run
 
     def execute_step(self, run_id: str):
+        """
+        Executes execute_step logic.
+        """
         """
         Executes the current step of a workflow. 
         Usually invoked asynchronously via Celery.
@@ -103,6 +115,9 @@ class WorkflowEngine:
             self.db.commit()
 
     def _route_action(self, action_type: str, step_def: dict, state: dict) -> Any:
+        """
+        Executes _route_action logic.
+        """
         """Routes a step to the appropriate executor (Tool, Agent, Script)."""
         if action_type == "agent_task":
             # Here we would normally invoke the agent runtime
@@ -112,6 +127,9 @@ class WorkflowEngine:
         return {"status": "skipped"}
 
     def resume_from_approval(self, run_id: str, approved: bool, approved_by: Principal):
+        """
+        Executes resume_from_approval logic.
+        """
         """Resumes a workflow that was paused for human approval."""
         run = self.db.query(WorkflowRun).filter_by(id=run_id).first()
         if not run or run.status != WorkflowState.WAITING_APPROVAL:

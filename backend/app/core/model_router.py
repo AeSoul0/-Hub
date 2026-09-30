@@ -1,13 +1,16 @@
 """
 @file backend/app/core/model_router.py
-@description Core module for A.U.R.O.R.A. System
+@description Implements model_router.py. Core components: ModelRouter.
 
-Implements core logic and architectural definitions.
+This module manages the internal business logic for ModelRouter.
+It provides specialized functionality to handle: route_query, calculate_budget_impact.
 """
-
 from typing import Dict, Any
 
 class ModelRouter:
+    """
+    Represents the ModelRouter entity and its core operations.
+    """
     """
     M15 Frontier Optimization.
     Dynamically routes LLM queries to the most cost-effective/capable model based on task complexity.
@@ -15,6 +18,9 @@ class ModelRouter:
     
     @staticmethod
     def route_query(prompt: str, requires_vision: bool = False, requires_json: bool = False) -> str:
+        """
+        Executes route_query logic.
+        """
         # Route query to specialized models based on capability requirements (vision, complex reasoning, or speed)
         # Route query to specialized models based on capability requirements (vision, complex reasoning, or speed)
         prompt_length = len(prompt)
@@ -32,6 +38,9 @@ class ModelRouter:
 
     @staticmethod
     def calculate_budget_impact(model_name: str, tokens: int) -> float:
+        """
+        Executes calculate_budget_impact logic.
+        """
         # Calculate the estimated execution cost of the model in USD based on token count
         # Calculate the estimated execution cost of the model in USD based on token count
         """Calculates estimated cost to ensure Policy Limits are respected."""

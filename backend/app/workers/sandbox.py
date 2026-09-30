@@ -1,10 +1,10 @@
 """
 @file backend/app/workers/sandbox.py
-@description Core module for A.U.R.O.R.A. System
+@description Implements sandbox.py. Core components: SandboxResult, EphemeralSandboxManager.
 
-Implements core logic and architectural definitions.
+This module manages the internal business logic for SandboxResult, EphemeralSandboxManager.
+It provides specialized functionality to handle: execute_python, execute_shell.
 """
-
 import asyncio
 from typing import Dict
 
@@ -12,12 +12,18 @@ from pydantic import BaseModel
 
 
 class SandboxResult(BaseModel):
+    """
+    Represents the SandboxResult entity and its core operations.
+    """
     stdout: str
     stderr: str
     exit_code: int
     artifacts: Dict[str, str] = {}
 
 class EphemeralSandboxManager:
+    """
+    Represents the EphemeralSandboxManager entity and its core operations.
+    """
     """
     Manages isolated code execution for A.U.R.O.R.A. agents.
     In a real LAN deployment, this would communicate with Docker Daemon via the Docker SDK
@@ -26,22 +32,32 @@ class EphemeralSandboxManager:
     """
     
     def __init__(self, image: str = "python:3.11-slim", memory_limit: str = "512m", network_disabled: bool = True):
+        """
+        Executes __init__ logic.
+        """
         self.image = image
         self.memory_limit = memory_limit
         self.network_disabled = network_disabled
 
     async def execute_python(self, code: str, timeout: int = 30) -> SandboxResult:
         """
+        Executes execute_python logic.
+        """
+        """
         Executes Python code in a secure sandboxed environment.
         """
         cmd = [
             "docker", "run", "--rm", "-i",
+            "--init",
             "-m", self.memory_limit,
+            "--memory-swap", self.memory_limit,
             "--cpus", "0.5",
             "--pids-limit", "50",
             "--read-only",
             "--security-opt", "no-new-privileges",
-            "--tmpfs", "/tmp",
+            "--security-opt", "apparmor=docker-default",
+            "--cap-drop=ALL",
+            "--tmpfs", "/tmp:size=50M,exec,mode=1777",
             "--env", "PYTHONUNBUFFERED=1",
             self.image,
             "python", "-c", code
@@ -85,11 +101,23 @@ class EphemeralSandboxManager:
 
     async def execute_shell(self, command: str, timeout: int = 30) -> SandboxResult:
         """
+        Executes execute_shell logic.
+        """
+        """
         Executes a shell command in a secure sandboxed environment.
         """
         cmd = [
             "docker", "run", "--rm", "-i",
+            "--init",
             "-m", self.memory_limit,
+            "--memory-swap", self.memory_limit,
+            "--cpus", "0.5",
+            "--pids-limit", "50",
+            "--read-only",
+            "--security-opt", "no-new-privileges",
+            "--security-opt", "apparmor=docker-default",
+            "--cap-drop=ALL",
+            "--tmpfs", "/tmp:size=50M,exec,mode=1777",
             self.image,
             "sh", "-c", command
         ]

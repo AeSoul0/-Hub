@@ -1,10 +1,10 @@
 """
 @file backend/app/api/academic.py
-@description Core module for A.U.R.O.R.A. System
+@description Implements academic.py. Core components: AcademicLoginRequest.
 
-Implements core logic and architectural definitions.
+This module manages the internal business logic for AcademicLoginRequest.
+It provides specialized functionality to handle: get_academic_status, logout_academic, perform_academic_sync, perform_interactive_login, celery_academic_sync, celery_interactive_login, start_academic_sync, start_interactive_login.
 """
-
 import asyncio
 import os
 import re
@@ -23,6 +23,9 @@ router = APIRouter(prefix="/api/academic", tags=["academic"])
 os.makedirs("workspace/playwright_sessions", exist_ok=True)
 
 class AcademicLoginRequest(BaseModel):
+    """
+    Represents the AcademicLoginRequest entity and its core operations.
+    """
     cookie_string: str = "" # We make this optional or ignore it in favor of interactive login
 
 # ==============================================================================
@@ -52,6 +55,9 @@ def logout_academic(secure_session_id: str = Depends(get_secure_session_id)):
 # ASYNC PLAYWRIGHT WORKERS
 # ==============================================================================
 async def perform_academic_sync(session_id: str):
+    """
+    Executes perform_academic_sync logic.
+    """
     """
     Headless sync using storage_state. If auth fails, emits AUTH_REQUIRED.
     """
@@ -120,6 +126,9 @@ async def perform_academic_sync(session_id: str):
 
 async def perform_interactive_login(session_id: str):
     """
+    Executes perform_interactive_login logic.
+    """
+    """
     Interactive Auth-Recovery (headless=False)
     """
     state_path = f"workspace/playwright_sessions/{session_id}_state.json"
@@ -164,10 +173,16 @@ from app.core.celery_app import secure_task
 
 @secure_task(name="academic.sync")
 def celery_academic_sync(session_id: str):
+    """
+    Executes celery_academic_sync logic.
+    """
     asyncio.run(perform_academic_sync(session_id))
 
 @secure_task(name="academic.interactive_login")
 def celery_interactive_login(session_id: str):
+    """
+    Executes celery_interactive_login logic.
+    """
     asyncio.run(perform_interactive_login(session_id))
 
 

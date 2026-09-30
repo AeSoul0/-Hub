@@ -1,25 +1,33 @@
 /**
  * @file frontend/src/app/api/academic/logout/route.ts
- * @description Core module for A.U.R.O.R.A. System
- *
- * Implements core logic and architectural definitions.
+ * @description Proxy Route for Academic Session Termination.
+ * 
+ * This module manages the Next.js API route that acts as a reverse proxy for the backend's
+ * academic logout endpoint. It ensures that session deletion requests are correctly routed 
+ * with the necessary cookie payloads, effectively terminating the user's active session 
+ * across both the frontend proxy and the backend identity manager.
  */
 
-/**
- * Academic Logout API Route (Proxy Layer)
- * ---------------------------------------
- * Clears cached academic session in backend.
- */
+import { fetchApi } from "@/lib/api/client";
 
-export async function POST() {
+export async function POST(request: Request) {
     try {
-        const res = await fetch("http://localhost:3002/api/academic/logout", {
+        const reqHeaders = new Headers(request.headers);
+        const res = await fetchApi("/api/academic/logout", {
             method: "POST",
+            headers: {
+                "Cookie": reqHeaders.get("cookie") || ""
+            }
         });
 
         const data = await res.json();
 
-        return Response.json(data);
+        const resHeaders = new Headers();
+        if (res.headers.has("set-cookie")) {
+            resHeaders.set("Set-Cookie", res.headers.get("set-cookie") as string);
+        }
+
+        return Response.json(data, { headers: resHeaders });
     } catch (error) {
         return Response.json(
             {

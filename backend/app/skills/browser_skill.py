@@ -1,10 +1,10 @@
 """
 @file backend/app/skills/browser_skill.py
-@description Core module for A.U.R.O.R.A. System
+@description Implements browser_skill.py. Core components: BrowserSkill.
 
-Implements core logic and architectural definitions.
+This module manages the internal business logic for BrowserSkill.
+It provides specialized functionality to handle: browse_and_extract, metadata, get_tool_metadata, tools, system_prompt_extension, get_skill.
 """
-
 from typing import Callable, List, Optional, Dict
 from bs4 import BeautifulSoup
 from langchain_core.tools import tool
@@ -19,8 +19,14 @@ from app.skills.base import BaseSkill, SkillMetadata, ToolMetadata, RiskLevel
 
 @tool
 async def browse_and_extract(url: str) -> str:
+    """
+    Executes browse_and_extract logic.
+    """
     """Navigates to a URL, waits for rendering, and extracts the text content. Use this to read web pages."""
     try:
+        from app.core.ssrf_protector import SSRFProtector
+        SSRFProtector.validate_url(url)
+        
         from playwright.async_api import async_playwright
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
@@ -48,11 +54,17 @@ async def browse_and_extract(url: str) -> str:
 
 class BrowserSkill(BaseSkill):
     """
+    Represents the BrowserSkill entity and its core operations.
+    """
+    """
     M5 Sensory Expansion: Browser Automation.
     Enables autonomous web scraping and rendering analysis.
     """
     @property
     def metadata(self) -> SkillMetadata:
+        """
+        Executes metadata logic.
+        """
         return SkillMetadata(
             name="browser_automation",
             description="Allows A.U.R.O.R.A. to actively navigate the web, render javascript pages, and extract data.",
@@ -60,6 +72,9 @@ class BrowserSkill(BaseSkill):
         )
         
     def get_tool_metadata(self) -> Dict[str, ToolMetadata]:
+        """
+        Executes get_tool_metadata logic.
+        """
         return {
             "browse_and_extract": ToolMetadata(
                 name="browse_and_extract",
@@ -71,10 +86,16 @@ class BrowserSkill(BaseSkill):
 
     @property
     def tools(self) -> List[Callable]:
+        """
+        Executes tools logic.
+        """
         return [browse_and_extract]
         
     @property
     def system_prompt_extension(self) -> Optional[str]:
+        """
+        Executes system_prompt_extension logic.
+        """
         return (
             "You have access to a fully headless browser. "
             "Use 'browse_and_extract' to read the contents of any URL provided or found via web search. "
@@ -82,4 +103,7 @@ class BrowserSkill(BaseSkill):
         )
 
 def get_skill() -> BaseSkill:
+    """
+    Executes get_skill logic.
+    """
     return BrowserSkill()

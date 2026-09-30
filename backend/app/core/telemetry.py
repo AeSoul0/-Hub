@@ -1,10 +1,10 @@
 """
 @file backend/app/core/telemetry.py
-@description Core module for A.U.R.O.R.A. System
+@description Implements telemetry.py. Core components: JSONLogFormatter.
 
-Implements core logic and architectural definitions.
+This module manages the internal business logic for JSONLogFormatter.
+It provides specialized functionality to handle: format, setup_telemetry, instrument_sqlalchemy, instrument_celery.
 """
-
 import json
 import logging
 from datetime import datetime
@@ -19,10 +19,16 @@ from prometheus_client import make_asgi_app
 
 class JSONLogFormatter(logging.Formatter):
     """
+    Represents the JSONLogFormatter entity and its core operations.
+    """
+    """
     Phase 4: Semantic Logging.
     Formats logs as structured JSON with Trace IDs for centralized observability.
     """
     def format(self, record):
+        """
+        Executes format logic.
+        """
         # Enrich log records with trace IDs from OpenTelemetry and format them as JSON
         # Enrich log records with trace IDs from OpenTelemetry and format them as JSON
         span = trace.get_current_span()
@@ -45,6 +51,9 @@ class JSONLogFormatter(logging.Formatter):
         return json.dumps(log_obj)
 
 def setup_telemetry(app: FastAPI):
+    """
+    Executes setup_telemetry logic.
+    """
     # Initialize OpenTelemetry TracerProvider and console exporter
     # Initialize OpenTelemetry TracerProvider and console exporter
     """
@@ -80,6 +89,9 @@ def setup_telemetry(app: FastAPI):
     logger.info("Telemetry and Observability Plane initialized successfully")
 
 def instrument_sqlalchemy(engine):
+    """
+    Executes instrument_sqlalchemy logic.
+    """
     """Instruments SQLAlchemy engine with OpenTelemetry"""
     from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
     SQLAlchemyInstrumentor().instrument(
@@ -89,6 +101,9 @@ def instrument_sqlalchemy(engine):
     )
 
 def instrument_celery():
+    """
+    Executes instrument_celery logic.
+    """
     """Instruments Celery workers with OpenTelemetry"""
     from opentelemetry.instrumentation.celery import CeleryInstrumentor
     CeleryInstrumentor().instrument()

@@ -1,14 +1,16 @@
 /**
  * @file frontend/src/components/layout/Header.tsx
- * @description Primary application header component for ÆHub, rendering the main navigation bar, branding, and real-time backend connectivity status.
- *
- * Implements core logic and architectural definitions.
+ * @description Implements Header.tsx.
+ * 
+ * This module manages the frontend logic for Header.
+ * Core interfaces: data structures.
  */
-
 "use client";
 
 import { useEffect, useState } from "react";
 import { Activity } from "lucide-react";
+
+import { fetchApi } from "@/lib/api/client";
 
 export default function Header() {
     // Initialize backend connection status state
@@ -17,7 +19,7 @@ export default function Header() {
 
     // Fetches the backend connection status on component mount
     useEffect(() => {
-        fetch("http://127.0.0.1:3002")
+        fetchApi("/")
             .then((res) => res.json())
             .then((data) => setBackendStatus(data.status))
             .catch(() => setBackendStatus("Offline"));

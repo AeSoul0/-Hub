@@ -1,10 +1,10 @@
 /**
  * @file frontend/src/components/widgets/BentoWidget.tsx
- * @description Base bento-box UI wrapper component providing consistent styling, glowing animations, and layout for all widgets.
- *
- * Implements core logic and architectural definitions.
+ * @description Implements BentoWidget.tsx.
+ * 
+ * This module manages the frontend logic for BentoWidget.
+ * Core interfaces: BentoWidgetProps.
  */
-
 import React from "react";
 import { THEME_COLORS, ColorKey } from "../../lib/theme";
 

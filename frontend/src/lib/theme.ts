@@ -1,10 +1,10 @@
 /**
  * @file frontend/src/lib/theme.ts
- * @description Core module for A.U.R.O.R.A. System
- *
- * Implements core logic and architectural definitions.
+ * @description Implements theme.ts.
+ * 
+ * This module manages the frontend logic for UI components.
+ * Core interfaces: data structures.
  */
-
 export type ColorKey = "cyan" | "indigo" | "rose" | "emerald" | "amber" | "violet";
 
 // Core theme definitions establishing borders, shadows, and accent properties

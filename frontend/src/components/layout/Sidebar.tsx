@@ -1,10 +1,10 @@
 /**
  * @file frontend/src/components/layout/Sidebar.tsx
- * @description Sidebar navigation component providing access to main modules, session history, and core system settings.
- *
- * Implements core logic and architectural definitions.
+ * @description Implements Sidebar.tsx.
+ * 
+ * This module manages the frontend logic for Sidebar.
+ * Core interfaces: data structures.
  */
-
 "use client";
 
 import { useState } from "react";

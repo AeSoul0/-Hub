@@ -1,16 +1,19 @@
 """
 @file backend/app/workers/scheduler.py
-@description Core module for A.U.R.O.R.A. System
+@description Implements scheduler.py. Core components: AuroraProactiveScheduler.
 
-Implements core logic and architectural definitions.
+This module manages the internal business logic for AuroraProactiveScheduler.
+It provides specialized functionality to handle: schedule_interval, _run_loop, start, stop.
 """
-
 import asyncio
 from datetime import datetime
 from typing import Callable, Coroutine
 
 
 class AuroraProactiveScheduler:
+    """
+    Represents the AuroraProactiveScheduler entity and its core operations.
+    """
     """
     Phase 12: Proactive A.U.R.O.R.A.
     Handles background tasks, cron jobs, and proactive workflows.
@@ -19,10 +22,16 @@ class AuroraProactiveScheduler:
     """
     
     def __init__(self):
+        """
+        Executes __init__ logic.
+        """
         self._tasks = []
         self._running = False
         
     def schedule_interval(self, interval_seconds: int, coro_func: Callable[[], Coroutine]):
+        """
+        Executes schedule_interval logic.
+        """
         """Schedules a coroutine to run every `interval_seconds`."""
         self._tasks.append({
             "type": "interval",
@@ -32,6 +41,9 @@ class AuroraProactiveScheduler:
         })
         
     async def _run_loop(self):
+        """
+        Executes _run_loop logic.
+        """
         self._running = True
         print("[Proactive Scheduler] Started A.U.R.O.R.A. background worker loop.")
         while self._running:
@@ -51,11 +63,17 @@ class AuroraProactiveScheduler:
             await asyncio.sleep(1) # Check tasks every second
             
     def start(self):
+        """
+        Executes start logic.
+        """
         """Starts the proactive scheduler in the event loop."""
         if not self._running:
             asyncio.create_task(self._run_loop())
             
     def stop(self):
+        """
+        Executes stop logic.
+        """
         """Stops the proactive scheduler."""
         self._running = False
         print("[Proactive Scheduler] Stopped.")

@@ -1,10 +1,10 @@
 """
 @file backend/app/api/voice.py
-@description Core module for A.U.R.O.R.A. System
+@description Implements voice.py. Core components: general logic modules.
 
-Implements core logic and architectural definitions.
+This module manages the internal business logic for general logic modules.
+It provides specialized functionality to handle: get_whisper_model, professional_tts_stream, voice_stream_endpoint.
 """
-
 import base64
 
 import edge_tts
@@ -22,6 +22,9 @@ router = APIRouter(prefix="/api/voice", tags=["voice"])
 _whisper_model = None
 
 def get_whisper_model():
+    """
+    Executes get_whisper_model logic.
+    """
     global _whisper_model
     if _whisper_model is None:
         print("[Voice] Loading faster-whisper model (local, free, professional)...")
@@ -30,6 +33,9 @@ def get_whisper_model():
     return _whisper_model
 
 async def professional_tts_stream(text: str):
+    """
+    Executes professional_tts_stream logic.
+    """
     """
     Synthesizes speech.
     Currently uses edge-tts (free). 
@@ -45,6 +51,9 @@ async def professional_tts_stream(text: str):
 
 @router.websocket("/stream")
 async def voice_stream_endpoint(websocket: WebSocket):
+    """
+    Executes voice_stream_endpoint logic.
+    """
     """
     Advanced Bi-directional Voice Streaming Endpoint (M7).
     """

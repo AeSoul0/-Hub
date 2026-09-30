@@ -1,14 +1,17 @@
 """
 @file backend/app/core/config.py
-@description Core module for A.U.R.O.R.A. System
+@description Implements config.py. Core components: Settings.
 
-Implements core logic and architectural definitions.
+This module manages the internal business logic for Settings.
+It provides specialized functionality to handle: utility operations.
 """
-
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    """
+    Represents the Settings entity and its core operations.
+    """
     # App Config
     APP_NAME: str = "ÆHub Core OS"
     DEBUG_MODE: bool = False

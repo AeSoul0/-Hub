@@ -1,10 +1,10 @@
 /**
  * @file frontend/src/components/widgets/DynamicArtifactRenderer.tsx
- * @description Dynamic artifact renderer responsible for lazy-loading and rendering specific widget components based on the artifact type.
- *
- * Implements core logic and architectural definitions.
+ * @description Implements DynamicArtifactRenderer.tsx.
+ * 
+ * This module manages the frontend logic for DynamicArtifactRenderer.
+ * Core interfaces: Artifact, DynamicArtifactRendererProps.
  */
-
 "use client";
 
 import React from "react";

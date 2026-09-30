@@ -1,10 +1,10 @@
 """
 @file backend/app/workers/vision_indexer.py
-@description Core module for A.U.R.O.R.A. System
+@description Implements vision_indexer.py. Core components: general logic modules.
 
-Implements core logic and architectural definitions.
+This module manages the internal business logic for general logic modules.
+It provides specialized functionality to handle: _get_chroma, _get_clip, index_image, search_images, index_folder.
 """
-
 import os
 
 from app.core.celery_app import celery_app
@@ -18,6 +18,9 @@ _tokenizer = None
 _device = None
 
 def _get_chroma():
+    """
+    Executes _get_chroma logic.
+    """
     global _client, _collection
     if _client is None:
         import chromadb
@@ -26,6 +29,9 @@ def _get_chroma():
     return _collection
 
 def _get_clip():
+    """
+    Executes _get_clip logic.
+    """
     global _model, _preprocess, _tokenizer, _device
     if _model is None:
         import open_clip
@@ -36,6 +42,9 @@ def _get_clip():
     return _model, _preprocess, _tokenizer, _device
 
 def index_image(image_path: str):
+    """
+    Executes index_image logic.
+    """
     """Computes CLIP embedding and stores it in ChromaDB."""
     try:
         import torch
@@ -59,6 +68,9 @@ def index_image(image_path: str):
         return False
 
 def search_images(query: str, n_results: int = 5):
+    """
+    Executes search_images logic.
+    """
     """Searches indexed images using text query via CLIP text embeddings."""
     import torch
     collection = _get_chroma()
@@ -79,6 +91,9 @@ from app.core.celery_app import secure_task
 
 @secure_task(name="vision.index_folder")
 def index_folder(session_id: str, folder_path: str):
+    """
+    Executes index_folder logic.
+    """
     for root, _, files in os.walk(folder_path):
         for file in files:
             if file.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):

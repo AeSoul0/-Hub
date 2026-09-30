@@ -1,18 +1,23 @@
 """
 @file backend/app/evaluation/engine.py
-@description Automated Evaluation Engine (Phase 10).
+@description Implements engine.py. Core components: EvaluationReport, EvaluationEngine.
 
-Executes rigorous integration, security, and orchestration evaluations against the 
-core runtime to certify Definition of Done across 140 targeted test cases.
+This module manages the internal business logic for EvaluationReport, EvaluationEngine.
+It provides specialized functionality to handle: add_result, load_dataset, run_suite, evaluate_case.
 """
-
 import json
 import asyncio
 from typing import Dict, Any, List
 from datetime import datetime
 
 class EvaluationReport:
+    """
+    Represents the EvaluationReport entity and its core operations.
+    """
     def __init__(self):
+        """
+        Executes __init__ logic.
+        """
         self.total = 0
         self.passed = 0
         self.failed = 0
@@ -20,6 +25,9 @@ class EvaluationReport:
         self.timestamp = datetime.utcnow()
 
     def add_result(self, case_id: str, success: bool, details: str):
+        """
+        Executes add_result logic.
+        """
         self.total += 1
         if success:
             self.passed += 1
@@ -29,19 +37,31 @@ class EvaluationReport:
 
 class EvaluationEngine:
     """
+    Represents the EvaluationEngine entity and its core operations.
+    """
+    """
     Phase 10 Evaluator.
     Tests: Task success, Tool selection, Policy correctness, Prompt injection resistance,
     Approval correctness, Memory retrieval, Multi-agent correctness, Recovery correctness.
     """
     
     def __init__(self, dataset_path: str = "backend/app/evaluation/dataset.json"):
+        """
+        Executes __init__ logic.
+        """
         self.dataset_path = dataset_path
         
     def load_dataset(self) -> List[Dict[str, Any]]:
+        """
+        Executes load_dataset logic.
+        """
         with open(self.dataset_path, "r", encoding="utf-8") as f:
             return json.load(f)
             
     async def run_suite(self) -> EvaluationReport:
+        """
+        Executes run_suite logic.
+        """
         dataset = self.load_dataset()
         report = EvaluationReport()
         
@@ -52,6 +72,9 @@ class EvaluationEngine:
         return report
 
     async def evaluate_case(self, case: Dict[str, Any]) -> tuple[bool, str]:
+        """
+        Executes evaluate_case logic.
+        """
         # [Phase 10+] Connects to EventDispatcher / flight_recorder.jsonl
         # Utilizes an independent LLM-as-a-Judge to evaluate the flight trace 
         # against the expected criteria (Task Success, Cost Optimization, Latency).

@@ -1,10 +1,10 @@
 """
 @file backend/app/skills/memory_skill.py
-@description Core module for A.U.R.O.R.A. System
+@description Implements memory_skill.py. Core components: MemorySkill.
 
-Implements core logic and architectural definitions.
+This module manages the internal business logic for MemorySkill.
+It provides specialized functionality to handle: save_semantic_memory, save_procedural_memory, metadata, tools, get_tool_metadata, system_prompt_extension, get_skill.
 """
-
 # We need the session_id to use the memory manager.
 # In Langchain, we can pass runtime config or use a global context var,
 # but for simplicity, the tools will require session_id or infer it from a context var.
@@ -23,6 +23,9 @@ current_session_id = contextvars.ContextVar("current_session_id", default="defau
 @tool
 def save_semantic_memory(fact: str) -> str:
     """
+    Executes save_semantic_memory logic.
+    """
+    """
     Salva un dato, un fatto o un'informazione importante riguardante l'utente o il contesto.
     Usa questo strumento per ricordare dettagli che saranno utili in futuro (es. nome utente, progetti in corso).
     """
@@ -37,6 +40,9 @@ def save_semantic_memory(fact: str) -> str:
 @tool
 def save_procedural_memory(rule: str) -> str:
     """
+    Executes save_procedural_memory logic.
+    """
+    """
     Salva una preferenza dell'utente, una regola operativa o una procedura.
     Usa questo strumento quando l'utente ti chiede di comportarti in un certo modo o di ricordarti di fare qualcosa in un certo formato.
     """
@@ -49,8 +55,14 @@ def save_procedural_memory(rule: str) -> str:
         return f"Failed to save procedural memory: {str(e)}"
 
 class MemorySkill(BaseSkill):
+    """
+    Represents the MemorySkill entity and its core operations.
+    """
     @property
     def metadata(self) -> SkillMetadata:
+        """
+        Executes metadata logic.
+        """
         return SkillMetadata(
             name="memory",
             description="Allows A.U.R.O.R.A. to persist semantic and procedural memories.",
@@ -59,9 +71,15 @@ class MemorySkill(BaseSkill):
         
     @property
     def tools(self) -> List[Callable]:
+        """
+        Executes tools logic.
+        """
         return [save_semantic_memory, save_procedural_memory]
         
     def get_tool_metadata(self) -> Dict[str, ToolMetadata]:
+        """
+        Executes get_tool_metadata logic.
+        """
         return {
             "save_semantic_memory": ToolMetadata(
                 name="save_semantic_memory",
@@ -77,6 +95,9 @@ class MemorySkill(BaseSkill):
         
     @property
     def system_prompt_extension(self) -> Optional[str]:
+        """
+        Executes system_prompt_extension logic.
+        """
         return (
             "You have access to a long-term Memory system. "
             "If the user shares personal facts, preferences, or explicitly asks you to remember something, "
@@ -84,4 +105,7 @@ class MemorySkill(BaseSkill):
         )
 
 def get_skill() -> BaseSkill:
+    """
+    Executes get_skill logic.
+    """
     return MemorySkill()

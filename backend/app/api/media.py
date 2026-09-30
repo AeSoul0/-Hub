@@ -1,14 +1,15 @@
 """
 @file backend/app/api/media.py
-@description Core module for A.U.R.O.R.A. System
+@description Implements media.py. Core components: MediaRequest.
 
-Implements core logic and architectural definitions.
+This module manages the internal business logic for MediaRequest.
+It provides specialized functionality to handle: download_media.
 """
-
 import os
 
 import yt_dlp
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends
+from app.core.security import resolve_principal, Principal
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -16,11 +17,14 @@ router = APIRouter(prefix="/api/media", tags=["media"])
 
 
 class MediaRequest(BaseModel):
+    """
+    Represents the MediaRequest entity and its core operations.
+    """
     query: str
 
 
 @router.post("/download")
-def download_media(req: MediaRequest, background_tasks: BackgroundTasks):
+def download_media(req: MediaRequest, background_tasks: BackgroundTasks, principal: Principal = Depends(resolve_principal)):
     """
     Processes the incoming search query, extracts the best audio stream via yt_dlp,
     converts it to a high-quality MP3 archive using the system's global FFmpeg installation,

@@ -1,10 +1,10 @@
 """
 @file backend/app/skills/visual_memory_skill.py
-@description Core module for A.U.R.O.R.A. System - Visual Memory Skill
+@description Implements visual_memory_skill.py. Core components: VisualMemorySkill.
 
-Implements core logic and architectural definitions.
+This module manages the internal business logic for VisualMemorySkill.
+It provides specialized functionality to handle: metadata, get_tool_metadata, tools, system_prompt_extension, search_photos, index_folder_for_vision, get_skill.
 """
-
 from typing import Callable, Dict, List
 
 from langchain_core.tools import tool
@@ -13,11 +13,20 @@ from app.skills.base import BaseSkill, RiskLevel, SkillMetadata, ToolMetadata
 
 
 class VisualMemorySkill(BaseSkill):
+    """
+    Represents the VisualMemorySkill entity and its core operations.
+    """
     def __init__(self):
+        """
+        Executes __init__ logic.
+        """
         super().__init__()
 
     @property
     def metadata(self) -> SkillMetadata:
+        """
+        Executes metadata logic.
+        """
         # Define the skill metadata
         return SkillMetadata(
             name="visual_memory",
@@ -26,6 +35,9 @@ class VisualMemorySkill(BaseSkill):
         )
         
     def get_tool_metadata(self) -> Dict[str, ToolMetadata]:
+        """
+        Executes get_tool_metadata logic.
+        """
         # Return specific metadata and risk levels for memory tools
         return {
             "search_photos": ToolMetadata(
@@ -42,11 +54,17 @@ class VisualMemorySkill(BaseSkill):
 
     @property
     def tools(self) -> List[Callable]:
+        """
+        Executes tools logic.
+        """
         # Expose the search and indexing tools
         return [search_photos, index_folder_for_vision]
         
     @property
     def system_prompt_extension(self) -> str:
+        """
+        Executes system_prompt_extension logic.
+        """
         # Inform the agent how to utilize the visual search engine
         return (
             "You have access to a semantic visual search engine. If the user asks to find a photo "
@@ -56,6 +74,9 @@ class VisualMemorySkill(BaseSkill):
 
 @tool
 def search_photos(query: str) -> str:
+    """
+    Executes search_photos logic.
+    """
     """Searches indexed images by semantic description (e.g. 'a dog on the beach')."""
     try:
         from app.workers.vision_indexer import search_images
@@ -72,6 +93,9 @@ def search_photos(query: str) -> str:
 
 @tool
 def index_folder_for_vision(folder_path: str) -> str:
+    """
+    Executes index_folder_for_vision logic.
+    """
     """Triggers a background indexing job for a folder to make its images searchable."""
     from app.core.celery_app import celery_app
     from app.skills.memory_skill import current_session_id
@@ -83,5 +107,8 @@ def index_folder_for_vision(folder_path: str) -> str:
     return f"Started secure indexing folder: {folder_path} in the background."
 
 def get_skill():
+    """
+    Executes get_skill logic.
+    """
     # Factory function to instantiate the skill
     return VisualMemorySkill()

@@ -1,11 +1,28 @@
 """
 @file backend/app/agent_engine/runtime.py
-@description Execution Runtime and Multi-Agent Orchestrator.
+@description Core Execution Runtime and Multi-Agent Orchestrator for the A.U.R.O.R.A. Engine.
 
-Manages the core orchestration loop (Phase 7.5): Worker -> Checker -> Retry.
-Handles durable state checkpointing, error recovery, pausing for human approval (Phase 4), 
-and securely spawning scoped subagents (Phase 7). Integrates deeply with the Guardrail layer (Phase 8).
+This critical orchestration module manages the entirety of the execution lifecycle for autonomous 
+tasks. It robustly implements the 'Worker -> Checker -> Retry' iterative workflow, embedding 
+dynamic guardrails and strict global bounds on both iterations and tool invocations. The runtime 
+handles robust checkpointing via durable PostgreSQL transactions, seamlessly pauses contexts for 
+synchronous Human-In-The-Loop (HITL) approval gates, and encapsulates the logical spawning of 
+dynamically isolated child subagents. It is built natively on asyncio and integrates resilient 
+fallback pipelines for fail-fast recovery from adapter exceptions.
 """
+
+from typing import Dict, Any, Optional, List
+import uuid
+import asyncio
+from datetime import datetime
+
+from app.agent_engine.state.manager import AgentStateManager
+from app.agent_engine.models import AgentRunStatus, AgentRun, Observation, CheckerDecisionEnum
+from app.agent_engine.errors import TaskTimeoutError, MaxTurnsReachedError, ApprovalRequiredError
+from app.agent_engine.events import EventDispatcher
+from app.agent_engine.guardrails import InputGuardrail, OutputGuardrail
+from app.agent_engine.resources import ResourceManager
+from app.core.security import Principal
 
 class SubagentWrapper:
     def __init__(self, compiled_graph, capabilities):

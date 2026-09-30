@@ -1,10 +1,10 @@
 """
 @file backend/app/workflows/autonomous.py
-@description Core module for A.U.R.O.R.A. System
+@description Implements autonomous.py. Core components: WorkflowEngine.
 
-Implements core logic and architectural definitions.
+This module manages the internal business logic for WorkflowEngine.
+It provides specialized functionality to handle: morning_briefing_routine, register_workflows.
 """
-
 from langchain_core.messages import HumanMessage
 
 from app.core.event_bus import event_bus
@@ -13,12 +13,18 @@ from app.runtime.aurora import get_aurora_app
 
 class WorkflowEngine:
     """
+    Represents the WorkflowEngine entity and its core operations.
+    """
+    """
     Phase 13: Autonomous Workflows.
     Allows A.U.R.O.R.A. to run long-term independent goals.
     """
     
     @staticmethod
     async def morning_briefing_routine():
+        """
+        Executes morning_briefing_routine logic.
+        """
         """
         An autonomous task that runs without user input.
         It generates a briefing and pushes it to the UI via SSE.
@@ -55,6 +61,9 @@ class WorkflowEngine:
             print(f"[Workflow] Error during autonomous task: {e}")
 
 def register_workflows():
+    """
+    Executes register_workflows logic.
+    """
     """Registers all autonomous jobs into the Proactive Scheduler."""
     # Runs every 24 hours (86400 seconds) - for demo purposes, set to 60 seconds or triggered via API.
     # proactive_scheduler.schedule_interval(86400, WorkflowEngine.morning_briefing_routine)

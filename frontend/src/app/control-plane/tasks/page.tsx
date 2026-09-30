@@ -1,28 +1,9 @@
 /**
- *
- * Implements core logic and architectural definitions.
- * *
- * Implements core logic and architectural definitions.
- @file *
- * Implements core logic and architectural definitions.
- frontend/src/app/control-plane/tasks/page.tsx
- *
- * Implements core logic and architectural definitions.
- * *
- * Implements core logic and architectural definitions.
- @description *
- * Implements core logic and architectural definitions.
- Core *
- * Implements core logic and architectural definitions.
- module *
- * Implements core logic and architectural definitions.
- for *
- * Implements core logic and architectural definitions.
- A.U.R.O.R.A. *
- * Implements core logic and architectural definitions.
- System
- *
- * Implements core logic and architectural definitions.
+ * @file frontend/src/app/control-plane/tasks/page.tsx
+ * @description Implements page.tsx.
+ * 
+ * This module manages the frontend logic for TasksPage.
+ * Core interfaces: data structures.
  */
 "use client";
 import React from 'react';

@@ -1,10 +1,10 @@
 /**
  * @file frontend/src/components/widgets/CoreOrchestratorWidget.tsx
- * @description Core orchestrator widget serving as the central command interface with integrated voice and text input pipelines.
- *
- * Implements core logic and architectural definitions.
+ * @description Implements CoreOrchestratorWidget.tsx.
+ * 
+ * This module manages the frontend logic for CoreOrchestratorWidget.
+ * Core interfaces: with, layout.
  */
-
 "use client";
 
 import { useState, useRef } from "react";
@@ -15,7 +15,7 @@ import { useAppStore } from "../../store/index";
 // ==============================================================================
 // ENVIRONMENT & AUTHENTICATION CONFIGURATION
 // ==============================================================================
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:3002";
+import { API_BASE_URL, fetchApi } from "@/lib/api/client";
 
 /**
  * Generates and retrieves persistent session identifiers and security headers.
@@ -140,7 +140,7 @@ export default function CoreOrchestratorWidget() {
             formData.append("ui_context", getLiveSystemContext());
 
             // TRANSMISSION: Secure POST request wrapped with authentication headers
-            const res = await fetch(`${API_BASE_URL}/api/orchestrator/listen`, {
+            const res = await fetchApi("/api/orchestrator/listen`, {
                 method: "POST",
                 headers: getAuthHeaders(),
                 body: formData,
@@ -173,7 +173,7 @@ export default function CoreOrchestratorWidget() {
             // Injecting the live Dashboard UI Context into the API transmission packet
             formData.append("ui_context", getLiveSystemContext());
 
-            const res = await fetch(`${API_BASE_URL}/api/orchestrator/ask`, {
+            const res = await fetchApi("/api/orchestrator/ask`, {
                 method: "POST",
                 headers: getAuthHeaders(),
                 body: formData,

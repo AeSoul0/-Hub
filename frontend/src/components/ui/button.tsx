@@ -1,10 +1,10 @@
 /**
  * @file frontend/src/components/ui/button.tsx
- * @description Core module for A.U.R.O.R.A. System
- *
- * Implements core logic and architectural definitions.
+ * @description Implements button.tsx.
+ * 
+ * This module manages the frontend logic for Button.
+ * Core interfaces: data structures.
  */
-
 import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { Slot } from "radix-ui";

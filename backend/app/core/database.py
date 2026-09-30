@@ -1,10 +1,10 @@
 """
 @file backend/app/core/database.py
-@description Core module for A.U.R.O.R.A. System
+@description Implements database.py. Core components: general logic modules.
 
-Implements core logic and architectural definitions.
+This module manages the internal business logic for general logic modules.
+It provides specialized functionality to handle: get_pool, get_connection, init_db, get_settings, update_settings, save_chat, get_recent_chat, clear_chat.
 """
-
 import os
 from contextlib import contextmanager
 
@@ -16,6 +16,9 @@ POSTGRES_URL = os.getenv("POSTGRES_URL", "postgresql://aehub_user:aehub_pass@loc
 _pool = None
 
 def get_pool():
+    """
+    Executes get_pool logic.
+    """
     global _pool
     if _pool is None:
         _pool = ThreadedConnectionPool(1, 20, POSTGRES_URL)
@@ -23,6 +26,9 @@ def get_pool():
 
 @contextmanager
 def get_connection():
+    """
+    Executes get_connection logic.
+    """
     """Establishes a connection to the PostgreSQL database from a thread-safe pool."""
     pool = get_pool()
     conn = pool.getconn()
@@ -32,6 +38,9 @@ def get_connection():
         pool.putconn(conn)
 
 def init_db():
+    """
+    Executes init_db logic.
+    """
     """
     Initializes the PostgreSQL database and creates the necessary schemas
     if they do not already exist. Enables thread-safe data separation.
@@ -181,6 +190,9 @@ def init_db():
 
 
 def get_settings(session_id: str) -> dict:
+    """
+    Executes get_settings logic.
+    """
     """Retrieves session-specific configurations or fallback defaults."""
     with get_connection() as conn:
         with conn.cursor() as cursor:
@@ -198,6 +210,9 @@ def get_settings(session_id: str) -> dict:
 def update_settings(
     session_id: str, temperature: float = None, max_tokens: int = None, deep_mode: bool = None
 ):
+    """
+    Executes update_settings logic.
+    """
     """Upserts hyper-parameters specifically for the requested execution session."""
     current = get_settings(session_id)
     temp = temperature if temperature is not None else current["temperature"]
@@ -226,6 +241,9 @@ def update_settings(
 
 
 def save_chat(session_id: str, user_text: str, ai_text: str):
+    """
+    Executes save_chat logic.
+    """
     """Safely commits dialogue interactions to the session's ledger slice."""
     with get_connection() as conn:
         with conn.cursor() as cursor:
@@ -244,6 +262,9 @@ def save_chat(session_id: str, user_text: str, ai_text: str):
 
 
 def get_recent_chat(session_id: str, limit: int = 5) -> list:
+    """
+    Executes get_recent_chat logic.
+    """
     """Extracts short-term historical context specifically filtered by the user's session."""
     with get_connection() as conn:
         with conn.cursor() as cursor:
@@ -270,6 +291,9 @@ def get_recent_chat(session_id: str, limit: int = 5) -> list:
 
 
 def clear_chat(session_id: str):
+    """
+    Executes clear_chat logic.
+    """
     """Purges the dialogue history exclusively for the requesting session."""
     with get_connection() as conn:
         with conn.cursor() as cursor:
@@ -284,6 +308,9 @@ def clear_chat(session_id: str):
 
 def get_academic_data(session_id: str) -> dict:
     """
+    Executes get_academic_data logic.
+    """
+    """
     Retrieves session-specific academic metrics from the PostgreSQL persistence layer.
     Returns a dictionary of metrics if found, otherwise returns None.
     """
@@ -297,6 +324,9 @@ def get_academic_data(session_id: str) -> dict:
 
 
 def save_academic_data(session_id: str, gpa: float, cfu: int, exams: int):
+    """
+    Executes save_academic_data logic.
+    """
     """
     Upserts academic synchronization metrics into the database for the given
     session identifier, preventing multi-tenant data cross-contamination.
@@ -318,6 +348,9 @@ def save_academic_data(session_id: str, gpa: float, cfu: int, exams: int):
 
 
 def clear_academic_data(session_id: str):
+    """
+    Executes clear_academic_data logic.
+    """
     """
     Purges the cached academic database record row exclusively for the specified session.
     """

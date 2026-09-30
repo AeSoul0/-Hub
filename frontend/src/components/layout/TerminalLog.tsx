@@ -1,18 +1,17 @@
 /**
  * @file frontend/src/components/layout/TerminalLog.tsx
- * @description Terminal log component for real-time telemetry streaming and event handling via Server-Sent Events (SSE).
- *
- * Implements core logic and architectural definitions.
+ * @description Implements TerminalLog.tsx.
+ * 
+ * This module manages the frontend logic for TerminalLog.
+ * Core interfaces: LogEvent.
  */
-
 "use client";
 
 import { useEffect, useRef, useState } from "react";
 import { Terminal } from "lucide-react";
 import BentoWidget from "@/components/widgets/BentoWidget";
 import { useUIStore } from "@/store/useUIStore";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:3002";
+import { API_BASE_URL } from "@/lib/api/client";
 
 interface LogEvent {
     id: string;

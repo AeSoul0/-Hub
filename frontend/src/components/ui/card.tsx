@@ -1,10 +1,10 @@
 /**
  * @file frontend/src/components/ui/card.tsx
- * @description Core module for A.U.R.O.R.A. System
- *
- * Implements core logic and architectural definitions.
+ * @description Implements card.tsx.
+ * 
+ * This module manages the frontend logic for Card, CardHeader, CardTitle, CardDescription, CardAction.
+ * Core interfaces: data structures.
  */
-
 import * as React from "react";
 
 import { cn } from "@/lib/utils";

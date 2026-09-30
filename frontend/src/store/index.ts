@@ -1,10 +1,10 @@
 /**
  * @file frontend/src/store/index.ts
- * @description Global Zustand state store for the ÆHub application.
- *
- * Implements core logic and architectural definitions.
+ * @description Implements index.ts.
+ * 
+ * This module manages the frontend logic for UI components.
+ * Core interfaces: WeatherData, AppState.
  */
-
 import { create } from "zustand";
 
 // ==============================================================================

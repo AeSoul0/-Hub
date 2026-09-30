@@ -1,10 +1,10 @@
 /**
  * @file frontend/src/components/widgets/AcademicWidget.tsx
- * @description Academic tracking widget for fetching, syncing, and displaying university data such as GPA and acquired credits.
- *
- * Implements core logic and architectural definitions.
+ * @description Implements AcademicWidget.tsx.
+ * 
+ * This module manages the frontend logic for AcademicWidget.
+ * Core interfaces: data structures.
  */
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -15,7 +15,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 // ==============================================================================
 // ENVIRONMENT & AUTHENTICATION CONFIGURATION
 // ==============================================================================
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:3002";
+import { API_BASE_URL, fetchApi } from "@/lib/api/client";
 const getAuthHeaders = (): Record<string, string> => {
     let sessionId = "default-session";
     if (typeof window !== "undefined") {
@@ -44,7 +44,7 @@ export default function AcademicWidget() {
     const loadAcademic = async () => {
         try {
             setLoading(true);
-            const res = await fetch(`${API_BASE_URL}/api/academic/status`, {
+            const res = await fetchApi("/api/academic/status`, {
                 method: "GET",
                 headers: getAuthHeaders(),
                 credentials: "include",
@@ -82,7 +82,7 @@ export default function AcademicWidget() {
         e.preventDefault();
         setIsSyncing(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/academic/sync`, {
+            const res = await fetchApi("/api/academic/sync`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -110,7 +110,7 @@ export default function AcademicWidget() {
         e.preventDefault();
         setIsSyncing(true);
         try {
-            const res = await fetch(`${API_BASE_URL}/api/academic/interactive-login`, {
+            const res = await fetchApi("/api/academic/interactive-login`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -235,7 +235,7 @@ export default function AcademicWidget() {
 
                         <button
                             onClick={() => {
-                                fetch(`${API_BASE_URL}/api/academic/logout`, {
+                                fetchApi("/api/academic/logout`, {
                                     method: "POST",
                                     headers: getAuthHeaders(),
                                     credentials: "include",

@@ -1,10 +1,10 @@
 """
 @file backend/app/workers/celery_app.py
-@description Core module for A.U.R.O.R.A. System - Celery App Worker Configuration
+@description Implements celery_app.py. Core components: general logic modules.
 
-Implements core logic and architectural definitions.
+This module manages the internal business logic for general logic modules.
+It provides specialized functionality to handle: execute_durable_task.
 """
-
 import os
 
 from celery import Celery
@@ -33,6 +33,9 @@ celery_app.conf.update(
 
 @celery_app.task(bind=True, max_retries=3)
 def execute_durable_task(self, task_id: str, tool_name: str, args: dict):
+    """
+    Executes execute_durable_task logic.
+    """
     """
     Worker task that executes a tool through the Sandbox.
     Connects Phase 2 (Durable Task) with Phase 5 (Distributed Workers).

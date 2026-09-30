@@ -1,8 +1,9 @@
 /**
  * @file frontend/src/app/control-plane/memory/page.tsx
- * @description Semantic Memory visualization page for the Control Plane.
- *
- * Implements core logic and architectural definitions.
+ * @description Implements page.tsx.
+ * 
+ * This module manages the frontend logic for MemoryPage.
+ * Core interfaces: data structures.
  */
 "use client";
 import React from 'react';

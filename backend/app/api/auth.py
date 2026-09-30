@@ -1,10 +1,10 @@
 """
 @file backend/app/api/auth.py
-@description Core module for A.U.R.O.R.A. System
+@description Implements auth.py. Core components: general logic modules.
 
-Implements core logic and architectural definitions.
+This module manages the internal business logic for general logic modules.
+It provides specialized functionality to handle: login, logout, verify_auth.
 """
-
 import os
 from fastapi import APIRouter, Request, Response, Depends
 from fastapi.responses import JSONResponse
@@ -17,8 +17,22 @@ from app.core.config import settings
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
+from app.core.cache import CacheService
+
+from app.core.cache import CacheService
+
 @router.post("/login")
 async def login(request: Request, response: Response, db: Session = Depends(get_db)):
+
+    client_ip = request.client.host if request.client else "unknown"
+    is_allowed = await CacheService.check_rate_limit(
+        identifier=f"login:{client_ip}",
+        limit=5,
+        window_seconds=300
+    )
+    if not is_allowed:
+        return JSONResponse(status_code=429, content={"detail": "Too Many Requests. Login rate limit exceeded."})
+        
     data = await request.json()
     if data.get("key") == settings.AEHUB_SECRET_KEY:
         # Check if admin user exists, if not create it (LAN-first bootstrapping)
@@ -63,5 +77,8 @@ async def logout(request: Request, response: Response, db: Session = Depends(get
 
 @router.get("/verify")
 async def verify_auth(request: Request):
+    """
+    Executes verify_auth logic.
+    """
     # If it reaches here, the middleware has already approved it.
     return {"status": "ok"}

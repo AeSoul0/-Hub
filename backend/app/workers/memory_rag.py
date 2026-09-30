@@ -1,10 +1,10 @@
 """
 @file backend/app/workers/memory_rag.py
-@description Core module for A.U.R.O.R.A. System
+@description Implements memory_rag.py. Core components: general logic modules.
 
-Implements core logic and architectural definitions.
+This module manages the internal business logic for general logic modules.
+It provides specialized functionality to handle: summarize_old_chats, _async_summarize.
 """
-
 import asyncio
 import os
 
@@ -17,6 +17,9 @@ from app.core.celery_app import celery_app
 @celery_app.task(name="memory.summarize_and_forget")
 def summarize_old_chats(session_id: str):
     """
+    Executes summarize_old_chats logic.
+    """
+    """
     Implements the Forgetting and Auto-Summarization mechanism (Phase 4).
     Checks if chat history is too long. If so, summarizes the oldest messages,
     saves the semantic summary to RAG/memory table, and deletes the raw messages.
@@ -24,6 +27,9 @@ def summarize_old_chats(session_id: str):
     asyncio.run(_async_summarize(session_id))
 
 async def _async_summarize(session_id: str):
+    """
+    Executes _async_summarize logic.
+    """
     # Fetch all chats
     with database.get_connection() as conn:
         with conn.cursor() as cursor:

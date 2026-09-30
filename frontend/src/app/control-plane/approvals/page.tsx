@@ -1,10 +1,10 @@
 /**
  * @file frontend/src/app/control-plane/approvals/page.tsx
- * @description Approvals management page for the M11 Control Plane.
- *
- * Implements core logic and architectural definitions.
+ * @description Implements page.tsx.
+ * 
+ * This module manages the frontend logic for ApprovalsPage.
+ * Core interfaces: where.
  */
-
 "use client";
 
 import React, { useState } from 'react';

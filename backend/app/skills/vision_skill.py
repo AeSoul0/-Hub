@@ -1,10 +1,10 @@
 """
 @file backend/app/skills/vision_skill.py
-@description Core module for A.U.R.O.R.A. System - Vision Skill
+@description Implements vision_skill.py. Core components: VisionSkill.
 
-Implements core logic and architectural definitions.
+This module manages the internal business logic for VisionSkill.
+It provides specialized functionality to handle: metadata, get_tool_metadata, tools, system_prompt_extension, find_text_on_screen, take_screenshot, execute_ui_action, get_skill.
 """
-
 import base64
 from io import BytesIO
 from typing import Callable, Dict, List
@@ -17,7 +17,13 @@ from app.skills.base import BaseSkill, RiskLevel, SkillMetadata, ToolMetadata
 
 
 class VisionSkill(BaseSkill):
+    """
+    Represents the VisionSkill entity and its core operations.
+    """
     def __init__(self):
+        """
+        Executes __init__ logic.
+        """
         super().__init__()
         # PyAutoGUI fail-safe config - aborts if mouse is thrown to the corner
         pyautogui.FAILSAFE = True
@@ -25,6 +31,9 @@ class VisionSkill(BaseSkill):
 
     @property
     def metadata(self) -> SkillMetadata:
+        """
+        Executes metadata logic.
+        """
         # Define the skill metadata
         return SkillMetadata(
             name="computer_vision",
@@ -33,6 +42,9 @@ class VisionSkill(BaseSkill):
         )
         
     def get_tool_metadata(self) -> Dict[str, ToolMetadata]:
+        """
+        Executes get_tool_metadata logic.
+        """
         # Define tool configurations, marking UI actions as high risk
         return {
             "take_screenshot": ToolMetadata(
@@ -55,11 +67,17 @@ class VisionSkill(BaseSkill):
 
     @property
     def tools(self) -> List[Callable]:
+        """
+        Executes tools logic.
+        """
         # Return all vision and UI manipulation tools
         return [take_screenshot, execute_ui_action, find_text_on_screen]
         
     @property
     def system_prompt_extension(self) -> str:
+        """
+        Executes system_prompt_extension logic.
+        """
         # Provide instruction to the LLM on using screen capabilities responsibly
         return (
             "You have direct vision of the host computer. You can use 'take_screenshot' to see the screen.\n"
@@ -71,6 +89,9 @@ class VisionSkill(BaseSkill):
 
 @tool
 def find_text_on_screen(text_to_find: str) -> str:
+    """
+    Executes find_text_on_screen logic.
+    """
     """Finds the exact X, Y coordinates of specific text on the screen using OCR."""
     import easyocr
     import numpy as np
@@ -101,6 +122,9 @@ def find_text_on_screen(text_to_find: str) -> str:
 
 @tool
 def take_screenshot() -> str:
+    """
+    Executes take_screenshot logic.
+    """
     """Captures the primary monitor screen and returns the image as a base64 string."""
     image = ImageGrab.grab()
     
@@ -117,6 +141,9 @@ def take_screenshot() -> str:
 
 @tool
 def execute_ui_action(action: str, x: int = None, y: int = None, text: str = None, keys: str = None, amount: int = None) -> str:
+    """
+    Executes execute_ui_action logic.
+    """
     """
     Executes a UI automation action.
     - action: 'click', 'type', 'hotkey', 'scroll'
@@ -160,5 +187,8 @@ def execute_ui_action(action: str, x: int = None, y: int = None, text: str = Non
         return f"UI Automation Error: {str(e)}"
 
 def get_skill():
+    """
+    Executes get_skill logic.
+    """
     # Factory function to instantiate the skill
     return VisionSkill()

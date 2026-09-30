@@ -1,10 +1,10 @@
 /**
  * @file frontend/src/components/widgets/WeatherWidget.tsx
- * @description Weather widget fetching and displaying real-time meteorological data and daily forecasts from Open-Meteo.
- *
- * Implements core logic and architectural definitions.
+ * @description Implements WeatherWidget.tsx.
+ * 
+ * This module manages the frontend logic for WeatherWidget, fetchWeather.
+ * Core interfaces: data structures.
  */
-
 "use client";
 
 import { useEffect, useState } from "react";

@@ -1,10 +1,10 @@
 """
 @file backend/app/runtime/task_manager.py
-@description Core module for A.U.R.O.R.A. System
+@description Implements task_manager.py. Core components: TaskState, TaskAttempt, TaskStep, TaskCheckpoint, TaskArtifact, Task, TaskManager.
 
-Implements core logic and architectural definitions.
+This module manages the internal business logic for TaskState, TaskAttempt, TaskStep, TaskCheckpoint, TaskArtifact, Task, TaskManager.
+It provides specialized functionality to handle: create_task, update_state, acquire_lease, get_task, renew_lease, cancel_task, create_checkpoint, get_latest_checkpoint.
 """
-
 import json
 import uuid
 from datetime import datetime
@@ -17,6 +17,9 @@ from app.core.database import get_connection
 
 
 class TaskState(str, Enum):
+    """
+    Represents the TaskState entity and its core operations.
+    """
     QUEUED = "QUEUED"
     RUNNING = "RUNNING"
     WAITING = "WAITING"
@@ -28,6 +31,9 @@ class TaskState(str, Enum):
     EXPIRED = "EXPIRED"
 
 class TaskAttempt(BaseModel):
+    """
+    Represents the TaskAttempt entity and its core operations.
+    """
     id: str
     task_id: str
     started_at: datetime
@@ -37,6 +43,9 @@ class TaskAttempt(BaseModel):
     error_trace: Optional[str] = None
 
 class TaskStep(BaseModel):
+    """
+    Represents the TaskStep entity and its core operations.
+    """
     id: str
     task_attempt_id: str
     step_name: str
@@ -46,12 +55,18 @@ class TaskStep(BaseModel):
     output_payload: Optional[Dict[str, Any]] = None
 
 class TaskCheckpoint(BaseModel):
+    """
+    Represents the TaskCheckpoint entity and its core operations.
+    """
     id: str
     task_id: str
     state_snapshot: Dict[str, Any]
     created_at: datetime
 
 class TaskArtifact(BaseModel):
+    """
+    Represents the TaskArtifact entity and its core operations.
+    """
     id: str
     task_id: str
     artifact_type: str
@@ -59,6 +74,9 @@ class TaskArtifact(BaseModel):
     created_at: datetime
 
 class Task(BaseModel):
+    """
+    Represents the Task entity and its core operations.
+    """
     id: str
     session_id: str
     parent_task_id: Optional[str] = None
@@ -91,6 +109,9 @@ VALID_TRANSITIONS = {
 
 class TaskManager:
     """
+    Represents the TaskManager entity and its core operations.
+    """
+    """
     Durable Task Runtime (Phase 2).
     Manages the lifecycle of asynchronous agentic operations, ensuring strict state transitions,
     resiliency, and observability for background workers.
@@ -98,6 +119,9 @@ class TaskManager:
     
     @staticmethod
     def create_task(session_id: str, payload: Dict[str, Any], parent_task_id: Optional[str] = None, priority: int = 0, idempotency_key: Optional[str] = None) -> Task:
+        """
+        Executes create_task logic.
+        """
         # Check idempotency key to prevent duplicate tasks, then insert a new task record
         # Check idempotency key to prevent duplicate tasks, then insert a new task record
         task_id = str(uuid.uuid4())
@@ -124,6 +148,9 @@ class TaskManager:
         
     @staticmethod
     def update_state(task_id: str, new_state: TaskState, expected_version: Optional[int] = None, error_message: Optional[str] = None) -> bool:
+        """
+        Executes update_state logic.
+        """
         # Enforce valid state transitions and optimistic locking before updating task state
         # Enforce valid state transitions and optimistic locking before updating task state
         task = TaskManager.get_task(task_id)
@@ -157,6 +184,9 @@ class TaskManager:
             
     @staticmethod
     def acquire_lease(task_id: str, worker_id: str, lease_minutes: int = 5) -> bool:
+        """
+        Executes acquire_lease logic.
+        """
         # Assign a task to a worker exclusively by setting a lease expiration and updating its state to RUNNING
         # Assign a task to a worker exclusively by setting a lease expiration and updating its state to RUNNING
         from datetime import timedelta
@@ -181,6 +211,9 @@ class TaskManager:
             
     @staticmethod
     def get_task(task_id: str) -> Optional[Task]:
+        """
+        Executes get_task logic.
+        """
         with get_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
@@ -212,6 +245,9 @@ class TaskManager:
 
     @staticmethod
     def renew_lease(task_id: str, worker_id: str, lease_minutes: int = 5) -> bool:
+        """
+        Executes renew_lease logic.
+        """
         # Extend the lease expiration time for a task currently executing on a worker
         # Extend the lease expiration time for a task currently executing on a worker
         """Heartbeat mechanism to keep the worker lease alive."""
@@ -232,6 +268,9 @@ class TaskManager:
 
     @staticmethod
     def cancel_task(task_id: str) -> bool:
+        """
+        Executes cancel_task logic.
+        """
         # Mark a task as cancellation_requested so workers can gracefully abort execution
         # Mark a task as cancellation_requested so workers can gracefully abort execution
         """Cancellation token mechanism to request task stop."""
@@ -248,6 +287,9 @@ class TaskManager:
 
     @staticmethod
     def create_checkpoint(task_id: str, state_snapshot: Dict[str, Any]) -> TaskCheckpoint:
+        """
+        Executes create_checkpoint logic.
+        """
         # Persist a snapshot of the agent's current state to allow recovery from failures
         # Persist a snapshot of the agent's current state to allow recovery from failures
         """Checkpoints mechanism to save agent state for recovery."""
@@ -265,6 +307,9 @@ class TaskManager:
         
     @staticmethod
     def get_latest_checkpoint(task_id: str) -> Optional[TaskCheckpoint]:
+        """
+        Executes get_latest_checkpoint logic.
+        """
         with get_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
@@ -278,6 +323,9 @@ class TaskManager:
 
     @staticmethod
     def recover_zombie_tasks(timeout_minutes: int = 30):
+        """
+        Executes recover_zombie_tasks logic.
+        """
         # Identify tasks stuck in the RUNNING state beyond the timeout and mark them as FAILED
         # Identify tasks stuck in the RUNNING state beyond the timeout and mark them as FAILED
         """

@@ -1,20 +1,25 @@
 """
 @file backend/app/agent_engine/adapters/openai_adapter.py
-@description OpenAI Responses API Adapter.
+@description Implements openai_adapter.py. Core components: OpenAIAdapter.
 
-Serves as the foundational adapter for the new kernel (Phase 11).
-Delegates execution natively without forcing the runtime into LangGraph dependencies.
+This module manages the internal business logic for OpenAIAdapter.
+It provides specialized functionality to handle: generate.
 """
-
 from typing import Dict, Any
 from app.agent_engine.adapters.base import ModelProvider
 
 class OpenAIAdapter(ModelProvider):
     """
+    Represents the OpenAIAdapter entity and its core operations.
+    """
+    """
     Implements the ModelProvider interface using the official OpenAI Responses API.
     """
     
     async def generate(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Executes generate logic.
+        """
         # 1. Parse Context (Task, Feedback, Observations)
         task = context.get("task", {}).get("description", str(context.get("task", "")))
         observations = context.get("observations", [])

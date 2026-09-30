@@ -1,10 +1,10 @@
 /**
  * @file frontend/src/components/layout/WorkspaceDesktop.tsx
- * @description Desktop workspace layout managing draggable, resizable widget windows and dynamic artifact rendering.
- *
- * Implements core logic and architectural definitions.
+ * @description Implements WorkspaceDesktop.tsx.
+ * 
+ * This module manages the frontend logic for WorkspaceDesktop.
+ * Core interfaces: data structures.
  */
-
 "use client";
 
 import React from "react";

@@ -1,10 +1,10 @@
 /**
  * @file frontend/src/app/control-plane/workflows/page.tsx
- * @description Core module for A.U.R.O.R.A. System
- *
- * Implements core logic and architectural definitions.
+ * @description Implements page.tsx.
+ * 
+ * This module manages the frontend logic for WorkflowsPage.
+ * Core interfaces: data structures.
  */
-
 "use client";
 
 import React from 'react';

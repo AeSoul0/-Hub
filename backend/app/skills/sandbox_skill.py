@@ -1,10 +1,10 @@
 """
 @file backend/app/skills/sandbox_skill.py
-@description Core module for A.U.R.O.R.A. System - Sandbox Skill
+@description Implements sandbox_skill.py. Core components: SandboxSkill.
 
-Implements core logic and architectural definitions.
+This module manages the internal business logic for SandboxSkill.
+It provides specialized functionality to handle: execute_python_code, execute_shell_script, metadata, tools, get_tool_metadata, system_prompt_extension, get_skill.
 """
-
 from typing import Callable, Dict, List, Optional
 
 from langchain_core.tools import tool
@@ -16,6 +16,9 @@ from .base import BaseSkill, RiskLevel, SkillMetadata, ToolMetadata
 
 @tool
 async def execute_python_code(code: str) -> str:
+    """
+    Executes execute_python_code logic.
+    """
     """
     Esegue codice Python 3.11 in un ambiente sandbox isolato, sicuro e usa-e-getta.
     Usa questo strumento per eseguire calcoli complessi, analizzare dati o testare algoritmi.
@@ -32,6 +35,9 @@ async def execute_python_code(code: str) -> str:
 @tool
 async def execute_shell_script(command: str) -> str:
     """
+    Executes execute_shell_script logic.
+    """
+    """
     Esegue un comando shell (bash) in un ambiente sandbox isolato, sicuro e usa-e-getta (senza rete).
     Usa questo strumento per manipolazione dati di base o utility Unix-like.
     """
@@ -45,8 +51,14 @@ async def execute_shell_script(command: str) -> str:
 
 
 class SandboxSkill(BaseSkill):
+    """
+    Represents the SandboxSkill entity and its core operations.
+    """
     @property
     def metadata(self) -> SkillMetadata:
+        """
+        Executes metadata logic.
+        """
         # Define the skill metadata
         return SkillMetadata(
             name="sandbox",
@@ -56,10 +68,16 @@ class SandboxSkill(BaseSkill):
         
     @property
     def tools(self) -> List[Callable]:
+        """
+        Executes tools logic.
+        """
         # Expose the available tools
         return [execute_python_code, execute_shell_script]
         
     def get_tool_metadata(self) -> Dict[str, ToolMetadata]:
+        """
+        Executes get_tool_metadata logic.
+        """
         # Return specific metadata and risk levels for each tool
         return {
             "execute_python_code": ToolMetadata(
@@ -78,6 +96,9 @@ class SandboxSkill(BaseSkill):
         
     @property
     def system_prompt_extension(self) -> Optional[str]:
+        """
+        Executes system_prompt_extension logic.
+        """
         # Provide prompt context for the LLM regarding how and when to use these tools
         return (
             "You have access to a secure Sandbox execution environment. "
@@ -89,5 +110,8 @@ class SandboxSkill(BaseSkill):
         )
 
 def get_skill() -> BaseSkill:
+    """
+    Executes get_skill logic.
+    """
     # Factory function to instantiate the skill
     return SandboxSkill()

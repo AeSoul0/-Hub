@@ -1,10 +1,10 @@
 """
 @file backend/app/skills/registry.py
-@description Core module for A.U.R.O.R.A. System
+@description Implements registry.py. Core components: SkillRegistry.
 
-Implements core logic and architectural definitions.
+This module manages the internal business logic for SkillRegistry.
+It provides specialized functionality to handle: register_skill, load_from_package, get_all_tools, get_system_prompt_extensions.
 """
-
 import importlib
 import pkgutil
 from typing import Dict, List
@@ -14,15 +14,24 @@ from .base import BaseSkill, ToolMetadata
 
 class SkillRegistry:
     """
+    Represents the SkillRegistry entity and its core operations.
+    """
+    """
     Registry for managing all active A.U.R.O.R.A. skills.
     Handles discovery, loading, and capability extraction (tools/prompts).
     """
     
     def __init__(self):
+        """
+        Executes __init__ logic.
+        """
         self._skills: Dict[str, BaseSkill] = {}
         self._tool_metadata: Dict[str, ToolMetadata] = {}
         
     def register_skill(self, skill: BaseSkill):
+        """
+        Executes register_skill logic.
+        """
         """Registers an initialized skill instance."""
         name = skill.metadata.name
         if name in self._skills:
@@ -36,6 +45,9 @@ class SkillRegistry:
         print(f"[Skills] Registered '{name}' v{skill.metadata.version}")
         
     def load_from_package(self, package_name: str = "app.skills"):
+        """
+        Executes load_from_package logic.
+        """
         """
         Dynamically loads all skill modules from the specified package.
         Assumes each module in the package exposes a 'get_skill()' function.
@@ -66,6 +78,9 @@ class SkillRegistry:
                 print(f"[Error] Failed to load skill from {full_module_name}: {e}")
 
     def get_all_tools(self) -> List:
+        """
+        Executes get_all_tools logic.
+        """
         """Returns an aggregated list of all @tool functions from all registered skills."""
         all_tools = []
         for skill in self._skills.values():
@@ -73,6 +88,9 @@ class SkillRegistry:
         return all_tools
         
     def get_system_prompt_extensions(self) -> str:
+        """
+        Executes get_system_prompt_extensions logic.
+        """
         """Returns a concatenated string of all active skill prompt extensions."""
         extensions = []
         for skill in self._skills.values():

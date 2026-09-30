@@ -1,10 +1,10 @@
 /**
  * @file frontend/src/store/useUIStore.ts
- * @description UI state management store using Zustand.
- *
- * Implements core logic and architectural definitions.
+ * @description Implements useUIStore.ts.
+ * 
+ * This module manages the frontend logic for UI components.
+ * Core interfaces: ArtifactWindow, UIStore.
  */
-
 import { create } from "zustand";
 import { Artifact } from "@/components/widgets/DynamicArtifactRenderer";
 

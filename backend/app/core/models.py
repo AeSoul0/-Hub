@@ -1,45 +1,66 @@
 """
 @file backend/app/core/models.py
-@description Core module for A.U.R.O.R.A. System
+@description Implements models.py. Core components: ModelProvider, ModelCapabilities, ModelUsage, ModelRequest, ModelResponse, ModelRouter.
 
-Implements core logic and architectural definitions.
+This module manages the internal business logic for ModelProvider, ModelCapabilities, ModelUsage, ModelRequest, ModelResponse, ModelRouter.
+It provides specialized functionality to handle: _init_cache, get_model.
 """
-
 from enum import Enum
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 from langchain_core.language_models.chat_models import BaseChatModel
 
 class ModelProvider(str, Enum):
+    """
+    Represents the ModelProvider entity and its core operations.
+    """
     GROQ = "groq"
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     LOCAL = "local"
 
 class ModelCapabilities(BaseModel):
+    """
+    Represents the ModelCapabilities entity and its core operations.
+    """
     vision: bool = False
     function_calling: bool = False
     json_mode: bool = False
 
 class ModelUsage(BaseModel):
+    """
+    Represents the ModelUsage entity and its core operations.
+    """
     prompt_tokens: int
     completion_tokens: int
     total_tokens: int
 
 class ModelRequest(BaseModel):
+    """
+    Represents the ModelRequest entity and its core operations.
+    """
     messages: List[Dict[str, Any]]
     temperature: float = 0.7
     max_tokens: int = 1000
 
 class ModelResponse(BaseModel):
+    """
+    Represents the ModelResponse entity and its core operations.
+    """
     content: str
     usage: Optional[ModelUsage] = None
 
 class ModelRouter:
+    """
+    Represents the ModelRouter entity and its core operations.
+    """
     _cache_initialized = False
 
     @staticmethod
     def _init_cache():
+        """
+        Executes _init_cache logic.
+        """
         # Initialize the LangChain Redis cache exactly once to share LLM responses
         # Initialize the LangChain Redis cache exactly once to share LLM responses
         if not ModelRouter._cache_initialized:
@@ -59,6 +80,9 @@ class ModelRouter:
 
     @staticmethod
     def get_model(provider: ModelProvider, model_name: str, temperature: float = 0.75) -> BaseChatModel:
+        """
+        Executes get_model logic.
+        """
         # Factory method to return the appropriate LangChain ChatModel instance for the specified provider
         # Factory method to return the appropriate LangChain ChatModel instance for the specified provider
         import os

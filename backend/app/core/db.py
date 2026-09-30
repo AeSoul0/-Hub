@@ -1,10 +1,10 @@
 """
 @file backend/app/core/db.py
-@description Core module for A.U.R.O.R.A. System
+@description Implements db.py. Core components: general logic modules.
 
-Implements core logic and architectural definitions.
+This module manages the internal business logic for general logic modules.
+It provides specialized functionality to handle: get_db.
 """
-
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
@@ -18,6 +18,9 @@ engine = create_engine(POSTGRES_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def get_db():
+    """
+    Executes get_db logic.
+    """
     """
     Dependency for FastAPI endpoints to yield a database session.
     Ensures safe resource teardown.

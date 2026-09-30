@@ -1,10 +1,10 @@
 """
 @file backend/app/domain/models/identity.py
-@description Core module for A.U.R.O.R.A. System
+@description Implements identity.py. Core components: RoleEnum, Workspace, User, WorkspaceMembership, Session, RefreshToken.
 
-Implements core logic and architectural definitions.
+This module manages the internal business logic for RoleEnum, Workspace, User, WorkspaceMembership, Session, RefreshToken.
+It provides specialized functionality to handle: utility operations.
 """
-
 import enum
 import secrets
 from datetime import datetime, timedelta
@@ -14,6 +14,9 @@ from sqlalchemy.orm import declarative_base, relationship
 Base = declarative_base()
 
 class RoleEnum(str, enum.Enum):
+    """
+    Represents the RoleEnum entity and its core operations.
+    """
     SYSTEM = "system"
     ADMIN = "admin"
     MEMBER = "member"
@@ -21,6 +24,9 @@ class RoleEnum(str, enum.Enum):
     GUEST = "guest"
 
 class Workspace(Base):
+    """
+    Represents the Workspace entity and its core operations.
+    """
     """
     Tenant-sensitive isolation boundary.
     """
@@ -31,6 +37,9 @@ class Workspace(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class User(Base):
+    """
+    Represents the User entity and its core operations.
+    """
     """
     Authentication principal.
     """
@@ -43,6 +52,9 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class WorkspaceMembership(Base):
+    """
+    Represents the WorkspaceMembership entity and its core operations.
+    """
     """
     RBAC linkage between a User and a Workspace.
     """
@@ -58,6 +70,9 @@ class WorkspaceMembership(Base):
 
 class Session(Base):
     """
+    Represents the Session entity and its core operations.
+    """
+    """
     Persistent session mapping to a user context.
     """
     __tablename__ = "sessions"
@@ -71,13 +86,16 @@ class Session(Base):
 
 class RefreshToken(Base):
     """
+    Represents the RefreshToken entity and its core operations.
+    """
+    """
     Secure rotation artifact for active sessions.
     """
     __tablename__ = "refresh_tokens"
     
     id = Column(String, primary_key=True, default=lambda: secrets.token_urlsafe(32))
     user_id = Column(String, ForeignKey("users.id"))
-    token = Column(String, unique=True, nullable=False, default=lambda: secrets.token_urlsafe(64))
+    hashed_token = Column(String, unique=True, nullable=False)
     expires_at = Column(DateTime, nullable=False, default=lambda: datetime.utcnow() + timedelta(days=30))
     revoked = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)

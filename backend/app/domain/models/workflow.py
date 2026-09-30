@@ -1,10 +1,10 @@
 """
 @file backend/app/domain/models/workflow.py
-@description Core module for A.U.R.O.R.A. System
+@description Implements workflow.py. Core components: TriggerType, WorkflowState, Workflow, WorkflowVersion, WorkflowTrigger, WorkflowRun.
 
-Implements core logic and architectural definitions.
+This module manages the internal business logic for TriggerType, WorkflowState, Workflow, WorkflowVersion, WorkflowTrigger, WorkflowRun.
+It provides specialized functionality to handle: utility operations.
 """
-
 from sqlalchemy import Column, String, DateTime, JSON, ForeignKey, Enum, Boolean, Integer
 from sqlalchemy.orm import relationship
 import enum
@@ -14,6 +14,9 @@ import uuid
 from app.core.db import Base
 
 class TriggerType(str, enum.Enum):
+    """
+    Represents the TriggerType entity and its core operations.
+    """
     MANUAL = "manual"
     SCHEDULE = "schedule"
     WEBHOOK = "webhook"
@@ -23,6 +26,9 @@ class TriggerType(str, enum.Enum):
     AGENT_DECISION = "agent_decision"
 
 class WorkflowState(str, enum.Enum):
+    """
+    Represents the WorkflowState entity and its core operations.
+    """
     QUEUED = "queued"
     RUNNING = "running"
     WAITING_APPROVAL = "waiting_approval"
@@ -31,6 +37,9 @@ class WorkflowState(str, enum.Enum):
     CANCELLED = "cancelled"
 
 class Workflow(Base):
+    """
+    Represents the Workflow entity and its core operations.
+    """
     __tablename__ = "workflows"
     
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -43,6 +52,9 @@ class Workflow(Base):
     versions = relationship("WorkflowVersion", back_populates="workflow", cascade="all, delete-orphan")
 
 class WorkflowVersion(Base):
+    """
+    Represents the WorkflowVersion entity and its core operations.
+    """
     __tablename__ = "workflow_versions"
     
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -55,6 +67,9 @@ class WorkflowVersion(Base):
     runs = relationship("WorkflowRun", back_populates="version")
 
 class WorkflowTrigger(Base):
+    """
+    Represents the WorkflowTrigger entity and its core operations.
+    """
     __tablename__ = "workflow_triggers"
     
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -64,6 +79,9 @@ class WorkflowTrigger(Base):
     is_active = Column(Boolean, default=True)
 
 class WorkflowRun(Base):
+    """
+    Represents the WorkflowRun entity and its core operations.
+    """
     __tablename__ = "workflow_runs"
     
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))

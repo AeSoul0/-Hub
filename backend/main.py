@@ -1,10 +1,10 @@
 """
 @file backend/main.py
-@description Core module for A.U.R.O.R.A. System
+@description Implements main.py. Core components: general logic modules.
 
-Implements core logic and architectural definitions.
+This module manages the internal business logic for general logic modules.
+It provides specialized functionality to handle: verify_api_key, add_security_headers, sse_event_generator, get_events_stream, startup_db, process_audio_to_text, process_text_to_audio, websocket_endpoint.
 """
-
 import asyncio
 import base64
 import hashlib
@@ -56,6 +56,9 @@ if not AEHUB_SECRET_KEY or AEHUB_SECRET_KEY == "default-unsafe-key":
 @app.middleware("http")
 async def verify_api_key(request: Request, call_next):
     """
+    Executes verify_api_key logic.
+    """
+    """
     Global security checkpoint. Intercepts all incoming HTTP traffic.
     Requires a valid session token.
     """
@@ -83,10 +86,22 @@ async def verify_api_key(request: Request, call_next):
                 )
                 
             # M4: Rate Limiting
+            path = request.url.path
+            limit = 60
+            window = 60
+            limit_key = "api"
+            
+            if path.startswith("/api/auth/login"):
+                limit = 5; window = 300; limit_key = "login"
+            elif path.startswith("/api/orchestrator/listen") or "upload" in path:
+                limit = 10; window = 60; limit_key = "upload"
+            elif path.startswith("/api/orchestrator/ask"):
+                limit = 20; window = 60; limit_key = "llm"
+                
             is_allowed = await CacheService.check_rate_limit(
-                identifier=f"user:{session.user_id}",
-                limit=60, # 60 requests
-                window_seconds=60 # per minute
+                identifier=f"{limit_key}:{session.user_id}",
+                limit=limit,
+                window_seconds=window
             )
             if not is_allowed:
                 return JSONResponse(
@@ -105,8 +120,6 @@ async def verify_api_key(request: Request, call_next):
 from app.core.security_middleware import AdvancedSecurityMiddleware
 
 app.add_middleware(AdvancedSecurityMiddleware)
-app.add_middleware(SecurityAuditMiddleware)
-app.add_middleware(RateLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[os.getenv("FRONTEND_URL", "http://localhost:3000")],
@@ -123,6 +136,9 @@ app.include_router(auth.router)
 # =====================================================================
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
+    """
+    Executes add_security_headers logic.
+    """
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
@@ -140,6 +156,9 @@ app.include_router(orchestrator.router)
 # SERVER-SENT EVENTS (SSE) EVENT BUS STREAM
 # =====================================================================
 async def sse_event_generator(session_id: str, request: Request):
+    """
+    Executes sse_event_generator logic.
+    """
     """
     Generator that pulls messages from the EventBus and yields them
     in standard Server-Sent Events (SSE) format.
@@ -160,6 +179,9 @@ async def sse_event_generator(session_id: str, request: Request):
 @app.get("/api/events")
 async def get_events_stream(request: Request):
     """
+    Executes get_events_stream logic.
+    """
+    """
     SSE endpoint for streaming real-time logs and agent states to the frontend.
     """
     from app.core.security import resolve_principal
@@ -178,6 +200,9 @@ from app.workflows.autonomous import register_workflows
 # Initialize database storage schemas during the application startup lifecycle
 @app.on_event("startup")
 def startup_db():
+    """
+    Executes startup_db logic.
+    """
     from app.core.db import engine
     from app.domain.models import Base
     from app.core.telemetry import instrument_sqlalchemy
@@ -201,6 +226,9 @@ def startup_db():
 # AUDIO -> TEXT (SPEECH TO TEXT CONVERSION PROCESSING)
 # =====================================================================
 async def process_audio_to_text(base64_audio: str):
+    """
+    Executes process_audio_to_text logic.
+    """
     """
     Decodes inbound Base64 audio wave packets, maps them into volatile storage,
     and forwards the binary block directly to Groq's hardware-accelerated Whisper model.
@@ -244,6 +272,9 @@ async def process_audio_to_text(base64_audio: str):
 # =====================================================================
 async def process_text_to_audio(text: str):
     """
+    Executes process_text_to_audio logic.
+    """
+    """
     Synthesizes clean textual intelligence into neural audio streams, encodes them
     to Base64, and purges system assets from disk to preserve a zero-byte leak footprint.
     """
@@ -275,6 +306,9 @@ async def process_text_to_audio(text: str):
 @app.websocket("/ws/orchestrator")
 async def websocket_endpoint(websocket: WebSocket):
     """
+    Executes websocket_endpoint logic.
+    """
+    """
     Manages continuous duplex WebSocket communication streams. Extracts state tokens
     to segment settings matrices, history recall buffers, and loops on a per-user layer.
     """
@@ -297,6 +331,9 @@ async def websocket_endpoint(websocket: WebSocket):
     session_id = session.user_id
 
     async def safe_send(payload: dict):
+        """
+        Executes safe_send logic.
+        """
         try:
             await websocket.send_json(payload)
         except Exception as e:

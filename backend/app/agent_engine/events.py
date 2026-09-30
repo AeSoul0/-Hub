@@ -1,12 +1,10 @@
 """
 @file backend/app/agent_engine/events.py
-@description Observability and Agent Flight Recorder.
+@description Implements events.py. Core components: RunEvent, EventDispatcher.
 
-Implements the deterministic event logger for Phase 9. 
-Records detailed run traces (orchestrator, tool gateways, checker) to disk 
-so entire execution loops can be reconstructed exactly as they happened.
+This module manages the internal business logic for RunEvent, EventDispatcher.
+It provides specialized functionality to handle: __new__, dispatch, get_events_for_run.
 """
-
 import json
 import os
 from typing import Dict, Any, List, Optional
@@ -15,6 +13,9 @@ from pydantic import BaseModel, Field
 
 # Updated RunEvent schema based on Phase 9 requirements
 class RunEvent(BaseModel):
+    """
+    Represents the RunEvent entity and its core operations.
+    """
     event_type: str
     run_id: str
     parent_run_id: Optional[str] = None
@@ -37,6 +38,9 @@ FLIGHT_RECORDER_FILE = "flight_recorder.jsonl"
 
 class EventDispatcher:
     """
+    Represents the EventDispatcher entity and its core operations.
+    """
+    """
     Phase 9 Agent Flight Recorder.
     Writes structured events to a JSONL log for full run reconstructability.
     """
@@ -44,6 +48,9 @@ class EventDispatcher:
     _instance = None
     
     def __new__(cls):
+        """
+        Executes __new__ logic.
+        """
         if cls._instance is None:
             cls._instance = super(EventDispatcher, cls).__new__(cls)
         return cls._instance
@@ -55,6 +62,9 @@ class EventDispatcher:
                  workspace_id: str,
                  **kwargs) -> RunEvent:
                  
+        """
+        Executes dispatch logic.
+        """
         event = RunEvent(
             event_type=event_type,
             run_id=run_id,
@@ -70,6 +80,9 @@ class EventDispatcher:
         return event
 
     def get_events_for_run(self, run_id: str) -> List[RunEvent]:
+        """
+        Executes get_events_for_run logic.
+        """
         events = []
         if os.path.exists(FLIGHT_RECORDER_FILE):
             with open(FLIGHT_RECORDER_FILE, "r", encoding="utf-8") as f:

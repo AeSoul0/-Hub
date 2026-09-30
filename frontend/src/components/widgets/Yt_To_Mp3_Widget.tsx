@@ -1,10 +1,10 @@
 /**
  * @file frontend/src/components/widgets/Yt_To_Mp3_Widget.tsx
- * @description Media extraction widget facilitating YouTube-to-MP3 conversion, querying, and downloading.
- *
- * Implements core logic and architectural definitions.
+ * @description Implements Yt_To_Mp3_Widget.tsx.
+ * 
+ * This module manages the frontend logic for MediaSyncWidget.
+ * Core interfaces: data structures.
  */
-
 "use client";
 
 import { useState } from "react";
@@ -14,7 +14,7 @@ import BentoWidget from "@/components/widgets/BentoWidget";
 // ==============================================================================
 // ENVIRONMENT & AUTHENTICATION CONFIGURATION
 // ==============================================================================
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:3002";
+import { API_BASE_URL, fetchApi } from "@/lib/api/client";
 const getAuthHeaders = (): Record<string, string> => {
     let sessionId = "default-session";
     if (typeof window !== "undefined") {
@@ -45,7 +45,7 @@ export default function MediaSyncWidget() {
 
         try {
             // SECURE DATA TRANSMISSION: Firing requests with mandatory clearance headers
-            const response = await fetch(`${API_BASE_URL}/api/media/download`, {
+            const response = await fetchApi("/api/media/download`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

@@ -1,10 +1,10 @@
 /**
  * @file frontend/src/components/widgets/AudioPlayerWidget.tsx
- * @description Audio player widget for local playback, looping, seeking, and global state synchronization.
- *
- * Implements core logic and architectural definitions.
+ * @description Implements AudioPlayerWidget.tsx.
+ * 
+ * This module manages the frontend logic for AudioPlayerWidget.
+ * Core interfaces: AudioPlayerProps.
  */
-
 "use client";
 
 import { useState, useEffect } from "react";

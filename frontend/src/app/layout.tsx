@@ -1,10 +1,10 @@
 /**
  * @file frontend/src/app/layout.tsx
- * @description Root layout component for the ÆHub frontend.
- *
- * Implements core logic and architectural definitions.
+ * @description Implements layout.tsx.
+ * 
+ * This module manages the frontend logic for RootLayout.
+ * Core interfaces: data structures.
  */
-
 import type { Metadata } from "next";
 import { Quicksand, Nunito } from "next/font/google";
 import "./style/globals.css";

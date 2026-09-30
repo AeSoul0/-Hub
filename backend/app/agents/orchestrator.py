@@ -1,10 +1,10 @@
 """
 @file backend/app/agents/orchestrator.py
-@description Orchestrator for the A.U.R.O.R.A. System
+@description Implements orchestrator.py. Core components: general logic modules.
 
-Implements core logic and architectural definitions.
+This module manages the internal business logic for general logic modules.
+It provides specialized functionality to handle: clean_text_for_speech, generate_voice_base64, execute_slash_command, generate_ai_response, process_orchestration_voice, process_orchestration_text.
 """
-
 import base64
 import os
 import re
@@ -55,6 +55,9 @@ AESOUL_SYSTEM_PROMPT = (
 # ==============================================================================
 
 def clean_text_for_speech(text: str) -> str:
+    """
+    Executes clean_text_for_speech logic.
+    """
     if not text:
         return ""
 
@@ -73,6 +76,9 @@ def clean_text_for_speech(text: str) -> str:
 
 
 async def generate_voice_base64(text: str) -> str:
+    """
+    Executes generate_voice_base64 logic.
+    """
     communicate = edge_tts.Communicate(text, "it-IT-ElsaNeural")
     tts_audio_data = b""
     async for chunk in communicate.stream():
@@ -86,6 +92,9 @@ async def generate_voice_base64(text: str) -> str:
 # ==============================================================================
 
 async def execute_slash_command(cmd: str, session_id: str):
+    """
+    Executes execute_slash_command logic.
+    """
     """
     Intercepts terminal-style slash primitives and securely alters hyper-parameters
     exclusively for the active session context via the SQLite state ledger.
@@ -140,6 +149,9 @@ async def generate_ai_response(
     user_intent: str | list, system_prompt: str, ui_context: str, session_id: str,
     principal=None
 ):
+    """
+    Executes generate_ai_response logic.
+    """
     """
     Main cognitive assembly processor.
     Invokes the compiled LangGraph JARVIS Core, passing the user_intent and retrieving the final artifact/state.

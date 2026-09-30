@@ -1,10 +1,10 @@
 /**
  * @file frontend/src/app/page.tsx
- * @description Main entry point and home page for the ÆHub application.
- *
- * Implements core logic and architectural definitions.
+ * @description Implements page.tsx.
+ * 
+ * This module manages the frontend logic for Home.
+ * Core interfaces: export.
  */
-
 "use client";
 
 import { useEffect, useState } from "react";

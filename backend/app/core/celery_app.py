@@ -1,10 +1,10 @@
 """
 @file backend/app/core/celery_app.py
-@description Core module for A.U.R.O.R.A. System
+@description Implements celery_app.py. Core components: general logic modules.
 
-Implements core logic and architectural definitions.
+This module manages the internal business logic for general logic modules.
+It provides specialized functionality to handle: route_to_dlq, secure_task, decorator, wrapper.
 """
-
 import os
 
 from celery import Celery
@@ -44,6 +44,9 @@ celery_app.conf.task_reject_on_worker_lost = True
 celery_app.conf.task_acks_late = True
 
 def route_to_dlq(task, exc, task_id, args, kwargs, einfo):
+    """
+    Executes route_to_dlq logic.
+    """
     """Fallback handler that sends failed tasks to DLQ for manual inspection."""
     import logging
     logging.getLogger("celery.dlq").error(f"Task {task_id} failed and routed to DLQ. Error: {exc}")
@@ -67,13 +70,22 @@ from app.domain.models.audit import AuditLog
 
 def secure_task(name: str):
     """
+    Executes secure_task logic.
+    """
+    """
     Decorator for Celery tasks ensuring they run under a strictly verified Identity Context.
     Emits an Audit Log for background execution.
     """
     def decorator(func):
+        """
+        Executes decorator logic.
+        """
         @celery_app.task(name=name, bind=True)
         @functools.wraps(func)
         def wrapper(self, session_id: str, *args, **kwargs):
+            """
+            Executes wrapper logic.
+            """
             with SessionLocal() as db:
                 session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
                 if not session:
