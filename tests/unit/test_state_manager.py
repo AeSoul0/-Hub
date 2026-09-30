@@ -2,8 +2,12 @@
 @file tests/unit/test_state_manager.py
 @description Unit tests for durable native AgentRun state management.
 
-The suite verifies complete snapshot persistence, explicit principal binding,
-and fail-closed handling of incomplete legacy security context.
+The suite verifies:
+- complete snapshot persistence;
+- explicit principal binding;
+- session/workspace/principal validation;
+- protection against cross-principal overwrite;
+- fail-closed handling of incomplete legacy security context.
 """
 
 import json
@@ -16,9 +20,7 @@ from app.agent_engine.models import (
     AgentRun,
     AgentRunStatus,
 )
-from app.agent_engine.state.manager import (
-    AgentStateManager,
-)
+from app.agent_engine.state.manager import AgentStateManager
 from app.domain.models.runtime_state import (
     AgentRun as DbAgentRun,
 )
@@ -31,35 +33,39 @@ from app.domain.models.runtime_state import (
 
 def make_run(
     *,
+    run_id="run-test",
+    session_id="session-test",
     principal_id="user-1",
     workspace_id="workspace-1",
 ) -> AgentRun:
-    """Create a complete native AgentRun test object."""
+    """
+    Create a complete native AgentRun test object.
+    """
     now = datetime.utcnow()
 
     return AgentRun(
-        run_id="run-test",
-        session_id="session-test",
+        run_id=run_id,
+        session_id=session_id,
         workspace_id=workspace_id,
         principal_id=principal_id,
         role="user",
         status=AgentRunStatus.RUNNING,
         metadata={
-            "source": "unit-test"
+            "source": "unit-test",
         },
         current_state={
             "turn": 1,
             "worker_context": {
                 "task": {
-                    "description": "test"
-                }
+                    "description": "test",
+                },
             },
         },
         messages=[],
         task_attempts=1,
         errors=[],
         usage={
-            "tokens": 10
+            "tokens": 10,
         },
         created_at=now,
         updated_at=now,
@@ -70,12 +76,12 @@ def configure_session(
     mock_session_local,
     record=None,
 ):
-    """Configure the SQLAlchemy-style mocked session boundary."""
+    """
+    Configure the SQLAlchemy-style mocked session boundary.
+    """
     mock_db = MagicMock()
 
-    context = (
-        mock_session_local.return_value
-    )
+    context = mock_session_local.return_value
 
     context.__enter__.return_value = (
         mock_db
@@ -90,6 +96,32 @@ def configure_session(
     ) = record
 
     return mock_db
+
+
+def make_db_record(
+    run: AgentRun,
+):
+    """
+    Create a database-style record containing a complete snapshot.
+    """
+    record = MagicMock(
+        spec=DbAgentRun
+    )
+
+    record.id = run.run_id
+    record.session_id = run.session_id
+    record.principal_id = run.principal_id
+    record.role = run.role
+    record.input_data = (
+        run.model_dump_json()
+    )
+    record.status = run.status.value
+    record.result = None
+    record.error = None
+    record.created_at = run.created_at
+    record.updated_at = run.updated_at
+
+    return record
 
 
 # ==============================================================================
@@ -193,18 +225,18 @@ def test_save_agent_run_updates_existing_record(
     mock_session_local,
 ):
     """
-    Existing durable runs must retain their explicit principal binding.
+    Existing durable runs may be updated only by the same security context.
     """
-    record = MagicMock(
-        spec=DbAgentRun
+    run = make_run()
+
+    record = make_db_record(
+        run
     )
 
     mock_db = configure_session(
         mock_session_local,
         record=record,
     )
-
-    run = make_run()
 
     AgentStateManager.save_agent_run(
         run
@@ -215,12 +247,46 @@ def test_save_agent_run_updates_existing_record(
         == "user-1"
     )
 
-    assert (
-        record.input_data
-    )
-
+    assert record.input_data
     mock_db.add.assert_not_called()
     mock_db.commit.assert_called_once()
+
+
+@patch(
+    "app.agent_engine.state.manager.SessionLocal"
+)
+def test_save_agent_run_rejects_cross_principal_overwrite(
+    mock_session_local,
+):
+    """
+    An authenticated principal cannot overwrite another user's run.
+    """
+    stored_run = make_run(
+        principal_id="user-1"
+    )
+
+    attempted_run = make_run(
+        principal_id="user-2"
+    )
+
+    record = make_db_record(
+        stored_run
+    )
+
+    mock_db = configure_session(
+        mock_session_local,
+        record=record,
+    )
+
+    with pytest.raises(
+        PermissionError,
+        match="principal",
+    ):
+        AgentStateManager.save_agent_run(
+            attempted_run
+        )
+
+    mock_db.commit.assert_not_called()
 
 
 # ==============================================================================
@@ -235,36 +301,24 @@ def test_load_agent_run_restores_snapshot(
     mock_session_local,
 ):
     """
-    Reconstruct a native AgentRun from the complete durable snapshot.
+    Reconstruct a native AgentRun from a complete durable snapshot.
     """
     run = make_run()
 
-    record = MagicMock(
-        spec=DbAgentRun
+    record = make_db_record(
+        run
     )
-
-    record.id = run.run_id
-    record.session_id = run.session_id
-    record.principal_id = run.principal_id
-    record.role = run.role
-    record.input_data = (
-        run.model_dump_json()
-    )
-    record.status = run.status.value
-    record.result = None
-    record.error = None
-    record.created_at = run.created_at
-    record.updated_at = run.updated_at
 
     configure_session(
         mock_session_local,
         record=record,
     )
 
-    restored = (
-        AgentStateManager.load_agent_run(
-            run.run_id
-        )
+    restored = AgentStateManager.load_agent_run(
+        run.run_id,
+        session_id=run.session_id,
+        workspace_id=run.workspace_id,
+        principal_id=run.principal_id,
     )
 
     assert restored is not None
@@ -293,11 +347,108 @@ def test_load_agent_run_restores_snapshot(
 @patch(
     "app.agent_engine.state.manager.SessionLocal"
 )
+def test_load_agent_run_rejects_session_mismatch(
+    mock_session_local,
+):
+    """
+    A run cannot be resumed from another authenticated session.
+    """
+    run = make_run()
+
+    record = make_db_record(
+        run
+    )
+
+    configure_session(
+        mock_session_local,
+        record=record,
+    )
+
+    with pytest.raises(
+        PermissionError,
+        match="session",
+    ):
+        AgentStateManager.load_agent_run(
+            run.run_id,
+            session_id="other-session",
+            workspace_id=run.workspace_id,
+            principal_id=run.principal_id,
+        )
+
+
+@patch(
+    "app.agent_engine.state.manager.SessionLocal"
+)
+def test_load_agent_run_rejects_workspace_mismatch(
+    mock_session_local,
+):
+    """
+    A run cannot cross workspace boundaries during resume.
+    """
+    run = make_run()
+
+    record = make_db_record(
+        run
+    )
+
+    configure_session(
+        mock_session_local,
+        record=record,
+    )
+
+    with pytest.raises(
+        PermissionError,
+        match="workspace",
+    ):
+        AgentStateManager.load_agent_run(
+            run.run_id,
+            session_id=run.session_id,
+            workspace_id="other-workspace",
+            principal_id=run.principal_id,
+        )
+
+
+@patch(
+    "app.agent_engine.state.manager.SessionLocal"
+)
+def test_load_agent_run_rejects_principal_mismatch(
+    mock_session_local,
+):
+    """
+    A run cannot be resumed by another principal.
+    """
+    run = make_run()
+
+    record = make_db_record(
+        run
+    )
+
+    configure_session(
+        mock_session_local,
+        record=record,
+    )
+
+    with pytest.raises(
+        PermissionError,
+        match="principal",
+    ):
+        AgentStateManager.load_agent_run(
+            run.run_id,
+            session_id=run.session_id,
+            workspace_id=run.workspace_id,
+            principal_id="other-user",
+        )
+
+
+@patch(
+    "app.agent_engine.state.manager.SessionLocal"
+)
 def test_legacy_record_without_workspace_fails_closed(
     mock_session_local,
 ):
     """
-    A legacy record without tenant scope must not acquire a default workspace.
+    A legacy record without tenant scope must never acquire a default
+    workspace.
     """
     run = make_run()
 
@@ -332,10 +483,8 @@ def test_legacy_record_without_workspace_fails_closed(
         record=record,
     )
 
-    restored = (
-        AgentStateManager.load_agent_run(
-            run.run_id
-        )
+    restored = AgentStateManager.load_agent_run(
+        run.run_id
     )
 
     assert restored is not None
@@ -344,6 +493,61 @@ def test_legacy_record_without_workspace_fails_closed(
         restored.principal_id
         == run.principal_id
     )
+
+
+@patch(
+    "app.agent_engine.state.manager.SessionLocal"
+)
+def test_legacy_record_rejects_authenticated_workspace_resume(
+    mock_session_local,
+):
+    """
+    A legacy record with no workspace binding must not resume into any
+    authenticated workspace.
+    """
+    run = make_run()
+
+    snapshot = run.model_dump(
+        mode="json"
+    )
+
+    snapshot.pop(
+        "workspace_id",
+        None,
+    )
+
+    record = MagicMock(
+        spec=DbAgentRun
+    )
+
+    record.id = run.run_id
+    record.session_id = run.session_id
+    record.principal_id = run.principal_id
+    record.role = run.role
+    record.input_data = json.dumps(
+        snapshot
+    )
+    record.status = run.status.value
+    record.result = None
+    record.error = None
+    record.created_at = run.created_at
+    record.updated_at = run.updated_at
+
+    configure_session(
+        mock_session_local,
+        record=record,
+    )
+
+    with pytest.raises(
+        PermissionError,
+        match="workspace",
+    ):
+        AgentStateManager.load_agent_run(
+            run.run_id,
+            session_id=run.session_id,
+            workspace_id=run.workspace_id,
+            principal_id=run.principal_id,
+        )
 
 
 @patch(
@@ -360,10 +564,8 @@ def test_load_unknown_run_returns_none(
         record=None,
     )
 
-    result = (
-        AgentStateManager.load_agent_run(
-            "missing-run"
-        )
+    result = AgentStateManager.load_agent_run(
+        "missing-run"
     )
 
     assert result is None

@@ -14,11 +14,21 @@ from app.core.security import Principal, RoleEnum
 from app.runtime.aurora import get_aurora_app
 
 
+# ==============================================================================
+# SERVICE PRINCIPAL
+# ==============================================================================
+
+
 BACKGROUND_PRINCIPAL = Principal(
     id="system-workflow",
     role=RoleEnum.SYSTEM,
     workspace_id="system",
 )
+
+
+# ==============================================================================
+# WORKFLOW ENGINE
+# ==============================================================================
 
 
 class WorkflowEngine:
@@ -56,7 +66,7 @@ class WorkflowEngine:
                 initial_state,
                 config={
                     "configurable": {
-                        "thread_id": session_id,
+                        "run_id": f"workflow:{session_id}",
                     }
                 },
             )
@@ -105,7 +115,12 @@ class WorkflowEngine:
         The scheduler integration remains explicit so importing this module
         cannot silently start background jobs.
         """
-        return None
+        return
+
+
+# ==============================================================================
+# PUBLIC COMPATIBILITY ENTRYPOINT
+# ==============================================================================
 
 
 def register_workflows() -> None:
@@ -116,6 +131,7 @@ def register_workflows() -> None:
 
 
 __all__ = [
+    "BACKGROUND_PRINCIPAL",
     "WorkflowEngine",
     "register_workflows",
 ]

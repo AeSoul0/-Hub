@@ -7,9 +7,9 @@ This module serializes, persists, loads, and restores AgentRun checkpoints.
 Security invariants:
 - Every persisted run must have an explicit principal binding.
 - Missing principal identity is rejected instead of replaced with a system user.
-- Workspace/session/principal isolation is preserved in the serialized snapshot.
-- Legacy records without complete security context are reconstructed in a
-  fail-closed state so the runtime cannot accidentally resume them.
+- Session, workspace, and principal bindings are verified on resume.
+- Existing runs cannot be overwritten by a different authenticated principal.
+- Legacy records without complete security context fail closed.
 """
 
 from __future__ import annotations
@@ -36,9 +36,6 @@ def _serialize_run(
 ) -> str:
     """
     Serialize a native AgentRun into a JSON snapshot.
-
-    Pydantic v2 is the supported runtime version. The legacy fallback is
-    retained only for migration compatibility.
     """
     if hasattr(
         run,
@@ -69,7 +66,9 @@ def _deserialize_result(
         return None
 
     try:
-        return json.loads(result)
+        return json.loads(
+            result
+        )
     except (
         json.JSONDecodeError,
         TypeError,
@@ -83,14 +82,101 @@ def _require_principal(
     """
     Require an explicit principal binding before persistence.
 
-    Durable state must never silently acquire a synthetic system identity.
+    Durable state must never silently acquire a synthetic identity.
     """
-    if not run.principal_id or not run.principal_id.strip():
+    if (
+        not run.principal_id
+        or not run.principal_id.strip()
+    ):
         raise ValueError(
             "Cannot persist AgentRun without an explicit principal_id."
         )
 
     return run.principal_id
+
+
+def _load_snapshot(
+    record: DbAgentRun,
+) -> Dict[str, Any]:
+    """
+    Deserialize the durable runtime snapshot.
+
+    A malformed snapshot is a persistence integrity failure and is rejected
+    instead of being silently reconstructed with guessed security context.
+    """
+    try:
+        payload = json.loads(
+            record.input_data
+        )
+    except (
+        json.JSONDecodeError,
+        TypeError,
+    ) as exc:
+        raise ValueError(
+            f"Persisted AgentRun '{record.id}' contains invalid JSON."
+        ) from exc
+
+    if not isinstance(
+        payload,
+        dict,
+    ):
+        raise ValueError(
+            f"Persisted AgentRun '{record.id}' has an invalid snapshot shape."
+        )
+
+    return payload
+
+
+def _validate_execution_binding(
+    record: DbAgentRun,
+    snapshot: Dict[str, Any],
+    *,
+    session_id: Optional[str] = None,
+    workspace_id: Optional[str] = None,
+    principal_id: Optional[str] = None,
+) -> None:
+    """
+    Validate persisted identity against the requested execution context.
+
+    A mismatch raises PermissionError. Returning None for a mismatch would
+    allow callers to interpret an existing foreign run as a new run and
+    potentially overwrite it.
+    """
+    if (
+        session_id is not None
+        and record.session_id != session_id
+    ):
+        raise PermissionError(
+            "Persisted run session does not match the authenticated session."
+        )
+
+    stored_principal_id = (
+        record.principal_id
+    )
+
+    if (
+        principal_id is not None
+        and stored_principal_id != principal_id
+    ):
+        raise PermissionError(
+            "Persisted run principal does not match the authenticated Principal."
+        )
+
+    stored_workspace_id = str(
+        snapshot.get(
+            "workspace_id",
+            "",
+        )
+        or ""
+    )
+
+    if (
+        workspace_id is not None
+        and stored_workspace_id != workspace_id
+    ):
+        raise PermissionError(
+            "Persisted run workspace does not match the execution workspace."
+        )
 
 
 # ==============================================================================
@@ -154,9 +240,10 @@ class AgentStateManager:
         """
         Persist the complete AgentRun snapshot.
 
-        Principal identity is mandatory. The full Pydantic snapshot is stored
-        in input_data so runtime state survives process restarts without
-        requiring a relational column for every orchestration field.
+        An existing durable record may only be updated by the same session and
+        principal that originally created it. The workspace stored in the
+        serialized snapshot is also immutable from the perspective of identity
+        ownership.
         """
         principal_id = _require_principal(
             run
@@ -202,6 +289,18 @@ class AgentStateManager:
                 db.add(record)
 
             else:
+                existing_snapshot = _load_snapshot(
+                    record
+                )
+
+                _validate_execution_binding(
+                    record,
+                    existing_snapshot,
+                    session_id=run.session_id,
+                    workspace_id=run.workspace_id,
+                    principal_id=principal_id,
+                )
+
                 record.session_id = (
                     run.session_id
                 )
@@ -231,13 +330,18 @@ class AgentStateManager:
     def load_agent_run(
         cls,
         run_id: str,
+        *,
+        session_id: Optional[str] = None,
+        workspace_id: Optional[str] = None,
+        principal_id: Optional[str] = None,
     ) -> Optional[AgentRun]:
         """
-        Reconstruct a native AgentRun from its durable database snapshot.
+        Reconstruct a native AgentRun from durable state.
 
-        Legacy records are handled conservatively. Missing workspace context
-        is represented as an empty binding rather than a default workspace so
-        security validation rejects accidental cross-tenant continuation.
+        Security-aware callers should always provide session_id, workspace_id,
+        and principal_id. Identity mismatches raise PermissionError rather
+        than returning None, preventing an existing foreign run from being
+        mistaken for a new run.
         """
         if not run_id or not run_id.strip():
             raise ValueError(
@@ -258,8 +362,16 @@ class AgentStateManager:
                 return None
 
             try:
-                snapshot = json.loads(
-                    record.input_data
+                snapshot = _load_snapshot(
+                    record
+                )
+
+                _validate_execution_binding(
+                    record,
+                    snapshot,
+                    session_id=session_id,
+                    workspace_id=workspace_id,
+                    principal_id=principal_id,
                 )
 
                 snapshot["status"] = (
@@ -286,12 +398,13 @@ class AgentStateManager:
                         record.created_at
                     )
 
-                # The relational principal binding remains authoritative.
+                # Relational principal identity is authoritative.
                 snapshot["principal_id"] = (
                     record.principal_id
                 )
 
-                # Do not invent tenant scope for legacy records.
+                # Legacy snapshots may lack workspace information.
+                # Never synthesize a default workspace.
                 if not snapshot.get(
                     "workspace_id"
                 ):
@@ -301,14 +414,17 @@ class AgentStateManager:
                     **snapshot
                 )
 
+            except PermissionError:
+                raise
+
             except (
-                json.JSONDecodeError,
-                TypeError,
                 ValueError,
+                TypeError,
             ):
-                # Compatibility path for records created by an older
-                # persistence implementation. Security-sensitive fields are
-                # deliberately left incomplete when they were not persisted.
+                # Legacy or malformed security-sensitive state is reconstructed
+                # only when the persisted relational fields are still usable.
+                # Missing workspace remains an empty binding so authenticated
+                # runtime resume validation fails closed.
                 return AgentRun(
                     run_id=record.id,
                     session_id=record.session_id,
