@@ -103,6 +103,6 @@ pytest>=7.4.3
 pytest-asyncio>=0.21.1
 ruff>=0.1.5
 python-dotenv>=1.0.0
-python-multipart>=0.0.6
+python-multipart>=0.0.32
 aiofiles>=23.2.0
 jsonschema>=4.20.0
