@@ -7,6 +7,7 @@ It provides specialized functionality to handle: start_workflow, execute_step,
 _route_action, resume_from_approval.
 """
 
+from copy import deepcopy
 from datetime import datetime
 from typing import Any, Dict
 
@@ -59,7 +60,7 @@ class WorkflowEngine:
             status=WorkflowState.QUEUED,
             input_data=input_data,
             state_checkpoint={
-                "variables": input_data,
+                "variables": deepcopy(input_data),
                 "completed_steps": [],
             },
         )
@@ -141,17 +142,33 @@ class WorkflowEngine:
                 run.state_checkpoint,
             )
 
-            checkpoint = dict(
-                run.state_checkpoint
+            # Deep-copy the JSON checkpoint before modifying nested values.
+            # This ensures SQLAlchemy detects the new JSON value correctly.
+            checkpoint = deepcopy(
+                run.state_checkpoint or {}
+            )
+
+            checkpoint.setdefault(
+                "variables",
+                {},
+            )
+
+            checkpoint.setdefault(
+                "completed_steps",
+                [],
             )
 
             checkpoint["variables"][
                 f"{current_step['id']}_result"
             ] = result
 
-            checkpoint["completed_steps"].append(
+            if (
                 current_step["id"]
-            )
+                not in checkpoint["completed_steps"]
+            ):
+                checkpoint["completed_steps"].append(
+                    current_step["id"]
+                )
 
             run.state_checkpoint = checkpoint
             self.db.commit()
@@ -225,17 +242,39 @@ class WorkflowEngine:
             self.db.commit()
             return
 
-        checkpoint = dict(
-            run.state_checkpoint
+        # Deep-copy before modifying nested JSON fields so SQLAlchemy
+        # persists the checkpoint mutation.
+        checkpoint = deepcopy(
+            run.state_checkpoint or {}
         )
 
-        checkpoint["completed_steps"].append(
-            run.current_step
+        checkpoint.setdefault(
+            "variables",
+            {},
         )
 
-        checkpoint["variables"][
-            f"{run.current_step}_approval"
-        ] = f"Approved by {approved_by.id}"
+        checkpoint.setdefault(
+            "completed_steps",
+            [],
+        )
+
+        current_step = run.current_step
+
+        if (
+            current_step
+            and current_step
+            not in checkpoint["completed_steps"]
+        ):
+            checkpoint["completed_steps"].append(
+                current_step
+            )
+
+        if current_step:
+            checkpoint["variables"][
+                f"{current_step}_approval"
+            ] = (
+                f"Approved by {approved_by.id}"
+            )
 
         run.state_checkpoint = checkpoint
         run.status = WorkflowState.RUNNING
