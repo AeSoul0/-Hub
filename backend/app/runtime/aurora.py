@@ -59,9 +59,14 @@ class NativeAuroraWorker:
         worker_context = dict(context)
 
         worker_context["system_prompt"] = self.system_prompt
-        worker_context.setdefault("role", "aurora")
+        worker_context.setdefault(
+            "role",
+            "aurora",
+        )
 
-        return await self.model_provider.generate(worker_context)
+        return await self.model_provider.generate(
+            worker_context
+        )
 
 
 # ==============================================================================
@@ -129,11 +134,24 @@ class NativeAuroraApplication:
                 "Aurora invocation requires a valid session_id."
             )
 
-        principal = input_state.get("principal")
+        principal = input_state.get(
+            "principal"
+        )
 
-        if not isinstance(principal, Principal):
+        if not isinstance(
+            principal,
+            Principal,
+        ):
             raise ValueError(
-                "Aurora invocation requires a valid authenticated Principal."
+                "Aurora invocation requires a valid Principal."
+            )
+
+        if (
+            not principal.workspace_id
+            or not principal.workspace_id.strip()
+        ):
+            raise ValueError(
+                "Aurora invocation requires a valid principal workspace."
             )
 
         messages = input_state.get(
@@ -143,10 +161,15 @@ class NativeAuroraApplication:
 
         intent = input_state.get(
             "current_intent",
-            self._extract_last_message(messages),
+            self._extract_last_message(
+                messages
+            ),
         )
 
-        if not intent or not str(intent).strip():
+        if (
+            not intent
+            or not str(intent).strip()
+        ):
             raise ValueError(
                 "Aurora invocation requires a non-empty task."
             )
@@ -157,8 +180,12 @@ class NativeAuroraApplication:
         )
 
         run_id = (
-            input_state.get("run_id")
-            or configurable.get("run_id")
+            input_state.get(
+                "run_id"
+            )
+            or configurable.get(
+                "run_id"
+            )
         )
 
         task = {
@@ -170,20 +197,32 @@ class NativeAuroraApplication:
             orchestrator=None,
             worker=self.worker,
             checker=self.checker,
-            run_id=str(run_id) if run_id else None,
+            run_id=(
+                str(run_id)
+                if run_id
+                else None
+            ),
             session_id=session_id,
             workspace_id=principal.workspace_id,
             principal=principal,
         )
 
         message = SimpleNamespace(
-            content=result if result is not None else ""
+            content=(
+                result
+                if result is not None
+                else ""
+            )
         )
 
         return {
-            "messages": [message],
+            "messages": [
+                message
+            ],
             "session_id": session_id,
-            "current_intent": str(intent),
+            "current_intent": str(
+                intent
+            ),
             "principal": principal,
             "run_id": (
                 str(run_id)
@@ -205,7 +244,10 @@ class NativeAuroraApplication:
 
         last = messages[-1]
 
-        if isinstance(last, dict):
+        if isinstance(
+            last,
+            dict,
+        ):
             return str(
                 last.get(
                     "content",
@@ -227,7 +269,9 @@ class NativeAuroraApplication:
 # ==============================================================================
 
 
-_aurora_app: Optional[NativeAuroraApplication] = None
+_aurora_app: Optional[
+    NativeAuroraApplication
+] = None
 
 
 async def get_aurora_app() -> NativeAuroraApplication:
@@ -264,19 +308,27 @@ async def run_aurora_agent(
             "session_id is required."
         )
 
-    if not transcript or not transcript.strip():
+    if (
+        not transcript
+        or not transcript.strip()
+    ):
         raise ValueError(
             "transcript is required."
         )
 
-    if not isinstance(principal, Principal):
+    if not isinstance(
+        principal,
+        Principal,
+    ):
         raise ValueError(
             "principal is required."
         )
 
     app = await get_aurora_app()
 
-    run_id = f"run_{uuid4().hex}"
+    run_id = (
+        f"run_{uuid4().hex}"
+    )
 
     return await app.ainvoke(
         {

@@ -101,7 +101,6 @@ def test_create_task(
     connection, cursor = configure_connection(
         mock_connection,
         fetchone_sequence=[
-            None,
             (
                 created_task.id,
                 created_task.session_id,

@@ -14,6 +14,8 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from app.agent_engine.models import ToolSpec
 from app.core.security import Principal
 from app.runtime.tool_gateway import ToolGateway, ToolInvocation
@@ -22,6 +24,7 @@ from app.runtime.tool_gateway import ToolGateway, ToolInvocation
 # ==============================================================================
 # TEST HELPERS
 # ==============================================================================
+
 
 def make_spec(
     *,
@@ -91,6 +94,7 @@ def policy_allow(*args, **kwargs):
 # ==============================================================================
 # CORE EXECUTION TESTS
 # ==============================================================================
+
 
 def test_execute_success():
     """
@@ -234,6 +238,7 @@ def test_execute_guardrail_denied_before_side_effect():
 # IDEMPOTENCY TESTS
 # ==============================================================================
 
+
 def test_idempotency_key_is_scoped_to_execution_identity():
     """
     Verify the idempotency key changes when principal, run, or tool-call identity
@@ -318,6 +323,7 @@ def test_execute_idempotent_call_returns_cached_result():
 # ==============================================================================
 # APPROVAL TESTS
 # ==============================================================================
+
 
 def test_execute_requires_approval_and_preserves_full_context():
     """
@@ -464,6 +470,7 @@ def test_execute_unknown_approval_state_fails_closed():
 # ==============================================================================
 # BUDGET TESTS
 # ==============================================================================
+
 
 def test_execute_budget_denied_before_side_effect():
     """
