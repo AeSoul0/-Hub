@@ -92,6 +92,7 @@ jobs:
           REDIS_URL: redis://localhost:6379/0
           AEHUB_SECRET_KEY: ci-test-secret-key
           GROQ_API_KEY: ci-test-groq-key
+          AEHUB_TELEMETRY_CONSOLE: "0"
           PYTHONPATH: .
         run: |
           pytest ../tests/ -v --import-mode=importlib

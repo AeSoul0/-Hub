@@ -6,6 +6,7 @@
 import atexit
 import json
 import logging
+import os
 import sys
 from datetime import datetime
 from typing import Optional
@@ -91,22 +92,35 @@ def setup_telemetry(app: FastAPI):
 
     provider = TracerProvider()
 
-    # Use the original stderr stream instead of pytest's temporary capture
-    # stream. This prevents the BatchSpanProcessor from writing to a closed
-    # capture file after the test session finishes.
-    output_stream = sys.__stderr__ or sys.stderr
+    # Console span export is configurable so CI/tests can keep tracing active
+    # without flooding the log with serialized span payloads.
+    console_export_enabled = os.getenv(
+        "AEHUB_TELEMETRY_CONSOLE",
+        "1",
+    ).strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
 
-    exporter = ConsoleSpanExporter(
-        out=output_stream
-    )
+    if console_export_enabled:
+        # Use the original stderr stream instead of pytest's temporary capture
+        # stream. This prevents the BatchSpanProcessor from writing to a closed
+        # capture file after the test session finishes.
+        output_stream = sys.__stderr__ or sys.stderr
 
-    processor = BatchSpanProcessor(
-        exporter
-    )
+        exporter = ConsoleSpanExporter(
+            out=output_stream
+        )
 
-    provider.add_span_processor(
-        processor
-    )
+        processor = BatchSpanProcessor(
+            exporter
+        )
+
+        provider.add_span_processor(
+            processor
+        )
 
     trace.set_tracer_provider(
         provider
