@@ -63,10 +63,14 @@ if sys.platform == "win32":
 from app.core.config import settings
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
+def startup_db():
     """
-    Manage application startup and shutdown resources.
+    Initialize shared ORM metadata, compatibility persistence,
+    SQLAlchemy telemetry instrumentation, workflow registration,
+    and the proactive scheduler.
+
+    Kept as a named function for compatibility with the existing
+    test suite, which patches main.startup_db during import.
     """
     from sqlalchemy import text
 
@@ -96,6 +100,14 @@ async def lifespan(app: FastAPI):
     print(
         "[OK] Centralized PostgreSQL database schema initialized."
     )
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Manage application startup and shutdown resources.
+    """
+    startup_db()
 
     try:
         yield
