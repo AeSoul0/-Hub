@@ -193,6 +193,7 @@ def test_create_task_returns_existing_idempotent_task(
 
 @patch(
     "app.runtime.task_manager.get_connection"
+)
 def test_update_state(
     mock_connection,
 ):

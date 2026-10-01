@@ -69,10 +69,11 @@ jobs:
       # =========================================================================
       # BACKEND TEST SUITE
       #
-      # The repository keeps application code under backend/app while the
-      # test suite lives at repository root under tests/. Running pytest from
-      # backend ensures the backend pyproject.toml is discovered and exposes
-      # backend/ as the Python import root for "app.*" imports.
+      # Application code lives under backend/app while tests live at the
+      # repository root. Running pytest from backend ensures the backend
+      # pyproject.toml is discovered and "app.*" imports resolve correctly.
+      # CI-only credentials below are non-production placeholders used solely
+      # to satisfy Settings validation during module import.
       # =========================================================================
 
       - name: Run Unit and E2E Tests (M16 Gates)
@@ -80,6 +81,8 @@ jobs:
         env:
           POSTGRES_URL: postgresql://aehub_user:password@localhost:5432/aehub_db
           REDIS_URL: redis://localhost:6379/0
+          AEHUB_SECRET_KEY: ci-test-secret-key
+          GROQ_API_KEY: ci-test-groq-key
           PYTHONPATH: .
         run: |
           pytest ../tests/ -v
