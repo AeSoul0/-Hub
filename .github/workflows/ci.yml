@@ -85,7 +85,7 @@ jobs:
           GROQ_API_KEY: ci-test-groq-key
           PYTHONPATH: .
         run: |
-          pytest ../tests/ -v
+          pytest ../tests/ -v --import-mode=importlib
 
       # =========================================================================
       # FRONTEND
