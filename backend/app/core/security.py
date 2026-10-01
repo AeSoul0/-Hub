@@ -64,7 +64,9 @@ class Principal(BaseModel):
 
 
 class WorkspacePolicy(BaseModel):
-    allowed_tools: List[str] = Field(default_factory=lambda: ["*"])
+    allowed_tools: List[str] = Field(
+        default_factory=lambda: ["*"]
+    )
     workspace_id: Optional[str] = None
 
 
@@ -74,7 +76,9 @@ class BudgetState(BaseModel):
 
 class TaskExecutionContext(BaseModel):
     is_subagent: bool = False
-    subagent_capabilities: Optional["SubagentCapabilitySet"] = None
+    subagent_capabilities: Optional[
+        "SubagentCapabilitySet"
+    ] = None
     workspace_id: Optional[str] = None
 
 
@@ -100,24 +104,38 @@ class SubagentCapabilitySet(BaseModel):
         """
 
         if parent.workspace != delegated.workspace:
-            raise ValueError("Parent and delegated workspace must match.")
+            raise ValueError(
+                "Parent and delegated workspace must match."
+            )
 
-        if policy.workspace_id and policy.workspace_id != parent.workspace:
-            raise ValueError("Workspace policy does not match capability workspace.")
+        if (
+            policy.workspace_id
+            and policy.workspace_id != parent.workspace
+        ):
+            raise ValueError(
+                "Workspace policy does not match capability workspace."
+            )
 
         def intersect_wildcards(
             left: List[str],
             right: List[str],
             policy_values: List[str],
         ) -> List[str]:
-            sets = [set(left), set(right), set(policy_values)]
+            sets = [
+                set(left),
+                set(right),
+                set(policy_values),
+            ]
 
-            concrete_sets = [s for s in sets if "*" not in s]
+            concrete_sets = [
+                s for s in sets if "*" not in s
+            ]
 
             if not concrete_sets:
                 return ["*"]
 
             result = set(concrete_sets[0])
+
             for current in concrete_sets[1:]:
                 result &= current
 
@@ -130,21 +148,33 @@ class SubagentCapabilitySet(BaseModel):
         )
 
         allowed_scopes = sorted(
-            set(parent.allowed_scopes) & set(delegated.allowed_scopes)
+            set(parent.allowed_scopes)
+            & set(delegated.allowed_scopes)
         )
 
         permissions = sorted(
-            set(parent.permissions) & set(delegated.permissions)
+            set(parent.permissions)
+            & set(delegated.permissions)
         )
 
         return SubagentCapabilitySet(
             allowed_tools=allowed_tools,
             allowed_scopes=allowed_scopes,
-            max_budget=min(parent.max_budget, delegated.max_budget),
-            max_runtime=min(parent.max_runtime, delegated.max_runtime),
+            max_budget=min(
+                parent.max_budget,
+                delegated.max_budget,
+            ),
+            max_runtime=min(
+                parent.max_runtime,
+                delegated.max_runtime,
+            ),
             workspace=parent.workspace,
             permissions=permissions,
         )
+
+
+# Resolve the forward reference after both models exist.
+TaskExecutionContext.model_rebuild()
 
 
 class IdentityService:
@@ -166,10 +196,17 @@ class IdentityService:
         workspace_id: str,
         role: RoleEnum,
     ) -> str:
-        user = db.query(User).filter(User.id == user_id).first()
+        user = (
+            db.query(User)
+            .filter(User.id == user_id)
+            .first()
+        )
 
         if not user or not user.is_active:
-            raise HTTPException(status_code=401, detail="Invalid or inactive user.")
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid or inactive user.",
+            )
 
         membership = (
             db.query(WorkspaceMembership)
@@ -183,13 +220,19 @@ class IdentityService:
         if not membership:
             raise HTTPException(
                 status_code=403,
-                detail="User is not a member of the requested workspace.",
+                detail=(
+                    "User is not a member of the requested "
+                    "workspace."
+                ),
             )
 
         if membership.role != role:
             raise HTTPException(
                 status_code=403,
-                detail="Requested role does not match workspace membership.",
+                detail=(
+                    "Requested role does not match "
+                    "workspace membership."
+                ),
             )
 
         session_token = secrets.token_urlsafe(32)
@@ -199,7 +242,10 @@ class IdentityService:
             user_id=user_id,
             workspace_id=workspace_id,
             role=role,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=(
+                datetime.utcnow()
+                + timedelta(days=7)
+            ),
         )
 
         db.add(session)
@@ -228,15 +274,22 @@ class IdentityService:
             db.commit()
             return None
 
-        user = db.query(User).filter(User.id == session.user_id).first()
+        user = (
+            db.query(User)
+            .filter(User.id == session.user_id)
+            .first()
+        )
+
         if not user or not user.is_active:
             return None
 
         membership = (
             db.query(WorkspaceMembership)
             .filter(
-                WorkspaceMembership.user_id == session.user_id,
-                WorkspaceMembership.workspace_id == session.workspace_id,
+                WorkspaceMembership.user_id
+                == session.user_id,
+                WorkspaceMembership.workspace_id
+                == session.workspace_id,
             )
             .first()
         )
@@ -250,7 +303,11 @@ class IdentityService:
         return session
 
     @classmethod
-    def invalidate_session(cls, db: DBSession, session_token: str) -> None:
+    def invalidate_session(
+        cls,
+        db: DBSession,
+        session_token: str,
+    ) -> None:
         session = (
             db.query(SessionModel)
             .filter(SessionModel.id == session_token)
@@ -274,7 +331,9 @@ def resolve_principal(
     """
 
     session_token = (
-        request.cookies.get("aehub_session_token")
+        request.cookies.get(
+            "aehub_session_token"
+        )
         or request.headers.get("X-Session-ID")
     )
 
@@ -284,7 +343,10 @@ def resolve_principal(
             detail="Unauthorized: missing session token.",
         )
 
-    session = IdentityService.validate_session(db, session_token)
+    session = IdentityService.validate_session(
+        db,
+        session_token,
+    )
 
     if not session:
         raise HTTPException(
@@ -339,82 +401,125 @@ class PolicyEngine:
                 reason="Missing principal.",
             )
 
-        if tool_spec.name != tool_proposal.tool_name:
+        if (
+            tool_spec.name
+            != tool_proposal.tool_name
+        ):
             return PolicyDecision(
                 decision=PolicyDecisionEnum.DENY,
-                reason="Tool proposal does not match ToolSpec.",
+                reason=(
+                    "Tool proposal does not match ToolSpec."
+                ),
             )
 
         if (
             workspace_policy.workspace_id
-            and principal.workspace_id != workspace_policy.workspace_id
+            and principal.workspace_id
+            != workspace_policy.workspace_id
         ):
             return PolicyDecision(
                 decision=PolicyDecisionEnum.DENY,
-                reason="Principal workspace does not match policy workspace.",
+                reason=(
+                    "Principal workspace does not match "
+                    "policy workspace."
+                ),
             )
 
         if (
             task_context.workspace_id
-            and principal.workspace_id != task_context.workspace_id
+            and principal.workspace_id
+            != task_context.workspace_id
         ):
             return PolicyDecision(
                 decision=PolicyDecisionEnum.DENY,
-                reason="Principal workspace does not match execution workspace.",
+                reason=(
+                    "Principal workspace does not match "
+                    "execution workspace."
+                ),
             )
 
         if (
             tool_spec.max_cost > 0
-            and budget_state.remaining < tool_spec.max_cost
+            and budget_state.remaining
+            < tool_spec.max_cost
         ):
             return PolicyDecision(
                 decision=PolicyDecisionEnum.DENY,
                 reason="Insufficient execution budget.",
             )
 
-        allowed_tools = set(workspace_policy.allowed_tools)
+        allowed_tools = set(
+            workspace_policy.allowed_tools
+        )
 
-        if "*" not in allowed_tools and tool_spec.name not in allowed_tools:
+        if (
+            "*"
+            not in allowed_tools
+            and tool_spec.name not in allowed_tools
+        ):
             return PolicyDecision(
                 decision=PolicyDecisionEnum.DENY,
-                reason=f"Tool {tool_spec.name} denied by WorkspacePolicy.",
+                reason=(
+                    f"Tool {tool_spec.name} denied "
+                    "by WorkspacePolicy."
+                ),
             )
 
         required_permission = (
             Permission.EXECUTE_SENSITIVE_TOOL
-            if tool_spec.risk_level.upper() == "HIGH"
+            if tool_spec.risk_level.upper()
+            == "HIGH"
             else Permission.EXECUTE_SAFE_TOOL
         )
 
         if task_context.is_subagent:
-            capabilities = task_context.subagent_capabilities
+            capabilities = (
+                task_context.subagent_capabilities
+            )
 
             if capabilities is None:
                 return PolicyDecision(
                     decision=PolicyDecisionEnum.DENY,
-                    reason="Subagent lacks explicit capability set.",
-                )
-
-            if capabilities.workspace != principal.workspace_id:
-                return PolicyDecision(
-                    decision=PolicyDecisionEnum.DENY,
-                    reason="Subagent capability workspace mismatch.",
+                    reason=(
+                        "Subagent lacks explicit "
+                        "capability set."
+                    ),
                 )
 
             if (
-                "*" not in capabilities.allowed_tools
-                and tool_spec.name not in capabilities.allowed_tools
+                capabilities.workspace
+                != principal.workspace_id
             ):
                 return PolicyDecision(
                     decision=PolicyDecisionEnum.DENY,
-                    reason=f"Tool {tool_spec.name} is not delegated.",
+                    reason=(
+                        "Subagent capability "
+                        "workspace mismatch."
+                    ),
                 )
 
-            if required_permission.value not in capabilities.permissions:
+            if (
+                "*"
+                not in capabilities.allowed_tools
+                and tool_spec.name
+                not in capabilities.allowed_tools
+            ):
                 return PolicyDecision(
                     decision=PolicyDecisionEnum.DENY,
                     reason=(
-                        f"Subagent lacks permission "
+                        f"Tool {tool_spec.name} "
+                        "is not delegated."
+                    ),
+                )
+
+            if (
+                required_permission.value
+                not in capabilities.permissions
+            ):
+                return PolicyDecision(
+                    decision=PolicyDecisionEnum.DENY,
+                    reason=(
+                        "Subagent lacks permission "
                         f"'{required_permission.value}'."
                     ),
                 )
@@ -423,16 +528,23 @@ class PolicyEngine:
                 if permission not in capabilities.permissions:
                     return PolicyDecision(
                         decision=PolicyDecisionEnum.DENY,
-                        reason=f"Subagent lacks tool permission '{permission}'.",
+                        reason=(
+                            "Subagent lacks tool "
+                            f"permission '{permission}'."
+                        ),
                     )
 
             if (
                 tool_spec.network_access
-                and Permission.NETWORK_ACCESS.value not in capabilities.permissions
+                and Permission.NETWORK_ACCESS.value
+                not in capabilities.permissions
             ):
                 return PolicyDecision(
                     decision=PolicyDecisionEnum.DENY,
-                    reason="Subagent lacks NETWORK_ACCESS permission.",
+                    reason=(
+                        "Subagent lacks NETWORK_ACCESS "
+                        "permission."
+                    ),
                 )
 
             if (
@@ -442,18 +554,31 @@ class PolicyEngine:
             ):
                 return PolicyDecision(
                     decision=PolicyDecisionEnum.DENY,
-                    reason="Subagent lacks FILESYSTEM_ACCESS permission.",
+                    reason=(
+                        "Subagent lacks "
+                        "FILESYSTEM_ACCESS permission."
+                    ),
                 )
 
         else:
-            role_permissions = set(ROLE_PERMISSIONS.get(principal.role, []))
+            role_permissions = set(
+                ROLE_PERMISSIONS.get(
+                    principal.role,
+                    [],
+                )
+            )
 
-            if required_permission not in role_permissions:
+            if (
+                required_permission
+                not in role_permissions
+            ):
                 return PolicyDecision(
                     decision=PolicyDecisionEnum.DENY,
                     reason=(
-                        f"Principal role '{principal.role.value}' lacks "
-                        f"permission '{required_permission.value}'."
+                        f"Principal role "
+                        f"'{principal.role.value}' "
+                        "lacks permission "
+                        f"'{required_permission.value}'."
                     ),
                 )
 
@@ -463,34 +588,49 @@ class PolicyEngine:
                 except ValueError:
                     return PolicyDecision(
                         decision=PolicyDecisionEnum.DENY,
-                        reason=f"Unknown tool permission '{permission}'.",
+                        reason=(
+                            f"Unknown tool permission "
+                            f"'{permission}'."
+                        ),
                     )
 
-                if required not in role_permissions:
+                if (
+                    required
+                    not in role_permissions
+                ):
                     return PolicyDecision(
                         decision=PolicyDecisionEnum.DENY,
                         reason=(
-                            f"Principal lacks required tool permission "
+                            "Principal lacks required "
+                            "tool permission "
                             f"'{permission}'."
                         ),
                     )
 
             if (
                 tool_spec.network_access
-                and Permission.NETWORK_ACCESS not in role_permissions
+                and Permission.NETWORK_ACCESS
+                not in role_permissions
             ):
                 return PolicyDecision(
                     decision=PolicyDecisionEnum.DENY,
-                    reason="Principal lacks NETWORK_ACCESS permission.",
+                    reason=(
+                        "Principal lacks "
+                        "NETWORK_ACCESS permission."
+                    ),
                 )
 
             if (
                 tool_spec.filesystem_access
-                and Permission.FILESYSTEM_ACCESS not in role_permissions
+                and Permission.FILESYSTEM_ACCESS
+                not in role_permissions
             ):
                 return PolicyDecision(
                     decision=PolicyDecisionEnum.DENY,
-                    reason="Principal lacks FILESYSTEM_ACCESS permission.",
+                    reason=(
+                        "Principal lacks "
+                        "FILESYSTEM_ACCESS permission."
+                    ),
                 )
 
         if tool_spec.requires_approval:
@@ -501,8 +641,8 @@ class PolicyEngine:
 
         return PolicyDecision(
             decision=PolicyDecisionEnum.ALLOW,
-            reason="Permission granted by role and policies.",
+            reason=(
+                "Permission granted by role and policies."
+            ),
         )
 
-
-TaskExecutionContext.update_forward_refs()

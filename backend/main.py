@@ -22,12 +22,18 @@ import json
 import os
 import sys
 import tempfile
+from contextlib import asynccontextmanager
 from datetime import datetime
 
 import edge_tts
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import (
+    FastAPI,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
@@ -35,8 +41,12 @@ from app.agents import orchestrator
 from app.api import academic, media, voice
 from app.core import database
 from app.core.event_bus import event_bus
-from app.core.telemetry import setup_telemetry
+from app.core.telemetry import (
+    setup_telemetry,
+    shutdown_telemetry,
+)
 from app.workers.scheduler import proactive_scheduler
+from app.workflows.autonomous import register_workflows
 
 
 # ==============================================================================
@@ -53,8 +63,50 @@ if sys.platform == "win32":
 from app.core.config import settings
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Manage application startup and shutdown resources.
+    """
+    from sqlalchemy import text
+
+    from app.core.db import engine
+    from app.core.telemetry import instrument_sqlalchemy
+    from app.domain.models import Base
+
+    instrument_sqlalchemy(
+        engine
+    )
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "CREATE EXTENSION IF NOT EXISTS vector"
+            )
+        )
+
+    Base.metadata.create_all(
+        bind=engine
+    )
+
+    database.init_db()
+    register_workflows()
+    proactive_scheduler.start()
+
+    print(
+        "[OK] Centralized PostgreSQL database schema initialized."
+    )
+
+    try:
+        yield
+    finally:
+        proactive_scheduler.stop()
+        shutdown_telemetry()
+
+
 app = FastAPI(
     title="AeSouls Hub API Server",
+    lifespan=lifespan,
 )
 
 setup_telemetry(app)
@@ -122,7 +174,10 @@ async def verify_api_key(
         from app.core.db import SessionLocal
         from app.core.security import IdentityService
 
-        auth_header = request.headers.get("Authorization")
+        auth_header = request.headers.get(
+            "Authorization"
+        )
+
         cookie_token = request.cookies.get(
             "aehub_session_token"
         )
@@ -182,10 +237,14 @@ async def verify_api_key(
                 window = 60
                 limit_key = "llm"
 
-            is_allowed = await CacheService.check_rate_limit(
-                identifier=f"{limit_key}:{session.user_id}",
-                limit=limit,
-                window_seconds=window,
+            is_allowed = (
+                await CacheService.check_rate_limit(
+                    identifier=(
+                        f"{limit_key}:{session.user_id}"
+                    ),
+                    limit=limit,
+                    window_seconds=window,
+                )
             )
 
             if not is_allowed:
@@ -334,49 +393,6 @@ async def get_events_stream(
 
 
 # ==============================================================================
-# STARTUP LIFECYCLE
-# ==============================================================================
-
-from app.workflows.autonomous import register_workflows
-
-
-@app.on_event("startup")
-def startup_db():
-    """
-    Initialize shared ORM metadata, compatibility persistence, telemetry,
-    workflow registration, and the proactive scheduler.
-    """
-    from sqlalchemy import text
-
-    from app.core.db import engine
-    from app.core.telemetry import instrument_sqlalchemy
-    from app.domain.models import Base
-
-    instrument_sqlalchemy(
-        engine
-    )
-
-    with engine.begin() as conn:
-        conn.execute(
-            text(
-                "CREATE EXTENSION IF NOT EXISTS vector"
-            )
-        )
-
-    Base.metadata.create_all(
-        bind=engine
-    )
-
-    database.init_db()
-    register_workflows()
-    proactive_scheduler.start()
-
-    print(
-        "[OK] Centralized PostgreSQL database schema initialized."
-    )
-
-
-# ==============================================================================
 # AUDIO INPUT PROCESSING
 # ==============================================================================
 
@@ -418,7 +434,10 @@ async def process_audio_to_text(
                 "rb",
             ) as file_handle:
                 response = await client.post(
-                    "https://api.groq.com/openai/v1/audio/transcriptions",
+                    (
+                        "https://api.groq.com/"
+                        "openai/v1/audio/transcriptions"
+                    ),
                     files={
                         "file": (
                             os.path.basename(
@@ -433,7 +452,7 @@ async def process_audio_to_text(
                     },
                     headers={
                         "Authorization": (
-                            f"Bearer "
+                            "Bearer "
                             f"{os.getenv('GROQ_API_KEY')}"
                         )
                     },
@@ -535,7 +554,10 @@ async def websocket_endpoint(
     authenticated session or workspace context.
     """
     from app.core.db import SessionLocal
-    from app.core.security import IdentityService, Principal
+    from app.core.security import (
+        IdentityService,
+        Principal,
+    )
 
     client_token = websocket.cookies.get(
         "aehub_session_token"
@@ -659,12 +681,14 @@ async def websocket_endpoint(
                 generate_ai_response,
             )
 
-            response_payload = await generate_ai_response(
-                user_text,
-                AESOUL_SYSTEM_PROMPT,
-                str(user_context),
-                session_id,
-                principal=ws_principal,
+            response_payload = (
+                await generate_ai_response(
+                    user_text,
+                    AESOUL_SYSTEM_PROMPT,
+                    str(user_context),
+                    session_id,
+                    principal=ws_principal,
+                )
             )
 
             if not response_payload:
@@ -698,7 +722,8 @@ async def websocket_endpoint(
 
     except Exception as exc:
         print(
-            f"[ERROR] WebSocket orchestration failure: {exc}"
+            "[ERROR] WebSocket orchestration failure: "
+            f"{exc}"
         )
 
 

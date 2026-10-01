@@ -1,161 +1,278 @@
 """
 @file backend/app/workers/sandbox.py
-@description Implements sandbox.py. Core components: SandboxResult, EphemeralSandboxManager.
-
-This module manages the internal business logic for SandboxResult, EphemeralSandboxManager.
-It provides specialized functionality to handle: execute_python, execute_shell.
+@description Secure ephemeral Docker-based execution sandbox.
 """
+
 import asyncio
-from typing import Dict
+from typing import Dict, Optional, Sequence
 
 from pydantic import BaseModel
 
 
 class SandboxResult(BaseModel):
     """
-    Represents the SandboxResult entity and its core operations.
+    Result returned by a sandbox execution.
     """
+
     stdout: str
     stderr: str
     exit_code: int
     artifacts: Dict[str, str] = {}
 
+
 class EphemeralSandboxManager:
     """
-    Represents the EphemeralSandboxManager entity and its core operations.
+    Manage isolated Python and shell execution through Docker.
     """
-    """
-    Manages isolated code execution for A.U.R.O.R.A. agents.
-    In a real LAN deployment, this would communicate with Docker Daemon via the Docker SDK
-    or a remote execution worker to spawn an ephemeral container, execute the script, 
-    collect the output and artifacts, and then destroy the container.
-    """
-    
-    def __init__(self, image: str = "python:3.11-slim", memory_limit: str = "512m", network_disabled: bool = True):
-        """
-        Executes __init__ logic.
-        """
+
+    def __init__(
+        self,
+        image: str = "python:3.11-slim",
+        memory_limit: str = "512m",
+        network_disabled: bool = True,
+    ):
         self.image = image
         self.memory_limit = memory_limit
         self.network_disabled = network_disabled
 
-    async def execute_python(self, code: str, timeout: int = 30) -> SandboxResult:
+    async def _run_process(
+        self,
+        command: Sequence[str],
+        timeout: int,
+    ):
         """
-        Executes execute_python logic.
+        Execute a subprocess and deterministically clean up its pipes/process.
+
+        The communication task is shielded from wait_for cancellation so that
+        a timeout does not leave stdout/stderr transports alive after the
+        event loop is closed.
         """
+        process: Optional[asyncio.subprocess.Process] = None
+        communication_task: Optional[
+            asyncio.Task
+        ] = None
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+
+            communication_task = asyncio.create_task(
+                process.communicate()
+            )
+
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    asyncio.shield(
+                        communication_task
+                    ),
+                    timeout=timeout,
+                )
+
+                return (
+                    stdout,
+                    stderr,
+                    process.returncode,
+                    False,
+                )
+
+            except asyncio.TimeoutError:
+                if process.returncode is None:
+                    try:
+                        process.kill()
+                    except ProcessLookupError:
+                        pass
+
+                stdout, stderr = await communication_task
+
+                return (
+                    stdout,
+                    stderr,
+                    124,
+                    True,
+                )
+
+        finally:
+            if communication_task is not None:
+                try:
+                    if not communication_task.done():
+                        await communication_task
+                except Exception:
+                    pass
+
+            if process is not None:
+                if process.returncode is None:
+                    try:
+                        process.kill()
+                    except ProcessLookupError:
+                        pass
+
+                try:
+                    await process.wait()
+                except Exception:
+                    pass
+
+                # Give asyncio one scheduler turn to process the final
+                # subprocess/pipe callbacks before the test event loop closes.
+                await asyncio.sleep(0)
+
+    async def execute_python(
+        self,
+        code: str,
+        timeout: int = 30,
+    ) -> SandboxResult:
         """
-        Executes Python code in a secure sandboxed environment.
+        Execute Python code inside an isolated Docker container.
         """
         cmd = [
-            "docker", "run", "--rm", "-i",
+            "docker",
+            "run",
+            "--rm",
+            "-i",
             "--init",
-            "-m", self.memory_limit,
-            "--memory-swap", self.memory_limit,
-            "--cpus", "0.5",
-            "--pids-limit", "50",
+            "-m",
+            self.memory_limit,
+            "--memory-swap",
+            self.memory_limit,
+            "--cpus",
+            "0.5",
+            "--pids-limit",
+            "50",
             "--read-only",
-            "--security-opt", "no-new-privileges",
-            "--security-opt", "apparmor=docker-default",
+            "--security-opt",
+            "no-new-privileges",
+            "--security-opt",
+            "apparmor=docker-default",
             "--cap-drop=ALL",
-            "--tmpfs", "/tmp:size=50M,exec,mode=1777",
-            "--env", "PYTHONUNBUFFERED=1",
+            "--tmpfs",
+            "/tmp:size=50M,exec,mode=1777",
+            "--env",
+            "PYTHONUNBUFFERED=1",
             self.image,
-            "python", "-c", code
+            "python",
+            "-c",
+            code,
         ]
-        
+
         if self.network_disabled:
             cmd.insert(4, "--network")
             cmd.insert(5, "none")
-            
+
         try:
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
-            
-            return SandboxResult(
-                stdout=stdout.decode("utf-8"),
-                stderr=stderr.decode("utf-8"),
-                exit_code=process.returncode
-            )
-        except asyncio.TimeoutError:
-            # Attempt to kill if timed out
-            try:
-                process.kill()
-            except Exception:
-                pass
-            return SandboxResult(
-                stdout="",
-                stderr="Execution timed out.",
-                exit_code=124
-            )
-        except Exception as e:
-            return SandboxResult(
-                stdout="",
-                stderr=f"Sandbox Error: {str(e)}",
-                exit_code=1
+            (
+                stdout,
+                stderr,
+                exit_code,
+                timed_out,
+            ) = await self._run_process(
+                cmd,
+                timeout,
             )
 
-    async def execute_shell(self, command: str, timeout: int = 30) -> SandboxResult:
+            if timed_out:
+                return SandboxResult(
+                    stdout="",
+                    stderr="Execution timed out.",
+                    exit_code=124,
+                )
+
+            return SandboxResult(
+                stdout=stdout.decode(
+                    "utf-8",
+                    errors="replace",
+                ),
+                stderr=stderr.decode(
+                    "utf-8",
+                    errors="replace",
+                ),
+                exit_code=exit_code,
+            )
+
+        except Exception as exc:
+            return SandboxResult(
+                stdout="",
+                stderr=f"Sandbox Error: {exc}",
+                exit_code=1,
+            )
+
+    async def execute_shell(
+        self,
+        command: str,
+        timeout: int = 30,
+    ) -> SandboxResult:
         """
-        Executes execute_shell logic.
-        """
-        """
-        Executes a shell command in a secure sandboxed environment.
+        Execute a shell command inside an isolated Docker container.
         """
         cmd = [
-            "docker", "run", "--rm", "-i",
+            "docker",
+            "run",
+            "--rm",
+            "-i",
             "--init",
-            "-m", self.memory_limit,
-            "--memory-swap", self.memory_limit,
-            "--cpus", "0.5",
-            "--pids-limit", "50",
+            "-m",
+            self.memory_limit,
+            "--memory-swap",
+            self.memory_limit,
+            "--cpus",
+            "0.5",
+            "--pids-limit",
+            "50",
             "--read-only",
-            "--security-opt", "no-new-privileges",
-            "--security-opt", "apparmor=docker-default",
+            "--security-opt",
+            "no-new-privileges",
+            "--security-opt",
+            "apparmor=docker-default",
             "--cap-drop=ALL",
-            "--tmpfs", "/tmp:size=50M,exec,mode=1777",
+            "--tmpfs",
+            "/tmp:size=50M,exec,mode=1777",
             self.image,
-            "sh", "-c", command
+            "sh",
+            "-c",
+            command,
         ]
-        
+
         if self.network_disabled:
             cmd.insert(4, "--network")
             cmd.insert(5, "none")
-            
+
         try:
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
-            
-            return SandboxResult(
-                stdout=stdout.decode("utf-8"),
-                stderr=stderr.decode("utf-8"),
-                exit_code=process.returncode
-            )
-        except asyncio.TimeoutError:
-            try:
-                process.kill()
-            except Exception:
-                pass
-            return SandboxResult(
-                stdout="",
-                stderr="Execution timed out.",
-                exit_code=124
-            )
-        except Exception as e:
-            return SandboxResult(
-                stdout="",
-                stderr=f"Sandbox Error: {str(e)}",
-                exit_code=1
+            (
+                stdout,
+                stderr,
+                exit_code,
+                timed_out,
+            ) = await self._run_process(
+                cmd,
+                timeout,
             )
 
-# Global singleton for sandbox orchestration
+            if timed_out:
+                return SandboxResult(
+                    stdout="",
+                    stderr="Execution timed out.",
+                    exit_code=124,
+                )
+
+            return SandboxResult(
+                stdout=stdout.decode(
+                    "utf-8",
+                    errors="replace",
+                ),
+                stderr=stderr.decode(
+                    "utf-8",
+                    errors="replace",
+                ),
+                exit_code=exit_code,
+            )
+
+        except Exception as exc:
+            return SandboxResult(
+                stdout="",
+                stderr=f"Sandbox Error: {exc}",
+                exit_code=1,
+            )
+
+
 sandbox_manager = EphemeralSandboxManager()
