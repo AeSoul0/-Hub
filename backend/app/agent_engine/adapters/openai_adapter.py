@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+from types import SimpleNamespace
 from typing import Any, Dict, List
 
 from openai import AsyncOpenAI
@@ -114,10 +115,22 @@ class OpenAIAdapter(ModelProvider):
     @staticmethod
     def _observation_to_input(
         observation: Any,
-    ) -> Dict[str, Any]:
+    ) -> List[Dict[str, Any]]:
         """
-        Convert one runtime Observation into a Responses API tool output item.
+        Convert one runtime Observation into Responses API input items.
+
+        A tool output is preceded by the function call that produced it, so
+        every request is self-contained and does not depend on server-side
+        conversation state (previous_response_id / store).
         """
+        if isinstance(
+            observation,
+            dict,
+        ):
+            observation = SimpleNamespace(
+                **observation
+            )
+
         tool_call_id = getattr(
             observation,
             "tool_call_id",
@@ -131,19 +144,52 @@ class OpenAIAdapter(ModelProvider):
         )
 
         if not tool_call_id:
-            return {
-                "role": "user",
-                "content": (
-                    "Tool observation:\n"
-                    f"{content}"
-                ),
-            }
+            return [
+                {
+                    "role": "user",
+                    "content": (
+                        "Tool observation:\n"
+                        f"{content}"
+                    ),
+                }
+            ]
 
-        return {
-            "type": "function_call_output",
-            "call_id": tool_call_id,
-            "output": str(content),
-        }
+        items: List[Dict[str, Any]] = []
+
+        tool_name = getattr(
+            observation,
+            "tool_name",
+            None,
+        )
+
+        if tool_name:
+            items.append(
+                {
+                    "type": "function_call",
+                    "call_id": tool_call_id,
+                    "name": tool_name,
+                    "arguments": json.dumps(
+                        getattr(
+                            observation,
+                            "arguments",
+                            None,
+                        )
+                        or {},
+                        ensure_ascii=False,
+                        default=str,
+                    ),
+                }
+            )
+
+        items.append(
+            {
+                "type": "function_call_output",
+                "call_id": tool_call_id,
+                "output": str(content),
+            }
+        )
+
+        return items
 
     @classmethod
     def _build_input(
@@ -206,7 +252,7 @@ class OpenAIAdapter(ModelProvider):
             "observations",
             [],
         ):
-            messages.append(
+            messages.extend(
                 cls._observation_to_input(
                     observation
                 )

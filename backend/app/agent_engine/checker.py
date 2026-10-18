@@ -79,7 +79,7 @@ class AgentChecker:
             response = await self.model.generate(
                 {
                     "prompt": prompt,
-                    "system": (
+                    "system_prompt": (
                         "You are an independent security and correctness checker. "
                         "Return JSON only. Never approve an output when the "
                         "evaluation itself is uncertain."

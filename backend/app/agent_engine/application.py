@@ -24,10 +24,12 @@ facade and must not reimplement engine behavior.
 
 from __future__ import annotations
 
+import os
 from types import SimpleNamespace
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
+from app.agent_engine.adapters.base import ModelProvider
 from app.agent_engine.adapters.openai_adapter import OpenAIAdapter
 from app.agent_engine.checker import AgentChecker
 from app.agent_engine.runtime import AgentRuntime
@@ -52,7 +54,7 @@ class NativeAgentWorker:
 
     def __init__(
         self,
-        model_provider: OpenAIAdapter,
+        model_provider: ModelProvider,
         system_prompt: str,
     ) -> None:
         """
@@ -115,6 +117,9 @@ class AgentEngine:
         model_name: str = "default",
         worker_system_prompt: Optional[str] = None,
         runtime: Optional[AgentRuntime] = None,
+        checker_model_name: Optional[str] = None,
+        model_provider: Optional[ModelProvider] = None,
+        checker_provider: Optional[ModelProvider] = None,
     ) -> None:
         """
         Build one self-contained AgentEngine instance.
@@ -127,8 +132,13 @@ class AgentEngine:
             runtime:
                 Optional preconfigured AgentRuntime, primarily useful for
                 tests and controlled dependency injection.
+            checker_model_name:
+                Model used by the independent Checker. Falls back to
+                AEHUB_CHECKER_MODEL, then to the worker model.
+            model_provider / checker_provider:
+                Optional preconfigured providers (dependency injection).
         """
-        self.model_provider = OpenAIAdapter(
+        self.model_provider = model_provider or OpenAIAdapter(
             model_name=model_name,
         )
 
@@ -144,9 +154,16 @@ class AgentEngine:
             ),
         )
 
+        resolved_checker_model = (
+            checker_model_name
+            or os.getenv("AEHUB_CHECKER_MODEL")
+            or model_name
+        )
+
         self.checker = AgentChecker(
-            model_provider=OpenAIAdapter(
-                model_name=model_name,
+            model_provider=checker_provider
+            or OpenAIAdapter(
+                model_name=resolved_checker_model,
             )
         )
 
