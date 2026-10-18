@@ -39,6 +39,7 @@ from app.core.telemetry import (
     setup_telemetry,
     shutdown_telemetry,
 )
+from app.skills.registry import skill_registry
 from app.workers.scheduler import proactive_scheduler
 from app.workflows.autonomous import register_workflows
 
@@ -126,6 +127,13 @@ async def lifespan(
     del app
 
     startup_db()
+
+    # Skill modules import heavy dependencies (vision, browser), so discovery
+    # runs off the event loop. Without it the agent has no tools to call.
+    if not skill_registry.get_registered_skill_names():
+        await asyncio.to_thread(
+            skill_registry.load_from_package
+        )
 
     try:
         yield

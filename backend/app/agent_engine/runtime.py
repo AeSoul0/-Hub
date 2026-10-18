@@ -46,7 +46,14 @@ from app.agent_engine.models import (
 from app.agent_engine.resources import ResourceManager
 from app.agent_engine.state.manager import AgentStateManager
 from app.agents.subagents.base import SubagentFactory
-from app.core.security import Principal, SubagentCapabilitySet
+from app.core.security import (
+    BudgetState,
+    PolicyEngine,
+    Principal,
+    SubagentCapabilitySet,
+    TaskExecutionContext,
+    WorkspacePolicy,
+)
 from app.runtime.tool_gateway import ToolGateway, ToolInvocation
 from app.skills.memory_skill import (
     clear_memory_context,
@@ -62,6 +69,7 @@ from app.skills.registry import skill_registry
 DEFAULT_MAX_ATTEMPTS = 3
 DEFAULT_MAX_TURNS = 10
 DEFAULT_MAX_TOOL_CALLS = 5
+DEFAULT_MAX_TOTAL_TOOL_CALLS = 20
 DEFAULT_TOOL_RUNTIME = 30
 DEFAULT_MAX_OUTPUT = 4000
 DEFAULT_TOOL_COST = 0.0
@@ -235,6 +243,55 @@ class AgentRuntime:
             ),
         )
 
+    @classmethod
+    def _build_model_tools(
+        cls,
+        principal: Principal,
+    ) -> List[Dict[str, Any]]:
+        """
+        Build the function-tool definitions the Worker model may call.
+
+        Only registered tools that the PolicyEngine does not deny for this
+        Principal are exposed. Exposure is not authorization: every call
+        still goes through the ToolGateway pipeline.
+        """
+        model_tools: List[Dict[str, Any]] = []
+
+        for tool_name in skill_registry.get_registered_tool_names():
+            try:
+                spec = cls._build_tool_spec(tool_name)
+            except ValueError:
+                continue
+
+            decision = PolicyEngine.authorize_tool(
+                principal=principal,
+                tool_spec=spec,
+                tool_proposal=ToolProposal(
+                    tool_call_id="exposure-check",
+                    tool_name=tool_name,
+                    arguments={},
+                    run_id="exposure-check",
+                ),
+                workspace_policy=WorkspacePolicy(),
+                budget_state=BudgetState(),
+                task_context=TaskExecutionContext(),
+            )
+
+            if getattr(decision.decision, "value", decision.decision) == "DENY":
+                continue
+
+            model_tools.append(
+                {
+                    "type": "function",
+                    "name": spec.name,
+                    "description": spec.description,
+                    "parameters": spec.input_schema
+                    or {"type": "object", "properties": {}},
+                }
+            )
+
+        return model_tools
+
     @staticmethod
     async def _execute_registered_tool(
         tool: Any,
@@ -280,6 +337,7 @@ class AgentRuntime:
         max_attempts: int = DEFAULT_MAX_ATTEMPTS,
         max_turns: int = DEFAULT_MAX_TURNS,
         max_tool_calls: int = DEFAULT_MAX_TOOL_CALLS,
+        max_total_tool_calls: int = DEFAULT_MAX_TOTAL_TOOL_CALLS,
         timeout: Optional[float] = None,
         cancellation_token: Optional[Any] = None,
         run_id: Optional[str] = None,
@@ -339,6 +397,11 @@ class AgentRuntime:
         if max_tool_calls <= 0:
             raise ValueError(
                 "max_tool_calls must be greater than zero."
+            )
+
+        if max_total_tool_calls <= 0:
+            raise ValueError(
+                "max_total_tool_calls must be greater than zero."
             )
 
         run_id = run_id or str(uuid.uuid4())
@@ -455,6 +518,16 @@ class AgentRuntime:
                 "resuming": True,
             }
 
+            worker_context["observations"] = [
+                observation
+                if isinstance(observation, Observation)
+                else Observation(**observation)
+                for observation in worker_context.get(
+                    "observations",
+                    [],
+                )
+            ]
+
             worker_context["run_id"] = run_id
             worker_context["session_id"] = session_id
             worker_context["workspace_id"] = workspace_id
@@ -484,6 +557,10 @@ class AgentRuntime:
                 AgentStateManager.save_agent_run(
                     agent_run
                 )
+
+        model_tools = self._build_model_tools(
+            principal
+        )
 
         while current_attempt <= max_attempts:
             if (
@@ -539,6 +616,7 @@ class AgentRuntime:
                         "workspace_id": workspace_id,
                         "principal_id": principal.id,
                         "principal_role": principal.role.value,
+                        "tools": model_tools,
                     }
                 )
 
@@ -653,6 +731,33 @@ class AgentRuntime:
 
                     break
 
+                tool_calls_used = int(
+                    agent_run.usage.get(
+                        "tool_calls",
+                        0,
+                    )
+                )
+
+                if tool_calls_used + len(proposals) > max_total_tool_calls:
+                    agent_run.status = AgentRunStatus.FAILED
+                    agent_run.errors.append(
+                        "Exceeded max tool calls per run."
+                    )
+
+                    self._save(
+                        agent_run,
+                        current_attempt,
+                        turn,
+                        worker_context,
+                        last_feedback,
+                    )
+
+                    break
+
+                agent_run.usage["tool_calls"] = (
+                    tool_calls_used + len(proposals)
+                )
+
                 for proposal in proposals:
                     if not isinstance(
                         proposal,
@@ -730,6 +835,8 @@ class AgentRuntime:
                         worker_context["observations"].append(
                             Observation(
                                 tool_call_id=proposal.tool_call_id,
+                                tool_name=proposal.tool_name,
+                                arguments=dict(proposal.arguments),
                                 content=observation_content,
                             )
                         )
@@ -750,6 +857,8 @@ class AgentRuntime:
                         worker_context["observations"].append(
                             Observation(
                                 tool_call_id=proposal.tool_call_id,
+                                tool_name=proposal.tool_name,
+                                arguments=dict(proposal.arguments),
                                 content=(
                                     "Waiting for human approval."
                                 ),
@@ -773,6 +882,8 @@ class AgentRuntime:
                         worker_context["observations"].append(
                             Observation(
                                 tool_call_id=proposal.tool_call_id,
+                                tool_name=proposal.tool_name,
+                                arguments=dict(proposal.arguments),
                                 content=(
                                     f"Tool execution failed: {exc}"
                                 ),
@@ -994,6 +1105,8 @@ class AgentRuntime:
                 observations.append(
                     {
                         "tool_call_id": observation.tool_call_id,
+                        "tool_name": observation.tool_name,
+                        "arguments": observation.arguments,
                         "content": observation.content,
                     }
                 )
@@ -1196,4 +1309,5 @@ __all__ = [
     "DEFAULT_MAX_ATTEMPTS",
     "DEFAULT_MAX_TURNS",
     "DEFAULT_MAX_TOOL_CALLS",
+    "DEFAULT_MAX_TOTAL_TOOL_CALLS",
 ]

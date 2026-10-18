@@ -187,10 +187,16 @@ class ToolResult(BaseModel):
 
 
 class Observation(BaseModel):
-    """Observation produced by a tool execution and fed back to the Worker."""
+    """Observation produced by a tool execution and fed back to the Worker.
+
+    tool_name and arguments describe the originating function call, so model
+    adapters can replay the call next to its output on the following turn.
+    """
 
     tool_call_id: str
     content: Any
+    tool_name: Optional[str] = None
+    arguments: Dict[str, Any] = Field(default_factory=dict)
 
 
 class CheckerDecisionEnum(str, Enum):

@@ -202,6 +202,14 @@ class SkillRegistry:
     # TOOL LOOKUP
     # ==========================================================================
 
+    def get_registered_tool_names(self) -> List[str]:
+        """
+        Return registered tool names in deterministic order.
+        """
+        return sorted(
+            self._tool_metadata
+        )
+
     def get_tool_metadata(
         self,
         tool_name: str,

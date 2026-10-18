@@ -75,7 +75,7 @@ class EventDispatcher:
         
         # Append to jsonl flight recorder
         with open(FLIGHT_RECORDER_FILE, "a", encoding="utf-8") as f:
-            f.write(json.dumps(event.dict()) + "\n")
+            f.write(json.dumps(event.model_dump()) + "\n")
             
         return event
 
