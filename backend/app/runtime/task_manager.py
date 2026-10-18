@@ -1,14 +1,24 @@
 """
 @file backend/app/runtime/task_manager.py
-@description Durable task lifecycle manager for A.U.R.O.R.A.
+@description Canonical durable task lifecycle manager for ÆHub.
 
-This module manages durable background task records, strict lifecycle
-transitions, worker leases, cancellation requests, checkpoints, artifacts,
-and zombie-task recovery.
+This module is the single runtime authority for durable task lifecycle
+management. It owns task state transitions, worker leases, checkpoints,
+cancellation requests, idempotency-aware task creation, and stale-task
+recovery.
 
-The current Agent Runtime uses this module as a persistence boundary for
-individual tool execution tasks. The public API is intentionally small and
-framework-agnostic.
+Architectural ownership:
+- Agent Engine owns planning, orchestration, and agent-level state.
+- Runtime owns executable task lifecycle and worker coordination.
+- PostgreSQL remains the durable source of task state.
+- Redis/Celery may transport work, but they must not become the source of truth.
+- ToolGateway is responsible for authorization and execution boundaries; this
+  module is responsible for the durable lifecycle of the resulting task.
+
+Migration note:
+The current implementation still uses the compatibility PostgreSQL connection
+facade from app.core.database. Database consolidation is intentionally deferred
+to the dedicated persistence phase of the roadmap.
 """
 
 from __future__ import annotations
@@ -25,13 +35,15 @@ from app.core.database import get_connection
 
 
 # ==============================================================================
-# TASK STATE
+# TASK LIFECYCLE STATE
 # ==============================================================================
 
 
 class TaskState(str, Enum):
     """
-    Durable states supported by the task lifecycle.
+    Canonical durable states supported by the runtime task lifecycle.
+
+    Terminal states are COMPLETED, FAILED, CANCELLED, and EXPIRED.
     """
 
     QUEUED = "QUEUED"
@@ -45,6 +57,10 @@ class TaskState(str, Enum):
     EXPIRED = "EXPIRED"
 
 
+# Explicit state transition table.
+#
+# The state machine is intentionally centralized here so callers cannot invent
+# arbitrary task states or silently skip lifecycle validation.
 VALID_TRANSITIONS = {
     TaskState.QUEUED: {
         TaskState.RUNNING,
@@ -115,7 +131,7 @@ class TaskStep(BaseModel):
 
 class TaskCheckpoint(BaseModel):
     """
-    Represents a persisted task checkpoint.
+    Represents a durable point-in-time task state snapshot.
     """
 
     id: str
@@ -139,6 +155,10 @@ class TaskArtifact(BaseModel):
 class Task(BaseModel):
     """
     Complete durable task representation exposed to runtime callers.
+
+    The model deliberately keeps lifecycle metadata separate from the task
+    payload so orchestration metadata can evolve without changing arbitrary
+    tool or agent payload structures.
     """
 
     id: str
@@ -169,16 +189,29 @@ class Task(BaseModel):
 
 
 # ==============================================================================
-# TASK MANAGER
+# CANONICAL TASK MANAGER
 # ==============================================================================
 
 
 class TaskManager:
     """
-    Durable task lifecycle manager.
+    Canonical durable task lifecycle manager.
 
-    The manager persists task state through the compatibility PostgreSQL
-    connection layer that currently owns the legacy task schema.
+    This is the only TaskManager implementation that should own executable
+    task lifecycle behavior in the codebase.
+
+    The manager provides:
+    - durable task creation,
+    - optimistic state transitions,
+    - worker leases,
+    - cancellation,
+    - checkpoints,
+    - task lookup,
+    - stale-task recovery.
+
+    It intentionally exposes a small, framework-agnostic API so Celery,
+    ToolGateway, workers, recovery processes, and the Agent Engine can all
+    depend on the same lifecycle contract.
     """
 
     @staticmethod
@@ -193,7 +226,7 @@ class TaskManager:
         Create a durable queued task.
 
         When an idempotency key already exists, the existing task is returned
-        instead of creating another task record.
+        instead of creating a duplicate lifecycle record.
         """
         if not session_id or not session_id.strip():
             raise ValueError(
@@ -603,8 +636,9 @@ class TaskManager:
         """
         Request cancellation of a non-terminal task.
 
-        The operation is intentionally idempotent: a task that is already
-        marked for cancellation is still considered successfully cancelled.
+        The operation is intentionally idempotent: a task already marked for
+        cancellation is considered successfully cancelled at the request
+        level.
         """
         task = TaskManager.get_task(
             task_id
@@ -759,8 +793,8 @@ class TaskManager:
         """
         Mark stale RUNNING tasks as FAILED.
 
-        Uses a parameterized PostgreSQL interval expression so the timeout
-        remains a true query parameter instead of being interpolated into SQL.
+        The timeout remains a PostgreSQL query parameter rather than being
+        interpolated into SQL.
         """
         if timeout_minutes <= 0:
             raise ValueError(
