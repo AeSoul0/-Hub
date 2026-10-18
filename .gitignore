@@ -79,6 +79,11 @@ backend/downloads/
 backend/temp_downloads/
 backend/audio_cache/
 backend/temp_input.webm
+# Runtime artifacts (flight recorder, legacy run store, local DB, coverage data)
+flight_recorder.jsonl
+durable_runs.json
+aehub.db
+.coverage
 backend/workspace/
 backend/hub.db
 data/

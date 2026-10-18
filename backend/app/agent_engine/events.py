@@ -34,7 +34,7 @@ class RunEvent(BaseModel):
     risk: Optional[str] = None
     details: Dict[str, Any] = Field(default_factory=dict)
 
-FLIGHT_RECORDER_FILE = "flight_recorder.jsonl"
+FLIGHT_RECORDER_FILE = os.getenv("AEHUB_FLIGHT_RECORDER_PATH", "flight_recorder.jsonl")
 
 class EventDispatcher:
     """

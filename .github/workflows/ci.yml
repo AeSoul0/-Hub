@@ -110,8 +110,17 @@ jobs:
       # FRONTEND SECURITY AUDIT
       # =========================================================================
 
+      # Blocking gate: everything that ships in the production dependency tree.
       - name: Audit Frontend Dependencies
         working-directory: frontend
+        run: |
+          npm audit --audit-level=high --omit=dev
+
+      # Visibility only: dev tooling (eslint, shadcn CLI, ...) can carry advisories
+      # with no patched release yet (e.g. braces GHSA-vfj7-8cjw-p6xm).
+      - name: Audit Frontend Dev Dependencies (report only)
+        working-directory: frontend
+        continue-on-error: true
         run: |
           npm audit --audit-level=high
 
