@@ -45,7 +45,10 @@ class ApprovalRequiredError(AgentEngineError):
     Represents the ApprovalRequiredError entity and its core operations.
     """
     """Raised when an execution requires approval but hasn't received it."""
-    pass
+
+    def __init__(self, message: str = "", approval_id: str | None = None) -> None:
+        super().__init__(message)
+        self.approval_id = approval_id
 
 class StateRecoveryError(AgentEngineError):
     """

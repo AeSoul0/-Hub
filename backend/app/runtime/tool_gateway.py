@@ -329,8 +329,10 @@ class ToolGateway:
                 arguments=invocation.arguments,
             )
 
-            if status in {"NONE", "EXPIRED"}:
-                await ApprovalManager.request_approval(
+            # A timed-out request resolves to DENIED (silence is never
+            # consent), so only a missing request opens a new one.
+            if status == "NONE":
+                approval_id = await ApprovalManager.request_approval(
                     session_id=invocation.session_id,
                     workspace_id=invocation.principal.workspace_id,
                     principal_id=invocation.principal.id,
@@ -341,7 +343,8 @@ class ToolGateway:
                 )
 
                 raise ApprovalRequiredError(
-                    f"Tool '{invocation.tool_name}' requires human approval."
+                    f"Tool '{invocation.tool_name}' requires human approval.",
+                    approval_id=approval_id,
                 )
 
             if status == "WAITING_APPROVAL":

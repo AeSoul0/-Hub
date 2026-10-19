@@ -27,6 +27,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app.agent_engine.adapters.base import ModelProvider
 from app.agent_engine.adapters.openai_adapter import OpenAIAdapter
+from app.agent_engine.approval.manager import ApprovalManager
 from app.agent_engine.checker import AgentChecker
 from app.agent_engine.errors import (
     ApprovalRequiredError,
@@ -551,12 +552,25 @@ class AgentRuntime:
                     f"{agent_run.status.value}."
                 )
 
-            if agent_run.status == AgentRunStatus.WAITING_APPROVAL:
-                agent_run.status = AgentRunStatus.RUNNING
+            # The persisted task is authoritative on resume: callers that
+            # resume after an approval do not resend the original task.
+            task = worker_context.get("task") or task
 
-                AgentStateManager.save_agent_run(
-                    agent_run
+            if agent_run.status == AgentRunStatus.WAITING_APPROVAL:
+                outcome = await self._resume_pending_tool_call(
+                    agent_run=agent_run,
+                    worker_context=worker_context,
+                    principal=principal,
+                    session_id=session_id,
+                    workspace_id=workspace_id,
+                    run_id=run_id,
+                    current_attempt=current_attempt,
+                    turn=turn,
+                    last_feedback=last_feedback,
                 )
+
+                if outcome is not None:
+                    return outcome
 
         model_tools = self._build_model_tools(
             principal
@@ -783,68 +797,30 @@ class AgentRuntime:
                         )
 
                     try:
-                        tool, _ = self._resolve_tool(
-                            proposal.tool_name
-                        )
-
-                        spec = self._build_tool_spec(
-                            proposal.tool_name
-                        )
-
-                        invocation = ToolInvocation(
-                            tool_name=proposal.tool_name,
-                            arguments=dict(
-                                proposal.arguments
-                            ),
-                            principal=principal,
-                            session_id=session_id,
-                            spec=spec,
-                            tool_call_id=proposal.tool_call_id,
-                            run_id=run_id,
-                        )
-
-                        EventDispatcher().dispatch(
-                            "tool.proposed",
-                            run_id=run_id,
-                            session_id=session_id,
-                            workspace_id=workspace_id,
-                            tool=proposal.tool_name,
-                        )
-
-                        async def executor(
-                            **arguments: Any,
-                        ) -> Any:
-                            return await self._execute_registered_tool(
-                                tool=tool,
-                                arguments=arguments,
+                        worker_context["observations"].append(
+                            await self._execute_proposal(
+                                proposal=proposal,
+                                principal=principal,
                                 session_id=session_id,
                                 workspace_id=workspace_id,
-                            )
-
-                        tool_result = await self.tool_gateway.execute(
-                            invocation,
-                            executor,
-                        )
-
-                        observation_content = (
-                            tool_result.output
-                            if tool_result.success
-                            else tool_result.error
-                        )
-
-                        worker_context["observations"].append(
-                            Observation(
-                                tool_call_id=proposal.tool_call_id,
-                                tool_name=proposal.tool_name,
-                                arguments=dict(proposal.arguments),
-                                content=observation_content,
+                                run_id=run_id,
                             )
                         )
 
-                    except ApprovalRequiredError:
+                    except ApprovalRequiredError as exc:
                         agent_run.status = (
                             AgentRunStatus.WAITING_APPROVAL
                         )
+
+                        # The call is parked in the durable state and
+                        # replayed through the ToolGateway on resume; the
+                        # model never sees a placeholder observation.
+                        worker_context["pending_tool_call"] = {
+                            "tool_call_id": proposal.tool_call_id,
+                            "tool_name": proposal.tool_name,
+                            "arguments": dict(proposal.arguments),
+                            "approval_id": exc.approval_id,
+                        }
 
                         EventDispatcher().dispatch(
                             "tool.approval_required",
@@ -852,17 +828,19 @@ class AgentRuntime:
                             session_id=session_id,
                             workspace_id=workspace_id,
                             tool=proposal.tool_name,
+                            details={
+                                "approval_id": exc.approval_id,
+                            },
                         )
 
-                        worker_context["observations"].append(
-                            Observation(
-                                tool_call_id=proposal.tool_call_id,
-                                tool_name=proposal.tool_name,
-                                arguments=dict(proposal.arguments),
-                                content=(
-                                    "Waiting for human approval."
-                                ),
-                            )
+                        await self._notify(
+                            session_id,
+                            "approval.requested",
+                            {
+                                "approval_id": exc.approval_id,
+                                "run_id": run_id,
+                                "tool": proposal.tool_name,
+                            },
                         )
 
                         self._save(
@@ -876,19 +854,8 @@ class AgentRuntime:
                         return {
                             "status": "WAITING_APPROVAL",
                             "run_id": run_id,
+                            "approval_id": exc.approval_id,
                         }
-
-                    except Exception as exc:
-                        worker_context["observations"].append(
-                            Observation(
-                                tool_call_id=proposal.tool_call_id,
-                                tool_name=proposal.tool_name,
-                                arguments=dict(proposal.arguments),
-                                content=(
-                                    f"Tool execution failed: {exc}"
-                                ),
-                            )
-                        )
 
                     self._save(
                         agent_run,
@@ -1078,6 +1045,220 @@ class AgentRuntime:
         )
 
     # ==========================================================================
+    # TOOL PROPOSAL EXECUTION
+    # ==========================================================================
+
+    async def _execute_proposal(
+        self,
+        proposal: ToolProposal,
+        principal: Principal,
+        session_id: str,
+        workspace_id: str,
+        run_id: str,
+    ) -> Observation:
+        """
+        Run one proposal through the ToolGateway and return its Observation.
+
+        ApprovalRequiredError propagates to the caller; any other failure
+        becomes an observation the model can react to.
+        """
+        try:
+            tool, _ = self._resolve_tool(
+                proposal.tool_name
+            )
+
+            spec = self._build_tool_spec(
+                proposal.tool_name
+            )
+
+            invocation = ToolInvocation(
+                tool_name=proposal.tool_name,
+                arguments=dict(
+                    proposal.arguments
+                ),
+                principal=principal,
+                session_id=session_id,
+                spec=spec,
+                tool_call_id=proposal.tool_call_id,
+                run_id=run_id,
+            )
+
+            EventDispatcher().dispatch(
+                "tool.proposed",
+                run_id=run_id,
+                session_id=session_id,
+                workspace_id=workspace_id,
+                tool=proposal.tool_name,
+            )
+
+            async def executor(
+                **arguments: Any,
+            ) -> Any:
+                return await self._execute_registered_tool(
+                    tool=tool,
+                    arguments=arguments,
+                    session_id=session_id,
+                    workspace_id=workspace_id,
+                )
+
+            tool_result = await self.tool_gateway.execute(
+                invocation,
+                executor,
+            )
+
+            content = (
+                tool_result.output
+                if tool_result.success
+                else tool_result.error
+            )
+
+        except ApprovalRequiredError:
+            raise
+
+        except Exception as exc:
+            content = f"Tool execution failed: {exc}"
+
+        return Observation(
+            tool_call_id=proposal.tool_call_id,
+            tool_name=proposal.tool_name,
+            arguments=dict(proposal.arguments),
+            content=content,
+        )
+
+    async def _resume_pending_tool_call(
+        self,
+        agent_run: AgentRun,
+        worker_context: Dict[str, Any],
+        principal: Principal,
+        session_id: str,
+        workspace_id: str,
+        run_id: str,
+        current_attempt: int,
+        turn: int,
+        last_feedback: Optional[str],
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Resolve the call parked by a WAITING_APPROVAL run.
+
+        - still pending: the run keeps waiting;
+        - denied (explicitly or by timeout): the run is closed as CANCELLED
+          and the tool never executes;
+        - approved: the exact parked call is replayed through the
+          ToolGateway, which re-checks the approval for the same arguments.
+
+        Returns a result to hand back to the caller, or None when the run
+        should continue with the next Worker turn.
+        """
+        pending = worker_context.get(
+            "pending_tool_call"
+        )
+
+        if not pending:
+            agent_run.status = AgentRunStatus.RUNNING
+            AgentStateManager.save_agent_run(
+                agent_run
+            )
+            return None
+
+        status = await ApprovalManager.check_approval_status(
+            session_id=session_id,
+            workspace_id=workspace_id,
+            principal_id=principal.id,
+            run_id=run_id,
+            tool_name=pending["tool_name"],
+            arguments=pending["arguments"],
+        )
+
+        if status == "WAITING_APPROVAL":
+            return {
+                "status": "WAITING_APPROVAL",
+                "run_id": run_id,
+                "approval_id": pending.get("approval_id"),
+            }
+
+        if status != "APPROVED":
+            worker_context["pending_tool_call"] = None
+            agent_run.status = AgentRunStatus.CANCELLED
+            agent_run.error = (
+                f"Approval for tool '{pending['tool_name']}' was denied."
+            )
+            agent_run.errors.append(
+                agent_run.error
+            )
+
+            EventDispatcher().dispatch(
+                "run.cancelled",
+                run_id=run_id,
+                session_id=session_id,
+                workspace_id=workspace_id,
+                tool=pending["tool_name"],
+            )
+
+            self._save(
+                agent_run,
+                current_attempt,
+                turn,
+                worker_context,
+                last_feedback,
+            )
+
+            return {
+                "status": "DENIED",
+                "run_id": run_id,
+            }
+
+        agent_run.status = AgentRunStatus.RUNNING
+
+        proposal = ToolProposal(
+            tool_call_id=pending["tool_call_id"],
+            tool_name=pending["tool_name"],
+            arguments=pending["arguments"],
+            run_id=run_id,
+        )
+
+        worker_context["observations"].append(
+            await self._execute_proposal(
+                proposal=proposal,
+                principal=principal,
+                session_id=session_id,
+                workspace_id=workspace_id,
+                run_id=run_id,
+            )
+        )
+        worker_context["pending_tool_call"] = None
+
+        self._save(
+            agent_run,
+            current_attempt,
+            turn,
+            worker_context,
+            last_feedback,
+        )
+
+        return None
+
+    @staticmethod
+    async def _notify(
+        session_id: str,
+        event_type: str,
+        data: Dict[str, Any],
+    ) -> None:
+        """
+        Push a realtime event to the session; delivery is best effort and
+        never affects execution.
+        """
+        try:
+            from app.core.event_bus import event_bus
+
+            await event_bus.publish(
+                session_id,
+                event_type,
+                data,
+            )
+        except Exception:
+            pass
+
+    # ==========================================================================
     # DURABLE STATE
     # ==========================================================================
 
@@ -1139,6 +1320,9 @@ class AgentRuntime:
             ),
             "resuming": worker_context.get(
                 "resuming"
+            ),
+            "pending_tool_call": worker_context.get(
+                "pending_tool_call"
             ),
             "observations": observations,
         }

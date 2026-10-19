@@ -9,22 +9,38 @@ one tenant or execution context from being reused in another context.
 Approval state is fail-closed:
 - Only explicit ALLOW becomes APPROVED.
 - Explicit DENY becomes DENIED.
-- Missing, pending, or expired approvals never authorize execution.
+- A request left undecided past its TTL is recorded as DENY by
+  "system:timeout": silence is never consent (spec 3.4).
+- Missing or pending approvals never authorize execution.
+
+Decisions are taken by an authenticated Principal of the same workspace as
+the request, once: a decided request cannot be decided again.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import os
 from datetime import datetime, timedelta
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 from app.core.db import SessionLocal
 from app.domain.models.audit import ApprovalRecord
 
 
-DEFAULT_APPROVAL_TTL = timedelta(hours=24)
+DEFAULT_APPROVAL_TTL = timedelta(
+    seconds=int(os.getenv("AEHUB_APPROVAL_TTL_SECONDS", "300"))
+)
+TIMEOUT_DECIDER = "system:timeout"
 _ALLOWED_DECISIONS = {"ALLOW", "DENY"}
+
+
+class ApprovalClosedError(Exception):
+    """
+    Raised when a decision targets a request that is already decided or
+    has expired (and was therefore denied by timeout).
+    """
 
 
 class ApprovalManager:
@@ -75,16 +91,52 @@ class ApprovalManager:
             if record is None:
                 return "NONE"
 
-            if record.expires_at <= datetime.utcnow():
-                return "EXPIRED"
-
-            if record.decision == "ALLOW":
-                return "APPROVED"
-
             if record.decision == "DENY":
                 return "DENIED"
 
+            if record.decision == "ALLOW":
+                # An ALLOW authorizes only inside its execution window.
+                if record.expires_at <= datetime.utcnow():
+                    return "EXPIRED"
+
+                return "APPROVED"
+
+            if cls._expire_if_overdue(db, record):
+                return "DENIED"
+
             return "WAITING_APPROVAL"
+
+    @classmethod
+    async def list_pending(
+        cls,
+        workspace_id: str,
+    ) -> List[Dict[str, Any]]:
+        """
+        Return the undecided, unexpired requests of one workspace.
+
+        Overdue requests found on the way are denied by timeout first.
+        """
+        if not workspace_id or not workspace_id.strip():
+            raise ValueError("workspace_id is required")
+
+        with SessionLocal() as db:
+            records = (
+                db.query(ApprovalRecord)
+                .filter(
+                    ApprovalRecord.workspace_id == workspace_id,
+                    ApprovalRecord.decision.is_(None),
+                )
+                .order_by(
+                    ApprovalRecord.requested_at.asc()
+                )
+                .all()
+            )
+
+            return [
+                cls._to_dict(record)
+                for record in records
+                if not cls._expire_if_overdue(db, record)
+            ]
 
     @classmethod
     async def request_approval(
@@ -137,12 +189,18 @@ class ApprovalManager:
         cls,
         req_id: str,
         decision: str,
-        decided_by: str = "admin",
-    ) -> bool:
+        decided_by: str,
+        workspace_id: str,
+    ) -> Optional[Dict[str, Any]]:
         """
-        Resolve an existing approval request.
+        Resolve an existing approval request for the deciding Principal.
 
-        Only ALLOW and DENY are accepted. Expired requests cannot be granted.
+        Returns the decided request, or None when no request with this id
+        exists in the decider's workspace (other tenants' requests are
+        indistinguishable from missing ones).
+
+        Raises ApprovalClosedError when the request was already decided or
+        has expired; an expired request is recorded as a timeout DENY.
         """
         if not req_id:
             raise ValueError("req_id is required")
@@ -155,26 +213,95 @@ class ApprovalManager:
         if not decided_by or not decided_by.strip():
             raise ValueError("decided_by is required")
 
+        if not workspace_id or not workspace_id.strip():
+            raise ValueError("workspace_id is required")
+
         with SessionLocal() as db:
             record = (
                 db.query(ApprovalRecord)
-                .filter(ApprovalRecord.id == req_id)
+                .filter(
+                    ApprovalRecord.id == req_id,
+                    ApprovalRecord.workspace_id == workspace_id,
+                )
                 .first()
             )
 
             if record is None:
-                return False
+                return None
 
-            if record.expires_at <= datetime.utcnow():
-                return False
+            if record.decision is not None:
+                raise ApprovalClosedError(
+                    "Approval request was already decided."
+                )
+
+            if cls._expire_if_overdue(db, record):
+                raise ApprovalClosedError(
+                    "Approval request expired and was denied by timeout."
+                )
+
+            now = datetime.utcnow()
 
             record.decision = normalized_decision
             record.decided_by = decided_by
-            record.decided_at = datetime.utcnow()
+            record.decided_at = now
+
+            if normalized_decision == "ALLOW":
+                # Fresh window for the resumed run to execute the call.
+                record.expires_at = now + DEFAULT_APPROVAL_TTL
 
             db.commit()
+            db.refresh(record)
 
-            return True
+            return cls._to_dict(record)
+
+    @staticmethod
+    def _expire_if_overdue(
+        db: Any,
+        record: ApprovalRecord,
+    ) -> bool:
+        """
+        Deny an undecided request whose TTL has elapsed.
+
+        Returns True when the request is (now) denied by timeout.
+        """
+        if record.decision is not None:
+            return False
+
+        now = datetime.utcnow()
+
+        if record.expires_at > now:
+            return False
+
+        record.decision = "DENY"
+        record.decided_by = TIMEOUT_DECIDER
+        record.decided_at = now
+
+        db.commit()
+
+        return True
+
+    @staticmethod
+    def _to_dict(
+        record: ApprovalRecord,
+    ) -> Dict[str, Any]:
+        """
+        Public view of an approval request (raw arguments are never stored).
+        """
+        return {
+            "id": record.id,
+            "run_id": record.run_id,
+            "session_id": record.session_id,
+            "workspace_id": record.workspace_id,
+            "tool": record.tool,
+            "risk": record.risk,
+            "arguments_hash": record.arguments_hash,
+            "requested_by": record.requested_by,
+            "requested_at": record.requested_at,
+            "expires_at": record.expires_at,
+            "decision": record.decision,
+            "decided_by": record.decided_by,
+            "decided_at": record.decided_at,
+        }
 
     @staticmethod
     def argument_hash(arguments: Dict[str, Any]) -> str:
@@ -218,6 +345,8 @@ class ApprovalManager:
 
 
 __all__ = [
+    "ApprovalClosedError",
     "ApprovalManager",
     "DEFAULT_APPROVAL_TTL",
+    "TIMEOUT_DECIDER",
 ]
