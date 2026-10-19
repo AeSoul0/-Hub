@@ -33,6 +33,7 @@ from app.agent_engine.adapters.base import ModelProvider
 from app.agent_engine.adapters.openai_adapter import OpenAIAdapter
 from app.agent_engine.checker import AgentChecker
 from app.agent_engine.runtime import AgentRuntime
+from app.agent_engine.state.manager import AgentStateManager
 from app.core.security import Principal
 
 
@@ -359,6 +360,55 @@ class AgentEngine:
                     "run_id": run_id,
                 }
             },
+        )
+
+    async def resume(
+        self,
+        run_id: str,
+        session_id: str,
+        principal: Principal,
+    ) -> Any:
+        """
+        Resume an existing run, typically after a human approval decision.
+
+        The run must already exist for this session and Principal: resume
+        never starts a new task. The persisted task and parked tool call are
+        authoritative.
+        """
+        if not run_id or not session_id:
+            raise ValueError(
+                "run_id and session_id are required."
+            )
+
+        if not isinstance(
+            principal,
+            Principal,
+        ):
+            raise ValueError(
+                "principal is required."
+            )
+
+        existing = AgentStateManager.load_agent_run(
+            run_id,
+            session_id=session_id,
+            workspace_id=principal.workspace_id,
+            principal_id=principal.id,
+        )
+
+        if existing is None:
+            raise LookupError(
+                f"Run {run_id} does not exist."
+            )
+
+        return await self.runtime.execute_task(
+            task={},
+            orchestrator=None,
+            worker=self.worker,
+            checker=self.checker,
+            run_id=run_id,
+            session_id=session_id,
+            workspace_id=principal.workspace_id,
+            principal=principal,
         )
 
     # ==========================================================================

@@ -2,8 +2,8 @@
 @file tests/agent_engine/test_e2e_loop.py
 @description End-to-end agent loop with a fake model provider (roadmap M1 exit).
 
-The only fake boundary is the OpenAI client. Everything between it and the
-database is real: AgentEngine -> AgentRuntime -> OpenAIAdapter (worker) ->
+Shared fixtures live in conftest.py. The only fake boundary on the model
+side is the OpenAI client; everything between it and the database is real: AgentEngine -> AgentRuntime -> OpenAIAdapter (worker) ->
 ToolGateway -> registered skill tool -> OpenAIAdapter (checker) -> durable
 AgentRun and AuditLog rows.
 
@@ -15,24 +15,16 @@ Flow under test:
 from __future__ import annotations
 
 import json
-from types import SimpleNamespace
 from typing import Any, Dict, List
-from unittest.mock import patch
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
-from app.agent_engine.adapters.openai_adapter import OpenAIAdapter
 from app.agent_engine.application import AgentEngine
 from app.agent_engine.runtime import AgentRuntime
 from app.core.security import Principal, RoleEnum
 from app.domain.models.audit import AuditLog
-from app.domain.models.identity import Base
 from app.domain.models.runtime_state import AgentRun as DbAgentRun
 from app.skills.base import BaseSkill, RiskLevel, SkillMetadata, ToolMetadata
-from app.skills.registry import SkillRegistry
 
 
 # ==============================================================================
@@ -81,90 +73,9 @@ class CapitalsSkill(BaseSkill):
         }
 
 
-class FakeResponses:
-    """
-    Fake `client.responses` endpoint returning scripted responses.
-    """
-
-    def __init__(self, scripted: List[Any]) -> None:
-        self.scripted = list(scripted)
-        self.requests: List[Dict[str, Any]] = []
-
-    async def create(self, **request: Any) -> Any:
-        self.requests.append(request)
-
-        if not self.scripted:
-            raise AssertionError("Unexpected extra model call.")
-
-        return self.scripted.pop(0)
-
-
-def fake_adapter(scripted: List[Any]) -> OpenAIAdapter:
-    """
-    Build a real OpenAIAdapter whose HTTP client is replaced by a fake.
-    """
-    adapter = OpenAIAdapter(
-        model_name="fake-model",
-        api_key="test-only",
-    )
-    adapter._client = SimpleNamespace(
-        responses=FakeResponses(scripted),
-    )
-    return adapter
-
-
-def function_call_response(call_id: str, name: str, arguments: Dict[str, Any]) -> Any:
-    return SimpleNamespace(
-        id="resp_tool",
-        output_text="",
-        output=[
-            SimpleNamespace(
-                type="function_call",
-                call_id=call_id,
-                name=name,
-                arguments=json.dumps(arguments),
-            )
-        ],
-    )
-
-
-def text_response(text: str) -> Any:
-    return SimpleNamespace(
-        id="resp_text",
-        output_text=text,
-        output=[],
-    )
-
-
 # ==============================================================================
 # FIXTURES
 # ==============================================================================
-
-
-@pytest.fixture
-def db_session_factory():
-    """
-    In-memory database holding the durable run and audit tables.
-    """
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-
-    Base.metadata.create_all(
-        engine,
-        tables=[
-            DbAgentRun.__table__,
-            AuditLog.__table__,
-        ],
-    )
-
-    return sessionmaker(
-        autocommit=False,
-        autoflush=False,
-        bind=engine,
-    )
 
 
 @pytest.fixture
@@ -173,31 +84,9 @@ def capitals_skill() -> CapitalsSkill:
 
 
 @pytest.fixture
-def isolated_infrastructure(db_session_factory, capitals_skill, tmp_path):
-    """
-    Route persistence to the in-memory database and install the test skill.
-
-    TaskManager uses a separate raw connection pool and is out of scope for
-    this test, so only its two calls are stubbed.
-    """
-    registry = SkillRegistry()
-    registry.register_skill(capitals_skill)
-
-    with (
-        patch("app.core.db.SessionLocal", db_session_factory),
-        patch(
-            "app.agent_engine.state.manager.SessionLocal",
-            db_session_factory,
-        ),
-        patch("app.agent_engine.runtime.skill_registry", registry),
-        patch(
-            "app.agent_engine.events.FLIGHT_RECORDER_FILE",
-            str(tmp_path / "flight_recorder.jsonl"),
-        ),
-        patch("app.runtime.tool_gateway.TaskManager") as task_manager,
-    ):
-        task_manager.create_task.return_value = SimpleNamespace(id="task-1")
-        yield
+def isolated_infrastructure(agent_infrastructure, capitals_skill):
+    agent_infrastructure.use_skills(capitals_skill)
+    return agent_infrastructure
 
 
 @pytest.fixture
@@ -219,33 +108,27 @@ async def test_task_tool_observation_accept_is_persisted(
     capitals_skill,
     db_session_factory,
     principal,
+    fake_model,
 ):
     """
     A LOW tool proposed by the model is executed through the ToolGateway,
     its output is threaded back to the model, the Checker accepts, and both
     the AgentRun and the audit record are persisted.
     """
-    worker = fake_adapter(
+    worker = fake_model.adapter(
         [
-            function_call_response(
+            fake_model.function_call(
                 "call_1",
                 "lookup_capital",
                 {"country": "Italy"},
             ),
-            text_response("The capital of Italy is Rome."),
+            fake_model.text("The capital of Italy is Rome."),
         ]
     )
 
-    checker = fake_adapter(
+    checker = fake_model.adapter(
         [
-            text_response(
-                json.dumps(
-                    {
-                        "decision": "ACCEPT",
-                        "issues": [],
-                    }
-                )
-            ),
+            fake_model.accept(),
         ]
     )
 
@@ -317,6 +200,7 @@ async def test_run_stops_at_total_tool_call_cap(
     isolated_infrastructure,
     capitals_skill,
     principal,
+    fake_model,
 ):
     """
     A model that keeps calling tools is stopped by the per-run cap instead
@@ -324,9 +208,9 @@ async def test_run_stops_at_total_tool_call_cap(
     """
     from app.agent_engine.errors import MaxTurnsReachedError
 
-    worker = fake_adapter(
+    worker = fake_model.adapter(
         [
-            function_call_response(
+            fake_model.function_call(
                 f"call_{index}",
                 "lookup_capital",
                 {"country": "Italy"},
@@ -342,7 +226,7 @@ async def test_run_stops_at_total_tool_call_cap(
             task={"description": "Loop forever."},
             orchestrator=None,
             worker=worker,
-            checker=fake_adapter([]),
+            checker=fake_model.adapter([]),
             max_total_tool_calls=3,
             run_id="run-cap",
             session_id="session-cap",

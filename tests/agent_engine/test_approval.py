@@ -11,7 +11,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.agent_engine.approval.manager import ApprovalManager
+from app.agent_engine.approval.manager import (
+    TIMEOUT_DECIDER,
+    ApprovalClosedError,
+    ApprovalManager,
+)
 from app.domain.models.audit import ApprovalRecord
 
 
@@ -102,13 +106,13 @@ async def test_check_approval_status_none(mock_session_local):
 @pytest.mark.anyio
 @patch("app.agent_engine.approval.manager.SessionLocal")
 async def test_check_approval_status_expired(mock_session_local):
-    """Expired approval records never authorize execution."""
+    """An undecided request past its TTL is denied by timeout and recorded."""
 
     record = make_record(
         expires_at=datetime.utcnow() - timedelta(hours=1),
     )
 
-    configure_query(
+    mock_db = configure_query(
         mock_session_local,
         record,
     )
@@ -122,7 +126,10 @@ async def test_check_approval_status_expired(mock_session_local):
         arguments=ARGUMENTS,
     )
 
-    assert status == "EXPIRED"
+    assert status == "DENIED"
+    assert record.decision == "DENY"
+    assert record.decided_by == TIMEOUT_DECIDER
+    mock_db.commit.assert_called_once()
 
 
 @pytest.mark.anyio
@@ -252,7 +259,7 @@ async def test_request_approval(mock_session_local):
 @pytest.mark.anyio
 @patch("app.agent_engine.approval.manager.SessionLocal")
 async def test_grant_approval(mock_session_local):
-    """Granting approval updates the record and returns success."""
+    """Granting records the deciding Principal and returns the request."""
 
     mock_db = MagicMock()
 
@@ -267,19 +274,49 @@ async def test_grant_approval(mock_session_local):
     result = await ApprovalManager.grant_approval(
         req_id="req_123",
         decision="ALLOW",
+        decided_by=PRINCIPAL_ID,
+        workspace_id=WORKSPACE_ID,
     )
 
-    assert result is True
+    assert result["id"] == "req_123"
+    assert result["run_id"] == RUN_ID
     assert record.decision == "ALLOW"
-    assert record.decided_by == "admin"
+    assert record.decided_by == PRINCIPAL_ID
     assert record.decided_at is not None
     mock_db.commit.assert_called_once()
 
 
 @pytest.mark.anyio
 @patch("app.agent_engine.approval.manager.SessionLocal")
+async def test_grant_approval_rejects_already_decided_request(mock_session_local):
+    """A decided request cannot be decided again."""
+
+    mock_db = MagicMock()
+
+    context_manager = mock_session_local.return_value
+    context_manager.__enter__.return_value = mock_db
+    context_manager.__exit__.return_value = None
+
+    record = make_record(decision="DENY")
+
+    mock_db.query.return_value.filter.return_value.first.return_value = record
+
+    with pytest.raises(ApprovalClosedError):
+        await ApprovalManager.grant_approval(
+            req_id="req_123",
+            decision="ALLOW",
+            decided_by=PRINCIPAL_ID,
+            workspace_id=WORKSPACE_ID,
+        )
+
+    assert record.decision == "DENY"
+    mock_db.commit.assert_not_called()
+
+
+@pytest.mark.anyio
+@patch("app.agent_engine.approval.manager.SessionLocal")
 async def test_grant_approval_rejects_expired_request(mock_session_local):
-    """Expired approval requests cannot be granted."""
+    """Expired requests cannot be granted: they are denied by timeout."""
 
     mock_db = MagicMock()
 
@@ -293,10 +330,13 @@ async def test_grant_approval_rejects_expired_request(mock_session_local):
 
     mock_db.query.return_value.filter.return_value.first.return_value = record
 
-    result = await ApprovalManager.grant_approval(
-        req_id="req_123",
-        decision="ALLOW",
-    )
+    with pytest.raises(ApprovalClosedError):
+        await ApprovalManager.grant_approval(
+            req_id="req_123",
+            decision="ALLOW",
+            decided_by=PRINCIPAL_ID,
+            workspace_id=WORKSPACE_ID,
+        )
 
-    assert result is False
-    mock_db.commit.assert_not_called()
+    assert record.decision == "DENY"
+    assert record.decided_by == TIMEOUT_DECIDER
