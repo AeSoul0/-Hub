@@ -238,6 +238,8 @@ class CheckerDecision(BaseModel):
     status: CheckerDecisionEnum
     issues: List[CheckerIssue] = Field(default_factory=list)
     retry_instruction: Optional[str] = None
+    # Normalized usage of the checker model call, when the provider reports it.
+    usage: Optional[Dict[str, Any]] = None
 
 
 class RetryInstruction(BaseModel):

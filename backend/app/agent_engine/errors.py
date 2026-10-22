@@ -56,3 +56,23 @@ class StateRecoveryError(AgentEngineError):
     """
     """Raised when the engine fails to recover a durable run state."""
     pass
+
+
+class RunInterrupted(AgentEngineError):
+    """
+    Base class for conditions that stop a run between or during steps.
+    """
+
+    status = "failed"
+
+
+class RunCancelledError(RunInterrupted):
+    """Raised when a run is cancelled by its owner or by the global stop."""
+
+    status = "cancelled"
+
+
+class BudgetExceededError(RunInterrupted):
+    """Raised when a run or the monthly spend cap is exhausted."""
+
+    status = "failed"

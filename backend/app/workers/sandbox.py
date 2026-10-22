@@ -95,20 +95,22 @@ class EphemeralSandboxManager:
                 )
 
         finally:
+            # Kill first: on cancellation (kill switch) waiting for the
+            # output would block until the command ends on its own.
+            if process is not None and process.returncode is None:
+                try:
+                    process.kill()
+                except ProcessLookupError:
+                    pass
+
             if communication_task is not None:
                 try:
                     if not communication_task.done():
                         await communication_task
-                except Exception:
+                except BaseException:
                     pass
 
             if process is not None:
-                if process.returncode is None:
-                    try:
-                        process.kill()
-                    except ProcessLookupError:
-                        pass
-
                 try:
                     await process.wait()
                 except Exception:

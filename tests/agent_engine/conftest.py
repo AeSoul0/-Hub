@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 from contextlib import ExitStack
 from types import SimpleNamespace
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -25,6 +25,7 @@ from app.agent_engine.adapters.openai_adapter import OpenAIAdapter
 from app.domain.models.audit import ApprovalRecord, AuditChainLink, AuditLog
 from app.domain.models.identity import Base
 from app.domain.models.runtime_state import AgentRun as DbAgentRun
+from app.domain.models.runtime_state import MonthlySpend
 from app.skills.registry import SkillRegistry
 
 
@@ -62,7 +63,22 @@ def _fake_adapter(scripted: List[Any]) -> OpenAIAdapter:
     return adapter
 
 
-def _function_call(call_id: str, name: str, arguments: Dict[str, Any]) -> Any:
+def _usage(usage: Optional[Tuple[int, int]]) -> Any:
+    """
+    Responses API usage object for (input_tokens, output_tokens).
+    """
+    if usage is None:
+        return None
+
+    return SimpleNamespace(input_tokens=usage[0], output_tokens=usage[1])
+
+
+def _function_call(
+    call_id: str,
+    name: str,
+    arguments: Dict[str, Any],
+    usage: Optional[Tuple[int, int]] = None,
+) -> Any:
     return SimpleNamespace(
         id=f"resp_{call_id}",
         output_text="",
@@ -74,19 +90,21 @@ def _function_call(call_id: str, name: str, arguments: Dict[str, Any]) -> Any:
                 arguments=json.dumps(arguments),
             )
         ],
+        usage=_usage(usage),
     )
 
 
-def _text(text: str) -> Any:
+def _text(text: str, usage: Optional[Tuple[int, int]] = None) -> Any:
     return SimpleNamespace(
         id="resp_text",
         output_text=text,
         output=[],
+        usage=_usage(usage),
     )
 
 
-def _accept() -> Any:
-    return _text(json.dumps({"decision": "ACCEPT", "issues": []}))
+def _accept(usage: Optional[Tuple[int, int]] = None) -> Any:
+    return _text(json.dumps({"decision": "ACCEPT", "issues": []}), usage=usage)
 
 
 @pytest.fixture
@@ -124,6 +142,7 @@ def db_session_factory():
             DbAgentRun.__table__,
             AuditLog.__table__,
             AuditChainLink.__table__,
+            MonthlySpend.__table__,
             ApprovalRecord.__table__,
         ],
     )

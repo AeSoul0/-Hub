@@ -16,6 +16,7 @@ Architectural boundary:
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import os
@@ -309,6 +310,23 @@ async def websocket_endpoint(
         except Exception as exc:
             raise WebSocketDisconnect() from exc
 
+    # Live run states, approvals and budget events of this session are
+    # relayed as they happen ({"type": ..., "data": ...} messages).
+    session_events = event_bus.subscribe(
+        authenticated_session_id
+    )
+
+    async def forward_session_events():
+        while True:
+            message = await session_events.get()
+            await websocket.send_text(
+                message
+            )
+
+    forwarder = asyncio.create_task(
+        forward_session_events()
+    )
+
     try:
         while True:
             raw = await websocket.receive_text()
@@ -415,6 +433,13 @@ async def websocket_endpoint(
         print(
             "[ERROR] WebSocket orchestration failure: "
             f"{exc}"
+        )
+
+    finally:
+        forwarder.cancel()
+        event_bus.unsubscribe(
+            authenticated_session_id,
+            session_events,
         )
 
 

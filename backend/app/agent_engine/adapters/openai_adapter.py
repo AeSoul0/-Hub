@@ -18,6 +18,7 @@ from openai import AsyncOpenAI
 
 from app.agent_engine.adapters.base import ModelProvider
 from app.agent_engine.models import ToolProposal
+from app.agent_engine.pricing import usage_from_response
 
 
 # Prepended to tool output whose provenance is untrusted (web, files, MCP).
@@ -487,4 +488,12 @@ class OpenAIAdapter(ModelProvider):
                 "id",
                 None,
             ),
+            "usage": usage_from_response(
+                self.model_name,
+                getattr(
+                    response,
+                    "usage",
+                    None,
+                ),
+            ).to_dict(),
         }

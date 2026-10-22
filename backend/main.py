@@ -33,6 +33,7 @@ from app.api import (
     auth,
     media,
     realtime,
+    runs,
     voice,
 )
 from app.core import database
@@ -371,6 +372,10 @@ app.include_router(
 
 app.include_router(
     approvals.router
+)
+
+app.include_router(
+    runs.router
 )
 
 
