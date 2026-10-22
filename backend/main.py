@@ -32,6 +32,7 @@ from app.api import (
     approvals,
     auth,
     media,
+    memory,
     realtime,
     runs,
     voice,
@@ -386,6 +387,10 @@ app.include_router(
 
 app.include_router(
     runs.router
+)
+
+app.include_router(
+    memory.router
 )
 
 

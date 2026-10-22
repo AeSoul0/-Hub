@@ -24,6 +24,7 @@ from sqlalchemy.pool import StaticPool
 from app.agent_engine.adapters.openai_adapter import OpenAIAdapter
 from app.domain.models.audit import ApprovalRecord, AuditChainLink, AuditLog
 from app.domain.models.identity import Base
+from app.domain.models.memory import MemoryChunk
 from app.domain.models.runtime_state import AgentRun as DbAgentRun
 from app.domain.models.runtime_state import MonthlySpend
 from app.skills.registry import SkillRegistry
@@ -130,7 +131,7 @@ def fake_model() -> SimpleNamespace:
 @pytest.fixture
 def db_session_factory():
     """
-    In-memory database holding run, audit and approval tables.
+    In-memory database holding run, audit, approval and memory tables.
     """
     engine = create_engine(
         "sqlite://",
@@ -146,6 +147,7 @@ def db_session_factory():
             AuditChainLink.__table__,
             MonthlySpend.__table__,
             ApprovalRecord.__table__,
+            MemoryChunk.__table__,
         ],
     )
 

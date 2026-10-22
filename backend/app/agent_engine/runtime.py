@@ -14,13 +14,16 @@ Security invariants enforced here include:
 - tool proposal/run consistency;
 - durable execution state;
 - bounded retries and turns;
-- memory context scoped to the authenticated session and workspace.
+- memory context scoped to the authenticated session and workspace;
+- model input assembled by the Context Manager (levels L0-L5) inside a
+  token budget, with cross-session recall and indexing (M6).
 """
 
 from __future__ import annotations
 
 import asyncio
 import inspect
+import logging
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
@@ -29,6 +32,7 @@ from app.agent_engine.adapters.base import ModelProvider
 from app.agent_engine.adapters.openai_adapter import OpenAIAdapter
 from app.agent_engine.approval.manager import ApprovalManager
 from app.agent_engine.checker import AgentChecker
+from app.agent_engine.context import ContextManager
 from app.agent_engine.control import (
     RunLimits,
     SpendLedger,
@@ -65,6 +69,7 @@ from app.core.security import (
     TaskExecutionContext,
     WorkspacePolicy,
 )
+from app.memory.store import MemoryKind, MemoryStore, memory_enabled
 from app.runtime.tool_gateway import ToolGateway, ToolInvocation
 from app.skills.memory_skill import (
     clear_memory_context,
@@ -72,6 +77,8 @@ from app.skills.memory_skill import (
 )
 from app.skills.registry import skill_registry
 
+
+logger = logging.getLogger(__name__)
 
 # ==============================================================================
 # EXECUTION DEFAULTS
@@ -83,6 +90,11 @@ DEFAULT_MAX_TOOL_CALLS = 5
 DEFAULT_MAX_TOTAL_TOOL_CALLS = 20
 DEFAULT_TOOL_RUNTIME = 30
 DEFAULT_MAX_OUTPUT = 4000
+
+# Long-term memory recalled into L5 and preferences loaded into L2 at the
+# start of a run.
+RECALL_LIMIT = 8
+PREFERENCE_LIMIT = 30
 DEFAULT_TOOL_COST = 0.0
 NOTIFY_TIMEOUT_SECONDS = 0.5
 
@@ -104,9 +116,19 @@ class AgentRuntime:
         self,
         db_session: Any = None,
         tool_gateway: Optional[ToolGateway] = None,
+        context_manager: Optional[ContextManager] = None,
     ) -> None:
         self.db = db_session
         self.tool_gateway = tool_gateway or ToolGateway()
+        self._context_manager = context_manager
+
+    @property
+    def context_manager(self) -> ContextManager:
+        # Built on first use so AEHUB_CONTEXT_BUDGET is read at run time.
+        if self._context_manager is None:
+            self._context_manager = ContextManager()
+
+        return self._context_manager
 
     # ==========================================================================
     # TOOL RESOLUTION
@@ -327,16 +349,22 @@ class AgentRuntime:
         arguments: Dict[str, Any],
         session_id: str,
         workspace_id: str,
+        principal_id: Optional[str] = None,
+        trusted: bool = True,
     ) -> Any:
         """
         Execute a registered tool while exposing a trusted memory context.
 
         Memory context is installed only for the duration of the concrete tool
-        execution and is always cleared afterwards.
+        execution and is always cleared afterwards. trusted is False once the
+        run context holds untrusted content, so memories written from then on
+        are stored as untrusted.
         """
         set_memory_context(
             session_id=session_id,
             workspace_id=workspace_id,
+            principal_id=principal_id,
+            trusted=trusted,
         )
 
         try:
@@ -537,6 +565,12 @@ class AgentRuntime:
                 "description": validated_description,
             }
 
+            preferences, recalled = await self._recall(
+                workspace_id=workspace_id,
+                principal_id=principal.id,
+                query=validated_description,
+            )
+
             worker_context: Dict[str, Any] = {
                 "run_id": run_id,
                 "session_id": session_id,
@@ -547,6 +581,8 @@ class AgentRuntime:
                 "feedback": None,
                 "observations": [],
                 "resuming": False,
+                "preferences": preferences,
+                "recalled": recalled,
             }
 
             last_feedback: Optional[str] = None
@@ -762,6 +798,18 @@ class AgentRuntime:
                     "planning",
                 )
 
+                model_context, context_report = self.context_manager.build(
+                    worker_context,
+                    system_prompt=str(
+                        getattr(worker, "system_prompt", "") or ""
+                    ),
+                )
+
+                agent_run.usage["context_peak_tokens"] = max(
+                    int(agent_run.usage.get("context_peak_tokens", 0)),
+                    context_report.total_tokens,
+                )
+
                 try:
                     if timeout is not None:
                         elapsed = (
@@ -776,7 +824,7 @@ class AgentRuntime:
                         step_result = await asyncio.wait_for(
                             run_interruptible(
                                 worker.generate(
-                                    worker_context
+                                    model_context
                                 ),
                                 cancellation_token,
                             ),
@@ -785,7 +833,7 @@ class AgentRuntime:
                     else:
                         step_result = await run_interruptible(
                             worker.generate(
-                                worker_context
+                                model_context
                             ),
                             cancellation_token,
                         )
@@ -1081,16 +1129,18 @@ class AgentRuntime:
                     f"Task {run_id} failed: maximum turns reached."
                 )
 
-            trace = [
-                {
-                    "tool_call_id": observation.tool_call_id,
-                    "content": observation.content,
-                }
-                for observation in worker_context.get(
-                    "observations",
-                    [],
-                )
-            ]
+            trace = self.context_manager.fit_trace(
+                [
+                    {
+                        "tool_call_id": observation.tool_call_id,
+                        "content": observation.content,
+                    }
+                    for observation in worker_context.get(
+                        "observations",
+                        [],
+                    )
+                ]
+            )
 
             spend_stop = self._check_spend(
                 agent_run,
@@ -1173,6 +1223,16 @@ class AgentRuntime:
                 agent_run.status = AgentRunStatus.COMPLETED
                 agent_run.result = guarded_result
                 agent_run.error = None
+
+                await self._index_episode(
+                    workspace_id=workspace_id,
+                    principal_id=principal.id,
+                    session_id=session_id,
+                    run_id=run_id,
+                    goal=str(task.get("description", task)),
+                    result=guarded_result,
+                    trusted=not worker_context.get("untrusted_context"),
+                )
 
                 EventDispatcher().dispatch(
                     "checker.accepted",
@@ -1257,6 +1317,8 @@ class AgentRuntime:
                 "feedback": last_feedback,
                 "observations": [],
                 "resuming": False,
+                "preferences": worker_context.get("preferences") or [],
+                "recalled": worker_context.get("recalled") or [],
                 # The checker feedback may echo untrusted content, so the
                 # taint survives a retry.
                 "untrusted_context": bool(
@@ -1308,6 +1370,7 @@ class AgentRuntime:
         becomes an observation the model can react to.
         """
         trusted = True
+        succeeded = False
 
         try:
             tool, _ = self._resolve_tool(
@@ -1348,6 +1411,8 @@ class AgentRuntime:
                     arguments=arguments,
                     session_id=session_id,
                     workspace_id=workspace_id,
+                    principal_id=principal.id,
+                    trusted=not untrusted_context,
                 )
 
             tool_result = await self.tool_gateway.execute(
@@ -1365,6 +1430,8 @@ class AgentRuntime:
                 else tool_result.error
             )
 
+            succeeded = bool(tool_result.success)
+
         except ApprovalRequiredError:
             raise
 
@@ -1377,6 +1444,7 @@ class AgentRuntime:
             arguments=dict(proposal.arguments),
             content=content,
             trusted=trusted,
+            succeeded=succeeded,
         )
 
     @staticmethod
@@ -1753,6 +1821,87 @@ class AgentRuntime:
     # DURABLE STATE
     # ==========================================================================
 
+    # ==========================================================================
+    # LONG-TERM MEMORY (M6)
+    # ==========================================================================
+
+    @staticmethod
+    async def _recall(
+        workspace_id: str,
+        principal_id: str,
+        query: str,
+    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """
+        Load trusted preferences (L2) and memories relevant to the goal (L5).
+
+        Memory improves a run but is not required for it: any failure is
+        logged and the run continues without recall.
+        """
+        if not memory_enabled():
+            return [], []
+
+        def load() -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+            store = MemoryStore(
+                workspace_id=workspace_id,
+                principal_id=principal_id,
+            )
+            preferences = store.preferences(
+                limit=PREFERENCE_LIMIT,
+            )
+            recalled = store.search(
+                query,
+                limit=RECALL_LIMIT,
+                exclude_kinds=[
+                    MemoryKind.PREFERENCE.value,
+                    MemoryKind.RULE.value,
+                ],
+            )
+            return (
+                [hit.to_dict() for hit in preferences],
+                [hit.to_dict() for hit in recalled],
+            )
+
+        try:
+            return await asyncio.to_thread(load)
+        except Exception as exc:
+            logger.warning("Memory recall skipped: %s", exc)
+            return [], []
+
+    @staticmethod
+    async def _index_episode(
+        workspace_id: str,
+        principal_id: str,
+        session_id: str,
+        run_id: str,
+        goal: str,
+        result: Any,
+        trusted: bool,
+    ) -> None:
+        """
+        Store an accepted run as an episode for later sessions. A run that
+        handled untrusted content is stored as untrusted.
+        """
+        if not memory_enabled():
+            return
+
+        def store() -> None:
+            MemoryStore(
+                workspace_id=workspace_id,
+                principal_id=principal_id,
+            ).add(
+                f"Task: {goal}\nResult: {result}",
+                MemoryKind.EPISODE,
+                trusted=trusted,
+                source="runtime",
+                session_id=session_id,
+                run_id=run_id,
+            )
+
+        try:
+            await asyncio.to_thread(store)
+        except Exception as exc:
+            logger.warning("Memory indexing skipped for run %s: %s", run_id, exc)
+
     @staticmethod
     def _save(
         agent_run: AgentRun,
@@ -1781,6 +1930,7 @@ class AgentRuntime:
                         "arguments": observation.arguments,
                         "content": observation.content,
                         "trusted": observation.trusted,
+                        "succeeded": observation.succeeded,
                     }
                 )
             else:
@@ -1821,6 +1971,12 @@ class AgentRuntime:
                     "untrusted_context"
                 )
             ),
+            "preferences": worker_context.get(
+                "preferences"
+            ) or [],
+            "recalled": worker_context.get(
+                "recalled"
+            ) or [],
             "observations": observations,
         }
 

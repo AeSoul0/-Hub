@@ -17,6 +17,11 @@ _TEST_ENV_DEFAULTS = {
     # Spec 4.1: the Critic must differ from the Implementer, or the engine
     # refuses to start.
     "AEHUB_CHECKER_MODEL": "test-only-critic-model",
+    # Long-term memory needs the database; tests that exercise it enable it
+    # explicitly against their own store. The hash embedder needs no model
+    # download.
+    "AEHUB_MEMORY_ENABLED": "0",
+    "AEHUB_EMBEDDER": "hash",
 }
 
 for _key, _value in _TEST_ENV_DEFAULTS.items():
