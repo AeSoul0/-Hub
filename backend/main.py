@@ -41,6 +41,7 @@ from app.core.telemetry import (
     setup_telemetry,
     shutdown_telemetry,
 )
+from app.agent_engine.routing import check_routing_at_startup
 from app.skills.registry import skill_registry
 from app.workers.scheduler import proactive_scheduler
 from app.workflows.autonomous import register_workflows
@@ -135,6 +136,15 @@ async def lifespan(
     if not skill_registry.get_registered_skill_names():
         await asyncio.to_thread(
             skill_registry.load_from_package
+        )
+
+    # Spec 4.1: the Critic must differ from every Implementer. The API still
+    # starts, but the agent engine refuses runs until routing is fixed.
+    routing_error = check_routing_at_startup()
+
+    if routing_error:
+        print(
+            f"[ERROR] Agent runs disabled: {routing_error}"
         )
 
     try:

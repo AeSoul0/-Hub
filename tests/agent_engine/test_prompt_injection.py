@@ -189,7 +189,7 @@ def _engine(fake_model, worker_script: List[Any]) -> AgentEngine:
     worker = fake_model.adapter(worker_script)
     engine = AgentEngine(
         model_provider=worker,
-        checker_provider=fake_model.adapter([fake_model.accept()]),
+        checker_provider=fake_model.checker([fake_model.accept()]),
         runtime=AgentRuntime(),
     )
     # Scripted model requests, for assertions.
@@ -345,7 +345,7 @@ async def test_taint_survives_a_checker_retry(lab, admin, fake_model):
             fake_model.text("Second answer."),
         ]
     )
-    checker = fake_model.adapter(
+    checker = fake_model.checker(
         [
             fake_model.text(json.dumps({"decision": "RETRY", "issues": [], "retry_instruction": "Try again."})),
             fake_model.accept(),

@@ -603,6 +603,24 @@ Do not expose private backend secrets through `NEXT_PUBLIC_*` variables.
 | `LANGSMITH_*`         | Optional LangSmith observability configuration              |
 | `NEXT_PUBLIC_API_URL` | Public frontend endpoint for backend communication          |
 
+## Agent engine settings
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `AEHUB_MODEL_ROLES` | Models per role (spec 4.1) as JSON: `{"architect": ["openrouter:<model>", "openai:<model>"], "critic": ["local:<model>"], ...}`. Roles: `architect`, `research`, `critic`, `fast_worker`, `triage`. The first entry is the primary model, the others are fallbacks. Providers: `openai`, `openrouter`, `local`. | every role uses `OPENAI_MODEL` on `openai` |
+| `AEHUB_CHECKER_MODEL` | Critic model when `AEHUB_MODEL_ROLES` does not set `critic`. The Critic must differ from every Implementer model, otherwise agent runs are refused. | none |
+| `OPENROUTER_API_KEY` | Key for the `openrouter` provider | none |
+| `AEHUB_LOCAL_BASE_URL` | OpenAI-compatible local server for the `local` provider (Ollama, LM Studio) | `http://localhost:11434/v1` |
+| `AEHUB_FORCE_ROLE` | Skip triage and run every task with this role | none |
+| `AEHUB_BREAKER_THRESHOLD` / `AEHUB_BREAKER_COOLDOWN_SECONDS` | Consecutive failures before a provider is skipped, and how long it stays skipped | `3` / `60` |
+| `AEHUB_MODEL_PRICES` | Prices as JSON, USD per 1M tokens: `{"<model>": {"input": 1.0, "output": 4.0}}`. Unpriced models use a deliberately high fallback price and are flagged as estimated. | none |
+| `AEHUB_DEFAULT_MODEL_PRICE` | Fallback price `input,output` | `15,60` |
+| `AEHUB_RUN_MAX_COST` / `AEHUB_MONTHLY_BUDGET` | Per-run hard stop and monthly cap, in USD (warning at `AEHUB_BUDGET_WARNING_RATIO`) | `2` / `30` (`0.8`) |
+| `AEHUB_ALLOWED_DIRS` | Folders that filesystem tools may touch (`os.pathsep`-separated) | `./workspace` |
+| `AEHUB_MCP_ALLOWED_SERVERS` | Comma-separated MCP server URLs the bridge may connect to | none (no MCP server) |
+| `FRONTEND_URL` / `AEHUB_ALLOWED_ORIGINS` | Browser origins allowed by CORS and the WebSocket | `http://localhost:3000` |
+| `AEHUB_HOST` | Bind address of `python main.py` | `127.0.0.1` |
+
 ### Security warning
 
 The current backend defines an unsafe fallback for `AEHUB_SECRET_KEY`.

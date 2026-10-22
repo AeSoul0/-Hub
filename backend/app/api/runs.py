@@ -194,6 +194,8 @@ def build_stats(principal: Principal, days: int) -> Dict[str, Any]:
 
     inferences: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
     cost_by_session: Dict[str, float] = defaultdict(float)
+    cost_by_role: Dict[str, float] = defaultdict(float)
+    cost_by_model: Dict[str, float] = defaultdict(float)
     estimated = False
 
     for run in runs:
@@ -203,7 +205,10 @@ def build_stats(principal: Principal, days: int) -> Dict[str, Any]:
 
         for call in usage.get("calls") or []:
             day = str(call.get("at", ""))[:10]
-            inferences[day][str(call.get("model") or "unknown")] += 1
+            model = str(call.get("model") or "unknown")
+            inferences[day][model] += 1
+            cost_by_role[str(call.get("role") or "unknown")] += float(call.get("cost") or 0.0)
+            cost_by_model[model] += float(call.get("cost") or 0.0)
 
     limits = RunLimits.from_env()
 
@@ -219,6 +224,12 @@ def build_stats(principal: Principal, days: int) -> Dict[str, Any]:
         },
         "cost_by_session": {
             session: round(cost, 6) for session, cost in cost_by_session.items()
+        },
+        "cost_by_role": {
+            role: round(cost, 6) for role, cost in cost_by_role.items()
+        },
+        "cost_by_model": {
+            model: round(cost, 6) for model, cost in cost_by_model.items()
         },
         "runs": [
             {

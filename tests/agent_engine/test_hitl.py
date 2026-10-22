@@ -139,7 +139,7 @@ def make_engine(fake_model):
 
         return AgentEngine(
             model_provider=worker,
-            checker_provider=fake_model.adapter(checker),
+            checker_provider=fake_model.checker(checker),
             runtime=AgentRuntime(),
         )
 
