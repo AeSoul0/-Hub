@@ -603,9 +603,9 @@ def postgres_store_factory():
         with engine.begin() as conn:
             conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         MemoryChunk.metadata.create_all(engine, tables=[MemoryChunk.__table__])
-    except OperationalError:
+    except OperationalError as exc:
         engine.dispose()
-        pytest.skip("PostgreSQL is not reachable.")
+        pytest.skip(f"PostgreSQL is not reachable: {exc.orig}")
 
     workspace = f"ws-{uuid.uuid4()}"
     factory = sessionmaker(bind=engine)
