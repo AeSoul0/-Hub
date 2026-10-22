@@ -172,8 +172,47 @@ class Budget(Base):
     )
 
 
+# ==============================================================================
+# MONTHLY MODEL SPEND
+# ==============================================================================
+
+
+class MonthlySpend(Base):
+    """
+    Model spend (USD) of one principal in one calendar month (YYYY-MM).
+
+    A separate table so existing databases get it through create_all.
+    """
+
+    __tablename__ = "monthly_spend"
+
+    principal_id = Column(
+        String,
+        primary_key=True,
+    )
+
+    period = Column(
+        String(7),
+        primary_key=True,
+    )
+
+    spent = Column(
+        Float,
+        nullable=False,
+        default=0.0,
+    )
+
+    updated_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+
+
 __all__ = [
     "AgentRun",
     "IdempotencyKey",
     "Budget",
+    "MonthlySpend",
 ]

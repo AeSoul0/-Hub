@@ -101,6 +101,15 @@ class AgentChecker:
                 instruction="The checker provider returned an invalid response object.",
             )
 
+        decision = self._decision_from_response(response)
+        # The checker call is spend too: the runtime adds it to the run usage.
+        decision.usage = response.get("usage")
+        return decision
+
+    def _decision_from_response(self, response: Dict[str, Any]) -> CheckerDecision:
+        """
+        Parse a provider response dictionary into a CheckerDecision.
+        """
         output = response.get("output")
         if not isinstance(output, str) or not output.strip():
             return self._failure(

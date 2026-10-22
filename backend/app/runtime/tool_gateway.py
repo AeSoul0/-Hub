@@ -13,6 +13,7 @@ callback from the native AgentRuntime.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -501,6 +502,31 @@ class ToolGateway:
                 output=normalized_output,
                 audit_id=audit_id,
             )
+
+        except asyncio.CancelledError:
+            # Kill switch: the run was cancelled while this tool ran.
+            duration_ms = int(
+                (time.monotonic() - start_time) * 1000
+            )
+
+            try:
+                TaskManager.update_state(
+                    task_record.id,
+                    TaskState.CANCELLED,
+                    error_message="Cancelled by the kill switch.",
+                )
+            except Exception:
+                pass
+
+            ToolGateway._log_audit(
+                invocation=invocation,
+                success=False,
+                error="Cancelled by the kill switch.",
+                decision="CANCELLED",
+                duration=f"{duration_ms}ms",
+            )
+
+            raise
 
         except Exception as exc:
             duration_ms = int(

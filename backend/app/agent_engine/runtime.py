@@ -29,7 +29,16 @@ from app.agent_engine.adapters.base import ModelProvider
 from app.agent_engine.adapters.openai_adapter import OpenAIAdapter
 from app.agent_engine.approval.manager import ApprovalManager
 from app.agent_engine.checker import AgentChecker
+from app.agent_engine.control import (
+    RunLimits,
+    SpendLedger,
+    run_interruptible,
+    run_registry,
+)
 from app.agent_engine.errors import (
+    BudgetExceededError,
+    RunCancelledError,
+    RunInterrupted,
     ApprovalRequiredError,
     MaxTurnsReachedError,
     TaskTimeoutError,
@@ -74,6 +83,7 @@ DEFAULT_MAX_TOTAL_TOOL_CALLS = 20
 DEFAULT_TOOL_RUNTIME = 30
 DEFAULT_MAX_OUTPUT = 4000
 DEFAULT_TOOL_COST = 0.0
+NOTIFY_TIMEOUT_SECONDS = 0.5
 
 
 # ==============================================================================
@@ -364,6 +374,82 @@ class AgentRuntime:
         principal: Optional[Principal] = None,
     ) -> Any:
         """
+        Run a task under the kill switch and report its live state.
+
+        The run is registered for cancellation (per run or "stop all") for
+        as long as it executes; while the global stop is active no new run
+        starts.
+        """
+        run_id = run_id or str(uuid.uuid4())
+
+        if run_registry.halted:
+            return {
+                "status": "CANCELLED",
+                "run_id": run_id,
+                "reason": run_registry.halt_reason
+                or "Agent runs are stopped.",
+            }
+
+        token = run_registry.register(
+            run_id,
+            session_id=session_id,
+            workspace_id=workspace_id,
+            principal_id=getattr(principal, "id", "") or "",
+            token=cancellation_token,
+        )
+
+        result: Any = None
+
+        try:
+            result = await self._execute_task(
+                task=task,
+                orchestrator=orchestrator,
+                worker=worker,
+                checker=checker,
+                max_attempts=max_attempts,
+                max_turns=max_turns,
+                max_tool_calls=max_tool_calls,
+                max_total_tool_calls=max_total_tool_calls,
+                timeout=timeout,
+                cancellation_token=token,
+                run_id=run_id,
+                session_id=session_id,
+                workspace_id=workspace_id,
+                principal=principal,
+            )
+            return result
+        finally:
+            run_registry.unregister(run_id)
+
+            waiting = (
+                isinstance(result, dict)
+                and result.get("status") == "WAITING_APPROVAL"
+            )
+
+            await self._emit_state(
+                session_id,
+                run_id,
+                "awaiting_approval" if waiting else "done",
+            )
+
+    async def _execute_task(
+        self,
+        task: Dict[str, Any],
+        orchestrator: Any,
+        worker: Any,
+        checker: Any,
+        max_attempts: int = DEFAULT_MAX_ATTEMPTS,
+        max_turns: int = DEFAULT_MAX_TURNS,
+        max_tool_calls: int = DEFAULT_MAX_TOOL_CALLS,
+        max_total_tool_calls: int = DEFAULT_MAX_TOTAL_TOOL_CALLS,
+        timeout: Optional[float] = None,
+        cancellation_token: Optional[Any] = None,
+        run_id: Optional[str] = None,
+        session_id: str = "",
+        workspace_id: str = "",
+        principal: Optional[Principal] = None,
+    ) -> Any:
+        """
         Execute one deterministic Worker -> ToolGateway -> Checker cycle.
 
         The Principal is mandatory. Existing persisted runs are accepted only
@@ -593,6 +679,8 @@ class AgentRuntime:
             principal
         )
 
+        limits = RunLimits.from_env()
+
         while current_attempt <= max_attempts:
             if (
                 cancellation_token is not None
@@ -602,17 +690,17 @@ class AgentRuntime:
                     False,
                 )
             ):
-                agent_run.status = AgentRunStatus.CANCELLED
-
-                self._save(
+                return self._stop_run(
                     agent_run,
+                    RunCancelledError(
+                        getattr(cancellation_token, "reason", None)
+                        or "Run cancelled."
+                    ),
                     current_attempt,
                     turn,
                     worker_context,
                     last_feedback,
                 )
-
-                return None
 
             if timeout is not None:
                 elapsed = (
@@ -651,6 +739,28 @@ class AgentRuntime:
                     }
                 )
 
+                spend_stop = self._check_spend(
+                    agent_run,
+                    principal.id,
+                    limits,
+                )
+
+                if spend_stop is not None:
+                    return self._stop_run(
+                        agent_run,
+                        spend_stop,
+                        current_attempt,
+                        turn,
+                        worker_context,
+                        last_feedback,
+                    )
+
+                await self._emit_state(
+                    session_id,
+                    run_id,
+                    "planning",
+                )
+
                 try:
                     if timeout is not None:
                         elapsed = (
@@ -663,15 +773,31 @@ class AgentRuntime:
                         )
 
                         step_result = await asyncio.wait_for(
-                            worker.generate(
-                                worker_context
+                            run_interruptible(
+                                worker.generate(
+                                    worker_context
+                                ),
+                                cancellation_token,
                             ),
                             timeout=remaining,
                         )
                     else:
-                        step_result = await worker.generate(
-                            worker_context
+                        step_result = await run_interruptible(
+                            worker.generate(
+                                worker_context
+                            ),
+                            cancellation_token,
                         )
+
+                except RunInterrupted as exc:
+                    return self._stop_run(
+                        agent_run,
+                        exc,
+                        current_attempt,
+                        turn,
+                        worker_context,
+                        last_feedback,
+                    )
 
                 except asyncio.TimeoutError as exc:
                     agent_run.status = AgentRunStatus.FAILED
@@ -724,6 +850,24 @@ class AgentRuntime:
                     break
 
                 worker_context["resuming"] = False
+
+                usage_stop = self._record_usage(
+                    agent_run,
+                    step_result.get("usage"),
+                    role="worker",
+                    principal_id=principal.id,
+                    limits=limits,
+                )
+
+                if usage_stop is not None:
+                    return self._stop_run(
+                        agent_run,
+                        usage_stop,
+                        current_attempt,
+                        turn,
+                        worker_context,
+                        last_feedback,
+                    )
 
                 proposals = step_result.get(
                     "tool_proposals",
@@ -813,21 +957,41 @@ class AgentRuntime:
                             "Tool proposal run_id does not match the active execution run."
                         )
 
+                    await self._emit_state(
+                        session_id,
+                        run_id,
+                        "tool_running",
+                        tool=proposal.tool_name,
+                    )
+
                     try:
                         self._record_observation(
                             worker_context,
-                            await self._execute_proposal(
-                                proposal=proposal,
-                                principal=principal,
-                                session_id=session_id,
-                                workspace_id=workspace_id,
-                                run_id=run_id,
-                                untrusted_context=bool(
-                                    worker_context.get(
-                                        "untrusted_context"
-                                    )
+                            await run_interruptible(
+                                self._execute_proposal(
+                                    proposal=proposal,
+                                    principal=principal,
+                                    session_id=session_id,
+                                    workspace_id=workspace_id,
+                                    run_id=run_id,
+                                    untrusted_context=bool(
+                                        worker_context.get(
+                                            "untrusted_context"
+                                        )
+                                    ),
                                 ),
+                                cancellation_token,
                             ),
+                        )
+
+                    except RunInterrupted as exc:
+                        return self._stop_run(
+                            agent_run,
+                            exc,
+                            current_attempt,
+                            turn,
+                            worker_context,
+                            last_feedback,
                         )
 
                     except ApprovalRequiredError as exc:
@@ -927,11 +1091,40 @@ class AgentRuntime:
                 )
             ]
 
+            spend_stop = self._check_spend(
+                agent_run,
+                principal.id,
+                limits,
+            )
+
+            if spend_stop is not None:
+                return self._stop_run(
+                    agent_run,
+                    spend_stop,
+                    current_attempt,
+                    turn,
+                    worker_context,
+                    last_feedback,
+                )
+
             try:
-                checker_decision = await checker.evaluate(
-                    task=task,
-                    result=worker_result,
-                    trace=trace,
+                checker_decision = await run_interruptible(
+                    checker.evaluate(
+                        task=task,
+                        result=worker_result,
+                        trace=trace,
+                    ),
+                    cancellation_token,
+                )
+
+            except RunInterrupted as exc:
+                return self._stop_run(
+                    agent_run,
+                    exc,
+                    current_attempt,
+                    turn,
+                    worker_context,
+                    last_feedback,
                 )
 
             except Exception as exc:
@@ -952,6 +1145,24 @@ class AgentRuntime:
                     f"Task {run_id} failed because the checker "
                     "could not produce a trusted decision."
                 ) from exc
+
+            usage_stop = self._record_usage(
+                agent_run,
+                getattr(checker_decision, "usage", None),
+                role="checker",
+                principal_id=principal.id,
+                limits=limits,
+            )
+
+            if usage_stop is not None:
+                return self._stop_run(
+                    agent_run,
+                    usage_stop,
+                    current_attempt,
+                    turn,
+                    worker_context,
+                    last_feedback,
+                )
 
             if checker_decision.status == CheckerDecisionEnum.ACCEPT:
                 guarded_result = OutputGuardrail.validate(
@@ -974,6 +1185,8 @@ class AgentRuntime:
                     run_id=run_id,
                     session_id=session_id,
                     workspace_id=workspace_id,
+                    tokens=int(agent_run.usage.get("total_tokens", 0)),
+                    cost=float(agent_run.usage.get("cost", 0.0)),
                 )
 
                 self._save(
@@ -1299,6 +1512,210 @@ class AgentRuntime:
 
         return None
 
+    # ==========================================================================
+    # RUN CONTROL: SPEND, STOPS AND LIVE STATE
+    # ==========================================================================
+
+    @staticmethod
+    def _check_spend(
+        agent_run: AgentRun,
+        principal_id: str,
+        limits: RunLimits,
+    ) -> Optional[BudgetExceededError]:
+        """
+        Refuse the next model call once the run or the month is out of budget.
+
+        The ledger is part of the budget boundary: if it cannot be read the
+        call is refused (fail closed).
+        """
+        run_cost = float(agent_run.usage.get("cost", 0.0))
+
+        if run_cost >= limits.max_run_cost:
+            return BudgetExceededError(
+                f"Run budget exhausted: {run_cost:.4f} USD of "
+                f"{limits.max_run_cost:.2f} USD."
+            )
+
+        try:
+            month_spent = SpendLedger.spent(principal_id)
+        except Exception:
+            return BudgetExceededError(
+                "Spend ledger unavailable: model calls are blocked."
+            )
+
+        if month_spent >= limits.monthly_budget:
+            return BudgetExceededError(
+                f"Monthly budget exhausted: {month_spent:.4f} USD of "
+                f"{limits.monthly_budget:.2f} USD."
+            )
+
+        return None
+
+    def _record_usage(
+        self,
+        agent_run: AgentRun,
+        usage: Any,
+        role: str,
+        principal_id: str,
+        limits: RunLimits,
+    ) -> Optional[BudgetExceededError]:
+        """
+        Add one model call to the run totals and the monthly ledger, and
+        return a stop when a limit is now reached.
+        """
+        if not isinstance(usage, dict):
+            return None
+
+        totals = agent_run.usage
+        model = str(usage.get("model") or "unknown")
+        tokens = int(usage.get("total_tokens") or 0)
+        cost = float(usage.get("cost") or 0.0)
+
+        totals["model_calls"] = int(totals.get("model_calls", 0)) + 1
+
+        for key in ("input_tokens", "output_tokens", "total_tokens"):
+            totals[key] = int(totals.get(key, 0)) + int(usage.get(key) or 0)
+
+        totals["cost"] = round(float(totals.get("cost", 0.0)) + cost, 8)
+
+        if usage.get("estimated"):
+            totals["cost_estimated"] = True
+
+        per_model = totals.setdefault("by_model", {}).setdefault(
+            model,
+            {"calls": 0, "total_tokens": 0, "cost": 0.0},
+        )
+        per_model["calls"] += 1
+        per_model["total_tokens"] += tokens
+        per_model["cost"] = round(per_model["cost"] + cost, 8)
+
+        totals.setdefault("calls", []).append(
+            {
+                "at": datetime.utcnow().isoformat(),
+                "role": role,
+                "model": model,
+                "total_tokens": tokens,
+                "cost": cost,
+            }
+        )
+
+        EventDispatcher().dispatch(
+            "model.called",
+            run_id=agent_run.run_id,
+            session_id=agent_run.session_id,
+            workspace_id=agent_run.workspace_id,
+            tokens=tokens,
+            cost=cost,
+            model=model,
+            role=role,
+        )
+
+        try:
+            month_spent = SpendLedger.add(principal_id, cost)
+        except Exception:
+            return BudgetExceededError(
+                "Spend ledger unavailable: model calls are blocked."
+            )
+
+        if (
+            month_spent >= limits.monthly_budget * limits.warning_ratio
+            and not totals.get("budget_warning")
+        ):
+            totals["budget_warning"] = True
+
+            EventDispatcher().dispatch(
+                "budget.warning",
+                run_id=agent_run.run_id,
+                session_id=agent_run.session_id,
+                workspace_id=agent_run.workspace_id,
+                cost=month_spent,
+                details={"monthly_budget": limits.monthly_budget},
+            )
+
+        if totals["cost"] >= limits.max_run_cost:
+            return BudgetExceededError(
+                f"Run budget exhausted: {totals['cost']:.4f} USD of "
+                f"{limits.max_run_cost:.2f} USD."
+            )
+
+        if month_spent >= limits.monthly_budget:
+            return BudgetExceededError(
+                f"Monthly budget exhausted: {month_spent:.4f} USD of "
+                f"{limits.monthly_budget:.2f} USD."
+            )
+
+        return None
+
+    def _stop_run(
+        self,
+        agent_run: AgentRun,
+        reason: RunInterrupted,
+        current_attempt: int,
+        turn: int,
+        worker_context: Dict[str, Any],
+        last_feedback: Optional[str],
+    ) -> Dict[str, Any]:
+        """
+        Close a run stopped by the kill switch or a spend limit.
+        """
+        cancelled = isinstance(reason, RunCancelledError)
+
+        agent_run.status = (
+            AgentRunStatus.CANCELLED
+            if cancelled
+            else AgentRunStatus.FAILED
+        )
+        agent_run.error = str(reason)
+        agent_run.errors.append(agent_run.error)
+
+        EventDispatcher().dispatch(
+            "run.cancelled" if cancelled else "budget.exceeded",
+            run_id=agent_run.run_id,
+            session_id=agent_run.session_id,
+            workspace_id=agent_run.workspace_id,
+            cost=float(agent_run.usage.get("cost", 0.0)),
+            details={"reason": agent_run.error},
+        )
+
+        self._save(
+            agent_run,
+            current_attempt,
+            turn,
+            worker_context,
+            last_feedback,
+        )
+
+        return {
+            "status": "CANCELLED" if cancelled else "BUDGET_EXCEEDED",
+            "run_id": agent_run.run_id,
+            "reason": agent_run.error,
+            "usage": {
+                key: agent_run.usage.get(key)
+                for key in ("model_calls", "total_tokens", "cost")
+            },
+        }
+
+    async def _emit_state(
+        self,
+        session_id: str,
+        run_id: str,
+        state: str,
+        **details: Any,
+    ) -> None:
+        """
+        Publish the live run state (planning / tool_running /
+        awaiting_approval / done) to the session.
+        """
+        await self._notify(
+            session_id,
+            "run.state",
+            {
+                "run_id": run_id,
+                "state": state,
+                **details,
+            },
+        )
+
     @staticmethod
     async def _notify(
         session_id: str,
@@ -1307,15 +1724,18 @@ class AgentRuntime:
     ) -> None:
         """
         Push a realtime event to the session; delivery is best effort and
-        never affects execution.
+        never affects execution, nor slows it when the bus is unreachable.
         """
         try:
             from app.core.event_bus import event_bus
 
-            await event_bus.publish(
-                session_id,
-                event_type,
-                data,
+            await asyncio.wait_for(
+                event_bus.publish(
+                    session_id,
+                    event_type,
+                    data,
+                ),
+                timeout=NOTIFY_TIMEOUT_SECONDS,
             )
         except Exception:
             pass
