@@ -54,6 +54,7 @@ from app.agent_engine.models import (
     ToolSpec,
 )
 from app.agent_engine.resources import ResourceManager
+from app.agent_engine.routing import Role
 from app.agent_engine.state.manager import AgentStateManager
 from app.agents.subagents.base import SubagentFactory
 from app.core.security import (
@@ -854,7 +855,7 @@ class AgentRuntime:
                 usage_stop = self._record_usage(
                     agent_run,
                     step_result.get("usage"),
-                    role="worker",
+                    role=str(step_result.get("role") or "worker"),
                     principal_id=principal.id,
                     limits=limits,
                 )
@@ -1149,7 +1150,7 @@ class AgentRuntime:
             usage_stop = self._record_usage(
                 agent_run,
                 getattr(checker_decision, "usage", None),
-                role="checker",
+                role=Role.CRITIC.value,
                 principal_id=principal.id,
                 limits=limits,
             )
@@ -1588,6 +1589,14 @@ class AgentRuntime:
         per_model["calls"] += 1
         per_model["total_tokens"] += tokens
         per_model["cost"] = round(per_model["cost"] + cost, 8)
+
+        per_role = totals.setdefault("by_role", {}).setdefault(
+            role,
+            {"calls": 0, "total_tokens": 0, "cost": 0.0},
+        )
+        per_role["calls"] += 1
+        per_role["total_tokens"] += tokens
+        per_role["cost"] = round(per_role["cost"] + cost, 8)
 
         totals.setdefault("calls", []).append(
             {

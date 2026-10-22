@@ -127,7 +127,7 @@ async def test_task_tool_observation_accept_is_persisted(
         ]
     )
 
-    checker = fake_model.adapter(
+    checker = fake_model.checker(
         [
             fake_model.accept(),
         ]
@@ -239,7 +239,7 @@ async def test_run_stops_at_total_tool_call_cap(
             task={"description": "Loop forever."},
             orchestrator=None,
             worker=worker,
-            checker=fake_model.adapter([]),
+            checker=fake_model.checker([]),
             max_total_tool_calls=3,
             run_id="run-cap",
             session_id="session-cap",

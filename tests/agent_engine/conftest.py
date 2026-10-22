@@ -52,9 +52,9 @@ class FakeResponses:
         return self.scripted.pop(0)
 
 
-def _fake_adapter(scripted: List[Any]) -> OpenAIAdapter:
+def _fake_adapter(scripted: List[Any], model_name: str = "fake-model") -> OpenAIAdapter:
     adapter = OpenAIAdapter(
-        model_name="fake-model",
+        model_name=model_name,
         api_key="test-only",
     )
     adapter._client = SimpleNamespace(
@@ -114,6 +114,8 @@ def fake_model() -> SimpleNamespace:
     """
     return SimpleNamespace(
         adapter=_fake_adapter,
+        # The Critic must be a different model from the Implementer.
+        checker=lambda scripted: _fake_adapter(scripted, model_name="fake-critic"),
         function_call=_function_call,
         text=_text,
         accept=_accept,

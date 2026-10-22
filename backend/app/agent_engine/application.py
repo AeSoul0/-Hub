@@ -32,6 +32,12 @@ from uuid import uuid4
 from app.agent_engine.adapters.base import ModelProvider
 from app.agent_engine.adapters.openai_adapter import OpenAIAdapter
 from app.agent_engine.checker import AgentChecker
+from app.agent_engine.routing import (
+    ModelRouter,
+    Role,
+    ensure_distinct_models,
+    triage_role,
+)
 from app.agent_engine.runtime import AgentRuntime
 from app.agent_engine.state.manager import AgentStateManager
 from app.core.security import Principal
@@ -121,56 +127,105 @@ class AgentEngine:
         checker_model_name: Optional[str] = None,
         model_provider: Optional[ModelProvider] = None,
         checker_provider: Optional[ModelProvider] = None,
+        router: Optional[ModelRouter] = None,
     ) -> None:
         """
         Build one self-contained AgentEngine instance.
 
+        By default every task is routed by role (spec 4.1): triage picks the
+        implementer role, the ModelRouter supplies that role's failover
+        chain, and the Critic uses its own, independent chain.
+
         Args:
             model_name:
-                Model identifier passed to the provider adapters.
+                Legacy single-model mode: one OpenAI model for every task.
             worker_system_prompt:
                 Optional fixed worker system contract.
             runtime:
                 Optional preconfigured AgentRuntime, primarily useful for
                 tests and controlled dependency injection.
             checker_model_name:
-                Model used by the independent Checker. Falls back to
-                AEHUB_CHECKER_MODEL, then to the worker model.
+                Critic model in single-model mode. Falls back to
+                AEHUB_CHECKER_MODEL, then to the worker model (rejected).
             model_provider / checker_provider:
                 Optional preconfigured providers (dependency injection).
+            router:
+                Optional preconfigured ModelRouter.
+
+        Raises:
+            RoutingConfigError: when the Critic would share a model with an
+            Implementer (fail closed).
         """
-        self.model_provider = model_provider or OpenAIAdapter(
-            model_name=model_name,
+        self.worker_system_prompt = (
+            worker_system_prompt
+            or (
+                "You are the native ÆHub agent worker. "
+                "Follow the task exactly, respect the trusted execution "
+                "context, and return only the requested result."
+            )
         )
 
-        self.worker = NativeAgentWorker(
-            model_provider=self.model_provider,
-            system_prompt=(
-                worker_system_prompt
-                or (
-                    "You are the native ÆHub agent worker. "
-                    "Follow the task exactly, respect the trusted execution "
-                    "context, and return only the requested result."
-                )
-            ),
-        )
+        if model_provider is None and model_name != "default":
+            model_provider = OpenAIAdapter(
+                model_name=model_name,
+            )
 
-        resolved_checker_model = (
-            checker_model_name
-            or os.getenv("AEHUB_CHECKER_MODEL")
-            or model_name
+        self.router: Optional[ModelRouter] = None
+        self.model_provider = model_provider
+
+        if model_provider is not None:
+            checker_provider = checker_provider or OpenAIAdapter(
+                model_name=(
+                    checker_model_name
+                    or os.getenv("AEHUB_CHECKER_MODEL")
+                    or model_provider.model_name
+                ),
+            )
+            ensure_distinct_models(
+                model_provider,
+                checker_provider,
+            )
+        else:
+            self.router = router or ModelRouter()
+            checker_provider = (
+                checker_provider
+                or self.router.provider_for(Role.CRITIC)
+            )
+
+        self.worker = (
+            NativeAgentWorker(
+                model_provider=model_provider,
+                system_prompt=self.worker_system_prompt,
+            )
+            if model_provider is not None
+            else None
         )
 
         self.checker = AgentChecker(
-            model_provider=checker_provider
-            or OpenAIAdapter(
-                model_name=resolved_checker_model,
-            )
+            model_provider=checker_provider,
         )
 
         self.runtime = (
             runtime
             or AgentRuntime()
+        )
+
+    def worker_for(
+        self,
+        task: str,
+    ) -> NativeAgentWorker:
+        """
+        Return the worker for a task: the fixed one in single-model mode,
+        otherwise the failover chain of the role chosen by triage.
+        """
+        if self.worker is not None:
+            return self.worker
+
+        role = triage_role(task)
+
+        return NativeAgentWorker(
+            model_provider=self.router.provider_for(role),
+            system_prompt=self.worker_system_prompt,
         )
 
     # ==========================================================================
@@ -271,7 +326,7 @@ class AgentEngine:
         result = await self.runtime.execute_task(
             task=task,
             orchestrator=None,
-            worker=self.worker,
+            worker=self.worker_for(str(intent)),
             checker=self.checker,
             run_id=(
                 str(run_id)
@@ -400,10 +455,22 @@ class AgentEngine:
                 f"Run {run_id} does not exist."
             )
 
+        # Triage is deterministic: the persisted task routes to the same role.
+        persisted_task = (
+            (existing.current_state or {})
+            .get("worker_context", {})
+            .get("task")
+            or {}
+        )
+
         return await self.runtime.execute_task(
             task={},
             orchestrator=None,
-            worker=self.worker,
+            worker=self.worker_for(
+                str(persisted_task.get("description", ""))
+                if isinstance(persisted_task, dict)
+                else str(persisted_task)
+            ),
             checker=self.checker,
             run_id=run_id,
             session_id=session_id,

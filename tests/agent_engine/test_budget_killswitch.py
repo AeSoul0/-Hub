@@ -113,7 +113,12 @@ def ops(agent_infrastructure) -> OpsSkill:
 def priced(monkeypatch):
     monkeypatch.setenv(
         "AEHUB_MODEL_PRICES",
-        json.dumps({"fake-model": {"input": 1_000_000, "output": 2_000_000}}),
+        json.dumps(
+            {
+                model: {"input": 1_000_000, "output": 2_000_000}
+                for model in ("fake-model", "fake-critic")
+            }
+        ),
     )
     monkeypatch.setenv("AEHUB_RUN_MAX_COST", "100")
     monkeypatch.setenv("AEHUB_MONTHLY_BUDGET", "1000")
@@ -136,7 +141,7 @@ def _engine(fake_model, worker_script: List[Any], checker_script: List[Any]) -> 
     worker = fake_model.adapter(worker_script)
     engine = AgentEngine(
         model_provider=worker,
-        checker_provider=fake_model.adapter(checker_script),
+        checker_provider=fake_model.checker(checker_script),
         runtime=AgentRuntime(),
     )
     engine.model_requests = worker._client.responses.requests
@@ -208,8 +213,11 @@ async def test_run_cost_equals_the_sum_of_model_usage(
     assert usage["output_tokens"] == 2
     assert usage["total_tokens"] == 6
     assert usage["model_calls"] == 3
-    assert [call["role"] for call in usage["calls"]] == ["worker", "worker", "checker"]
-    assert usage["by_model"]["fake-model"] == {"calls": 3, "total_tokens": 6, "cost": 8}
+    assert [call["role"] for call in usage["calls"]] == ["worker", "worker", "critic"]
+    assert usage["by_model"] == {
+        "fake-model": {"calls": 2, "total_tokens": 5, "cost": 7},
+        "fake-critic": {"calls": 1, "total_tokens": 1, "cost": 1},
+    }
     assert SpendLedger.spent(user.id, current_period()) == 8
 
 
@@ -430,8 +438,10 @@ async def test_stats_report_inferences_cost_and_failed_tools(
     stats = runs_api.build_stats(user, days=30)
 
     [day] = stats["inferences_per_day"].values()
-    assert day == {"fake-model": 4}
+    assert day == {"fake-model": 3, "fake-critic": 1}
     assert stats["cost_by_session"] == {SESSION_ID: 4 + 1 + 3 + 1}
+    assert stats["cost_by_role"] == {"worker": 4 + 1 + 3, "critic": 1}
+    assert stats["cost_by_model"] == {"fake-model": 8, "fake-critic": 1}
     assert stats["runs"][0]["run_id"] == result["run_id"]
     assert stats["runs"][0]["model_calls"] == 4
     assert stats["budget"]["month_spent"] == 9

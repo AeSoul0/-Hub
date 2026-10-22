@@ -41,6 +41,8 @@ interface RunStats {
     days: number;
     inferences_per_day: Record<string, Record<string, number>>;
     cost_by_session: Record<string, number>;
+    cost_by_role: Record<string, number>;
+    cost_by_model: Record<string, number>;
     runs: RunSummary[];
     failed_tool_calls: { total: number; by_tool: Record<string, number> };
     cost_estimated: boolean;
@@ -205,6 +207,26 @@ export default function RunsPage() {
                                 ))}
                             </ul>
                         )}
+                    </section>
+
+                    <section className="mb-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {(
+                            [
+                                ["Cost by role", stats.cost_by_role],
+                                ["Cost by model", stats.cost_by_model],
+                            ] as const
+                        ).map(([title, costs]) => (
+                            <div key={title}>
+                                <h2 className="text-xl font-semibold mb-3">{title}</h2>
+                                <ul className="font-mono text-sm">
+                                    {Object.entries(costs).map(([name, cost]) => (
+                                        <li key={name}>
+                                            {name}: {usd(cost)}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        ))}
                     </section>
 
                     <section className="mb-8">
