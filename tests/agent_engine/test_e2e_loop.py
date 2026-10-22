@@ -24,6 +24,7 @@ from app.agent_engine.runtime import AgentRuntime
 from app.core.security import Principal, RoleEnum
 from app.domain.models.audit import AuditLog
 from app.domain.models.runtime_state import AgentRun as DbAgentRun
+from app.runtime.audit_chain import verify_audit_chain
 from app.skills.base import BaseSkill, RiskLevel, SkillMetadata, ToolMetadata
 
 
@@ -185,15 +186,27 @@ async def test_task_tool_observation_accept_is_persisted(
         assert run_row.status.lower() == "completed"
         assert "Rome" in run_row.result
 
-        audit_rows = db.query(AuditLog).filter(AuditLog.run_id == run_id).all()
+        audit_rows = (
+            db.query(AuditLog)
+            .filter(AuditLog.run_id == run_id)
+            .order_by(AuditLog.timestamp)
+            .all()
+        )
 
-    assert len(audit_rows) == 1
-    assert audit_rows[0].tool_name == "lookup_capital"
-    assert audit_rows[0].tool_call_id == "call_1"
-    assert audit_rows[0].decision == "ALLOW"
-    assert audit_rows[0].success is True
-    assert audit_rows[0].principal_id == principal.id
-    assert audit_rows[0].workspace_id == principal.workspace_id
+        chain = verify_audit_chain(db)
+
+    # Fail-closed audit: the intent is recorded before the tool runs, the
+    # outcome after it; both rows are hash-chained.
+    assert [row.decision for row in audit_rows] == ["EXECUTING", "ALLOW"]
+    assert chain.valid is True
+    assert chain.checked == 2
+
+    outcome = audit_rows[1]
+    assert outcome.tool_name == "lookup_capital"
+    assert outcome.tool_call_id == "call_1"
+    assert outcome.success is True
+    assert outcome.principal_id == principal.id
+    assert outcome.workspace_id == principal.workspace_id
 
 
 async def test_run_stops_at_total_tool_call_cap(

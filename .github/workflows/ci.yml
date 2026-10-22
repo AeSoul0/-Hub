@@ -97,6 +97,18 @@ jobs:
         run: |
           pytest ../tests/ -v --import-mode=importlib
 
+      # Roadmap M3 exit: with a model that always obeys the injection, no HIGH
+      # action may execute. Kept as its own step so a regression is visible.
+      # tests/conftest.py provides the test settings; these tests use an
+      # in-memory database only.
+      - name: Prompt-Injection Gate (M3)
+        working-directory: backend
+        env:
+          AEHUB_TELEMETRY_CONSOLE: "0"
+          PYTHONPATH: .
+        run: |
+          pytest ../tests/agent_engine/test_prompt_injection.py ../tests/agent_engine/test_guardrails.py ../tests/agent_engine/test_audit_chain.py ../tests/security/test_boundary_hardening.py -v --import-mode=importlib
+
       # =========================================================================
       # FRONTEND DEPENDENCIES
       # =========================================================================

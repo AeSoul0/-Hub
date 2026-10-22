@@ -242,6 +242,23 @@ class AgentRuntime:
                     "standard",
                 )
             ),
+            untrusted_output=cls._is_untrusted_output(metadata),
+        )
+
+    @staticmethod
+    def _is_untrusted_output(metadata: Any) -> bool:
+        """
+        Provenance of a tool's output: explicit metadata wins, otherwise
+        anything read from the network or the filesystem is untrusted.
+        """
+        declared = getattr(metadata, "untrusted_output", None)
+
+        if declared is not None:
+            return bool(declared)
+
+        return bool(
+            getattr(metadata, "network_access", False)
+            or getattr(metadata, "filesystem_access", False)
         )
 
     @classmethod
@@ -797,14 +814,20 @@ class AgentRuntime:
                         )
 
                     try:
-                        worker_context["observations"].append(
+                        self._record_observation(
+                            worker_context,
                             await self._execute_proposal(
                                 proposal=proposal,
                                 principal=principal,
                                 session_id=session_id,
                                 workspace_id=workspace_id,
                                 run_id=run_id,
-                            )
+                                untrusted_context=bool(
+                                    worker_context.get(
+                                        "untrusted_context"
+                                    )
+                                ),
+                            ),
                         )
 
                     except ApprovalRequiredError as exc:
@@ -1020,6 +1043,13 @@ class AgentRuntime:
                 "feedback": last_feedback,
                 "observations": [],
                 "resuming": False,
+                # The checker feedback may echo untrusted content, so the
+                # taint survives a retry.
+                "untrusted_context": bool(
+                    worker_context.get(
+                        "untrusted_context"
+                    )
+                ),
             }
 
             self._save(
@@ -1055,6 +1085,7 @@ class AgentRuntime:
         session_id: str,
         workspace_id: str,
         run_id: str,
+        untrusted_context: bool = False,
     ) -> Observation:
         """
         Run one proposal through the ToolGateway and return its Observation.
@@ -1062,6 +1093,8 @@ class AgentRuntime:
         ApprovalRequiredError propagates to the caller; any other failure
         becomes an observation the model can react to.
         """
+        trusted = True
+
         try:
             tool, _ = self._resolve_tool(
                 proposal.tool_name
@@ -1070,6 +1103,8 @@ class AgentRuntime:
             spec = self._build_tool_spec(
                 proposal.tool_name
             )
+
+            trusted = not spec.untrusted_output
 
             invocation = ToolInvocation(
                 tool_name=proposal.tool_name,
@@ -1104,6 +1139,10 @@ class AgentRuntime:
             tool_result = await self.tool_gateway.execute(
                 invocation,
                 executor,
+                task_context=TaskExecutionContext(
+                    workspace_id=workspace_id,
+                    untrusted_context=untrusted_context,
+                ),
             )
 
             content = (
@@ -1123,7 +1162,24 @@ class AgentRuntime:
             tool_name=proposal.tool_name,
             arguments=dict(proposal.arguments),
             content=content,
+            trusted=trusted,
         )
+
+    @staticmethod
+    def _record_observation(
+        worker_context: Dict[str, Any],
+        observation: Observation,
+    ) -> None:
+        """
+        Append an observation and taint the run once untrusted content
+        has entered the model context.
+        """
+        worker_context["observations"].append(
+            observation
+        )
+
+        if not observation.trusted:
+            worker_context["untrusted_context"] = True
 
     async def _resume_pending_tool_call(
         self,
@@ -1216,14 +1272,20 @@ class AgentRuntime:
             run_id=run_id,
         )
 
-        worker_context["observations"].append(
+        self._record_observation(
+            worker_context,
             await self._execute_proposal(
                 proposal=proposal,
                 principal=principal,
                 session_id=session_id,
                 workspace_id=workspace_id,
                 run_id=run_id,
-            )
+                untrusted_context=bool(
+                    worker_context.get(
+                        "untrusted_context"
+                    )
+                ),
+            ),
         )
         worker_context["pending_tool_call"] = None
 
@@ -1289,6 +1351,7 @@ class AgentRuntime:
                         "tool_name": observation.tool_name,
                         "arguments": observation.arguments,
                         "content": observation.content,
+                        "trusted": observation.trusted,
                     }
                 )
             else:
@@ -1323,6 +1386,11 @@ class AgentRuntime:
             ),
             "pending_tool_call": worker_context.get(
                 "pending_tool_call"
+            ),
+            "untrusted_context": bool(
+                worker_context.get(
+                    "untrusted_context"
+                )
             ),
             "observations": observations,
         }

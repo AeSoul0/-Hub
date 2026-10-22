@@ -51,6 +51,11 @@ class ToolMetadata(BaseModel):
     network_access: bool = False
     filesystem_access: bool = False
 
+    # Whether the output carries third-party content (web pages, files, MCP
+    # servers) that may hold injected instructions. None derives it from
+    # network_access / filesystem_access.
+    untrusted_output: Optional[bool] = None
+
     max_runtime: int = 30
     max_output: int = 4000
     max_cost: float = 0.0
