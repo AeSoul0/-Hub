@@ -5,9 +5,36 @@
 This module manages the internal business logic for MCPSkillWrapper.
 It provides specialized functionality to handle: _initialize_mcp_tools, metadata, tools, get_tool_metadata, system_prompt_extension.
 """
-from typing import Callable, Dict, List, Optional
+import os
+from typing import Callable, Dict, List, Optional, Set
+from urllib.parse import urlsplit
 
 from .base import BaseSkill, SkillMetadata, ToolMetadata
+
+
+def _normalize_server_url(url: str) -> str:
+    """
+    Canonical form used to compare a server URL with the allowlist.
+    """
+    parts = urlsplit(url.strip())
+    return f"{parts.scheme.lower()}://{parts.netloc.lower()}{parts.path.rstrip('/')}"
+
+
+def allowed_mcp_servers() -> Set[str]:
+    """
+    MCP servers the bridge may connect to (AEHUB_MCP_ALLOWED_SERVERS,
+    comma-separated URLs). Empty means no MCP server is allowed.
+    """
+    configured = os.getenv("AEHUB_MCP_ALLOWED_SERVERS", "")
+    return {
+        _normalize_server_url(entry)
+        for entry in configured.split(",")
+        if entry.strip()
+    }
+
+
+def is_mcp_server_allowed(server_url: str) -> bool:
+    return _normalize_server_url(server_url) in allowed_mcp_servers()
 
 
 class MCPSkillWrapper(BaseSkill):
@@ -23,6 +50,13 @@ class MCPSkillWrapper(BaseSkill):
         """
         Executes __init__ logic.
         """
+        # Fail closed: only explicitly allowlisted servers are bridged.
+        if not is_mcp_server_allowed(server_url):
+            raise PermissionError(
+                f"MCP server '{server_name}' ({server_url}) is not in "
+                "AEHUB_MCP_ALLOWED_SERVERS."
+            )
+
         self._server_name = server_name
         self._server_url = server_url
         self._description = description
@@ -71,6 +105,18 @@ class MCPSkillWrapper(BaseSkill):
         """
         return self._tools
         
+    def register_tool(self, tool: Callable, metadata: ToolMetadata) -> None:
+        """
+        Bind one tool listed by the MCP server.
+
+        MCP output is third-party content: it is always marked untrusted,
+        whatever the server declares.
+        """
+        self._tools.append(tool)
+        self._tool_metadata[metadata.name] = metadata.model_copy(
+            update={"untrusted_output": True}
+        )
+
     def get_tool_metadata(self) -> Dict[str, ToolMetadata]:
         """
         Executes get_tool_metadata logic.

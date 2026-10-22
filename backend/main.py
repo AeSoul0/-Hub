@@ -279,6 +279,7 @@ async def verify_api_key(
 # ==============================================================================
 
 
+from app.core.security import allowed_origins
 from app.core.security_middleware import AdvancedSecurityMiddleware
 
 
@@ -288,12 +289,7 @@ app.add_middleware(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        os.getenv(
-            "FRONTEND_URL",
-            "http://localhost:3000",
-        )
-    ],
+    allow_origins=allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -386,9 +382,14 @@ app.include_router(
 if __name__ == "__main__":
     import uvicorn
 
+    # Loopback by default: exposing the API on the network is an explicit
+    # choice (AEHUB_HOST=0.0.0.0), as in the container image.
     uvicorn.run(
         "main:app",
-        host="0.0.0.0",
+        host=os.getenv(
+            "AEHUB_HOST",
+            "127.0.0.1",
+        ),
         port=3002,
         reload=True,
     )

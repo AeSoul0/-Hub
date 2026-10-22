@@ -3,6 +3,8 @@
 @description Identity, RBAC, workspace isolation and policy enforcement.
 """
 
+import hashlib
+import os
 import secrets
 from datetime import datetime, timedelta
 from enum import Enum
@@ -25,6 +27,55 @@ from app.domain.models.identity import (
     User,
     WorkspaceMembership,
 )
+
+
+SESSION_COOKIE = "aehub_session_token"
+
+
+def hash_session_token(session_token: str) -> str:
+    """
+    Sessions are stored by the SHA-256 of their token, so a leaked database
+    row cannot be replayed as a cookie. The hash doubles as the stable,
+    non-secret session identifier (distinct from the user id).
+    """
+    return hashlib.sha256(
+        session_token.encode("utf-8")
+    ).hexdigest()
+
+
+def allowed_origins() -> List[str]:
+    """
+    Browser origins allowed to call the API and open the WebSocket:
+    FRONTEND_URL plus the comma-separated AEHUB_ALLOWED_ORIGINS.
+    """
+    origins = [
+        os.getenv(
+            "FRONTEND_URL",
+            "http://localhost:3000",
+        )
+    ]
+
+    origins += [
+        origin.strip()
+        for origin in os.getenv(
+            "AEHUB_ALLOWED_ORIGINS",
+            "",
+        ).split(",")
+        if origin.strip()
+    ]
+
+    return [origin.rstrip("/") for origin in origins]
+
+
+def is_origin_allowed(origin: Optional[str]) -> bool:
+    """
+    A missing Origin is rejected: browsers always send it on WebSocket
+    upgrades, so its absence means a non-browser client without consent.
+    """
+    if not origin:
+        return False
+
+    return origin.rstrip("/") in allowed_origins()
 
 
 class Permission(str, Enum):
@@ -80,6 +131,8 @@ class TaskExecutionContext(BaseModel):
         "SubagentCapabilitySet"
     ] = None
     workspace_id: Optional[str] = None
+    # Set once the run has read untrusted content (web, files, MCP).
+    untrusted_context: bool = False
 
 
 class SubagentCapabilitySet(BaseModel):
@@ -238,7 +291,7 @@ class IdentityService:
         session_token = secrets.token_urlsafe(32)
 
         session = SessionModel(
-            id=session_token,
+            id=hash_session_token(session_token),
             user_id=user_id,
             workspace_id=workspace_id,
             role=role,
@@ -260,9 +313,15 @@ class IdentityService:
         db: DBSession,
         session_token: str,
     ) -> Optional[SessionModel]:
+        if not session_token:
+            return None
+
         session = (
             db.query(SessionModel)
-            .filter(SessionModel.id == session_token)
+            .filter(
+                SessionModel.id
+                == hash_session_token(session_token)
+            )
             .first()
         )
 
@@ -310,7 +369,10 @@ class IdentityService:
     ) -> None:
         session = (
             db.query(SessionModel)
-            .filter(SessionModel.id == session_token)
+            .filter(
+                SessionModel.id
+                == hash_session_token(session_token)
+            )
             .first()
         )
 
@@ -319,22 +381,19 @@ class IdentityService:
             db.commit()
 
 
-def resolve_principal(
+def resolve_session(
     request: Request,
     db: DBSession = Depends(get_db),
-) -> Principal:
+) -> SessionModel:
     """
-    Resolve the authenticated principal from the persisted session.
+    Resolve the persisted session from the HttpOnly session cookie.
 
-    Cookie is preferred; X-Session-ID remains supported for compatibility
-    with the existing frontend/API contract.
+    The cookie is the only accepted credential: client-managed headers such
+    as X-Session-ID are ignored.
     """
 
-    session_token = (
-        request.cookies.get(
-            "aehub_session_token"
-        )
-        or request.headers.get("X-Session-ID")
+    session_token = request.cookies.get(
+        SESSION_COOKIE
     )
 
     if not session_token:
@@ -353,6 +412,22 @@ def resolve_principal(
             status_code=401,
             detail="Unauthorized: invalid or expired session.",
         )
+
+    return session
+
+
+def resolve_principal(
+    request: Request,
+    db: DBSession = Depends(get_db),
+) -> Principal:
+    """
+    Resolve the authenticated principal from the persisted session.
+    """
+
+    session = resolve_session(
+        request,
+        db,
+    )
 
     return Principal(
         id=session.user_id,
@@ -637,6 +712,21 @@ class PolicyEngine:
             return PolicyDecision(
                 decision=PolicyDecisionEnum.REQUIRE_APPROVAL,
                 reason="Tool requires explicit approval.",
+            )
+
+        # An injected instruction can only act through the model's next
+        # proposal, so after untrusted content a HIGH action always needs a
+        # human, whatever the tool's own approval flag says.
+        if (
+            task_context.untrusted_context
+            and tool_spec.risk_level.upper() == "HIGH"
+        ):
+            return PolicyDecision(
+                decision=PolicyDecisionEnum.REQUIRE_APPROVAL,
+                reason=(
+                    "HIGH-risk action proposed after untrusted "
+                    "content requires explicit approval."
+                ),
             )
 
         return PolicyDecision(

@@ -7,7 +7,7 @@ It provides specialized functionality to handle: utility operations.
 """
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Boolean, DateTime, Text
+from sqlalchemy import Column, String, Boolean, DateTime, Integer, Text
 
 from app.domain.models.identity import Base
 
@@ -36,6 +36,22 @@ class AuditLog(Base):
     execution_result = Column(Text, nullable=True)
     duration = Column(String, nullable=True)
     error = Column(Text, nullable=True)
+
+class AuditChainLink(Base):
+    """
+    Tamper-evident hash chain over AuditLog rows.
+
+    Each link stores the SHA-256 of its audit row chained to the previous
+    link, so editing or deleting a row breaks every later hash. The chain
+    lives in its own table so existing databases pick it up through
+    create_all without a migration.
+    """
+    __tablename__ = "audit_chain"
+
+    seq = Column(Integer, primary_key=True, autoincrement=False)
+    audit_id = Column(String, nullable=False, unique=True, index=True)
+    prev_hash = Column(String(64), nullable=False)
+    record_hash = Column(String(64), nullable=False)
 
 class ApprovalRecord(Base):
     """

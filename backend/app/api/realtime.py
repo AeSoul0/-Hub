@@ -176,11 +176,19 @@ async def get_events_stream(
 ):
     """
     Open an authenticated SSE stream for realtime application events.
+
+    The stream is scoped to the login session, the same id the WebSocket
+    channel uses for its runs.
     """
-    from app.core.security import resolve_principal
+    from app.core.db import SessionLocal
+    from app.core.security import resolve_session
 
     try:
-        principal = resolve_principal(request)
+        with SessionLocal() as db:
+            session_id = resolve_session(
+                request,
+                db,
+            ).id
     except Exception:
         return JSONResponse(
             status_code=401,
@@ -191,7 +199,7 @@ async def get_events_stream(
 
     return StreamingResponse(
         sse_event_generator(
-            principal.id,
+            session_id,
             request,
         ),
         media_type="text/event-stream",
@@ -215,12 +223,29 @@ async def websocket_endpoint(
     """
     from app.core.db import SessionLocal
     from app.core.security import (
+        SESSION_COOKIE,
         IdentityService,
         Principal,
+        is_origin_allowed,
     )
 
+    # Cross-site WebSocket hijacking: the session cookie is sent by the
+    # browser to any page, so the Origin must be one of ours.
+    if not is_origin_allowed(
+        websocket.headers.get("origin")
+    ):
+        print(
+            "[ERROR] WebSocket connection from a disallowed origin blocked."
+        )
+
+        await websocket.close(
+            code=1008
+        )
+
+        return
+
     client_token = websocket.cookies.get(
-        "aehub_session_token"
+        SESSION_COOKIE
     )
 
     with SessionLocal() as db:
@@ -261,10 +286,9 @@ async def websocket_endpoint(
         workspace_id=session.workspace_id,
     )
 
-    # Compatibility behavior is intentionally preserved in this first refactor.
-    # The user/session identity model will be corrected in the dedicated
-    # identity hardening phase of the roadmap.
-    authenticated_session_id = session.user_id
+    # The login session (hash of its token), not the user: two logins of
+    # the same user get separate run, memory and event scopes.
+    authenticated_session_id = session.id
 
     await websocket.accept()
 

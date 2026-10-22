@@ -127,6 +127,9 @@ class ToolSpec(BaseModel):
     sandbox_profile: str
     audit_policy: str
 
+    # True when the tool output is third-party content (provenance).
+    untrusted_output: bool = False
+
 
 class ToolProposal(BaseModel):
     """Tool request emitted by a Worker and evaluated by the ToolGateway."""
@@ -197,6 +200,10 @@ class Observation(BaseModel):
     content: Any
     tool_name: Optional[str] = None
     arguments: Dict[str, Any] = Field(default_factory=dict)
+
+    # Provenance: False when content comes from the web, files or MCP
+    # servers and must be treated as data, never as instructions.
+    trusted: bool = True
 
 
 class CheckerDecisionEnum(str, Enum):

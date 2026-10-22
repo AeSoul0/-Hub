@@ -13,7 +13,7 @@ services:
       dockerfile: Dockerfile
     container_name: aehub-backend
     ports:
-      - "3002:3002"
+      - "127.0.0.1:3002:3002"
     volumes:
       # PERSISTENT STORAGE: Map local directories to prevent data loss on container restarts
       - ./backend/audio_cache:/app/audio_cache
@@ -53,7 +53,7 @@ services:
       dockerfile: Dockerfile
     container_name: aehub-frontend
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     env_file:
       - ./frontend/.env.local
     environment:

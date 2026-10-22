@@ -3,8 +3,9 @@
 @description Secure side-effect gateway for A.U.R.O.R.A. tool execution.
 
 All executable tools cross this boundary before any external side effect:
-identity -> policy -> guardrail -> schema -> budget -> approval ->
-idempotency -> task tracking -> executor -> post-guardrail -> audit.
+identity -> policy -> guardrail (arguments, SSRF, paths) -> schema ->
+idempotency -> budget -> approval -> audit (fail-closed) -> task tracking ->
+executor -> post-guardrail (secret redaction) -> audit.
 
 The gateway is intentionally framework-agnostic and receives an executor
 callback from the native AgentRuntime.
@@ -14,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import time
 from typing import Any, Callable, Dict, Optional
 
@@ -22,7 +24,7 @@ from pydantic import BaseModel, Field
 from app.agent_engine.approval.manager import ApprovalManager
 from app.agent_engine.budget import BudgetManager
 from app.agent_engine.errors import ApprovalRequiredError
-from app.agent_engine.guardrails import ToolGuardrail
+from app.agent_engine.guardrails import ToolGuardrail, redact_secrets
 from app.agent_engine.models import ToolProposal, ToolSpec
 from app.agent_engine.state.idempotency import IdempotencyManager
 from app.core.security import (
@@ -32,7 +34,11 @@ from app.core.security import (
     TaskExecutionContext,
     WorkspacePolicy,
 )
+from app.runtime.audit_chain import append_audit_record
 from app.runtime.task_manager import TaskManager, TaskState
+
+
+logger = logging.getLogger(__name__)
 
 
 # ==============================================================================
@@ -133,13 +139,14 @@ class ToolGateway:
         decision: str = "ALLOW",
         execution_result: Optional[str] = None,
         duration: Optional[str] = None,
-    ) -> str:
+    ) -> Optional[str]:
         """
-        Persist a structured audit record without storing raw arguments.
+        Append a hash-chained audit record without storing raw arguments.
+
+        Returns the audit id, or None when the record could not be written.
         """
         try:
             from app.core.db import SessionLocal
-            from app.domain.models.audit import AuditLog
 
             arguments_hash = hashlib.sha256(
                 json.dumps(
@@ -152,7 +159,8 @@ class ToolGateway:
             ).hexdigest()
 
             with SessionLocal() as db:
-                record = AuditLog(
+                return append_audit_record(
+                    db,
                     session_id=invocation.session_id,
                     run_id=invocation.run_id,
                     tool_call_id=invocation.tool_call_id,
@@ -168,15 +176,15 @@ class ToolGateway:
                     error=error,
                 )
 
-                db.add(record)
-                db.commit()
-                db.refresh(record)
-
-                return record.id
-
-        except Exception:
+        except Exception as exc:
             # Audit persistence must never leak database internals.
-            return "audit_failed"
+            logger.error(
+                "Audit write failed for tool %s (run %s): %s",
+                invocation.tool_name,
+                invocation.run_id,
+                type(exc).__name__,
+            )
+            return None
 
     @staticmethod
     async def execute(
@@ -254,6 +262,18 @@ class ToolGateway:
             )
 
         invocation.arguments = dict(sanitized_arguments)
+
+        try:
+            ToolGuardrail.validate_resource_access(
+                invocation.spec,
+                invocation.arguments,
+            )
+        except Exception as exc:
+            return ToolGateway._audit_and_fail(
+                invocation,
+                f"Tool guardrail rejected invocation: {exc}",
+                decision="DENY",
+            )
 
         # ----------------------------------------------------------------------
         # 3. Input schema validation
@@ -367,7 +387,25 @@ class ToolGateway:
                 )
 
         # ----------------------------------------------------------------------
-        # 7. Atomic budget consumption
+        # 7. Fail-closed audit: no audit record, no side effect
+        # ----------------------------------------------------------------------
+        intent_audit_id = ToolGateway._log_audit(
+            invocation=invocation,
+            success=False,
+            error=None,
+            decision="EXECUTING",
+        )
+
+        if not intent_audit_id:
+            return ToolResult(
+                success=False,
+                output=None,
+                error="Audit log unavailable: tool execution blocked.",
+                audit_id=None,
+            )
+
+        # ----------------------------------------------------------------------
+        # 8. Atomic budget consumption
         # ----------------------------------------------------------------------
         if invocation.spec.max_cost > 0:
             consumed = BudgetManager.consume(
@@ -383,7 +421,7 @@ class ToolGateway:
                 )
 
         # ----------------------------------------------------------------------
-        # 8. Durable task tracking
+        # 9. Durable task tracking
         # ----------------------------------------------------------------------
         task_record = TaskManager.create_task(
             session_id=invocation.session_id,
@@ -413,7 +451,7 @@ class ToolGateway:
             )
 
             # ------------------------------------------------------------------
-            # 9. Post-execution guardrail
+            # 10. Post-execution guardrail
             # ------------------------------------------------------------------
             guarded_result = ToolGuardrail.validate_post_execution(
                 invocation.tool_name,
@@ -421,7 +459,7 @@ class ToolGateway:
             )
 
             # ------------------------------------------------------------------
-            # 10. Output size limit
+            # 11. Output size limit
             # ------------------------------------------------------------------
             normalized_output = str(guarded_result)
 
@@ -432,7 +470,7 @@ class ToolGateway:
                 )
 
             # ------------------------------------------------------------------
-            # 11. Durable idempotency result
+            # 12. Durable idempotency result
             # ------------------------------------------------------------------
             if idem_key is not None:
                 IdempotencyManager.save_result(
@@ -469,11 +507,13 @@ class ToolGateway:
                 (time.monotonic() - start_time) * 1000
             )
 
+            error_message = redact_secrets(str(exc))[0]
+
             try:
                 TaskManager.update_state(
                     task_record.id,
                     TaskState.FAILED,
-                    error_message=str(exc),
+                    error_message=error_message,
                 )
             except Exception:
                 pass
@@ -481,7 +521,7 @@ class ToolGateway:
             audit_id = ToolGateway._log_audit(
                 invocation=invocation,
                 success=False,
-                error=str(exc),
+                error=error_message,
                 decision="ERROR",
                 duration=f"{duration_ms}ms",
             )
@@ -489,7 +529,7 @@ class ToolGateway:
             return ToolResult(
                 success=False,
                 output=None,
-                error=str(exc),
+                error=error_message,
                 audit_id=audit_id,
             )
 

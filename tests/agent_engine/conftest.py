@@ -22,7 +22,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.agent_engine.adapters.openai_adapter import OpenAIAdapter
-from app.domain.models.audit import ApprovalRecord, AuditLog
+from app.domain.models.audit import ApprovalRecord, AuditChainLink, AuditLog
 from app.domain.models.identity import Base
 from app.domain.models.runtime_state import AgentRun as DbAgentRun
 from app.skills.registry import SkillRegistry
@@ -123,6 +123,7 @@ def db_session_factory():
         tables=[
             DbAgentRun.__table__,
             AuditLog.__table__,
+            AuditChainLink.__table__,
             ApprovalRecord.__table__,
         ],
     )
