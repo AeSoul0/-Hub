@@ -26,3 +26,7 @@ _TEST_ENV_DEFAULTS = {
 
 for _key, _value in _TEST_ENV_DEFAULTS.items():
     os.environ.setdefault(_key, _value)
+
+# Some legacy test modules overwrite POSTGRES_URL at import time; tests that
+# need the real database read this snapshot instead.
+os.environ.setdefault("AEHUB_TEST_POSTGRES_URL", os.environ["POSTGRES_URL"])

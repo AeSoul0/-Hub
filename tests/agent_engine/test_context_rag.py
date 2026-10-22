@@ -592,10 +592,10 @@ def postgres_store_factory():
 
     from app.domain.models.memory import MemoryChunk
 
-    url = os.getenv("POSTGRES_URL", "")
+    url = os.getenv("AEHUB_TEST_POSTGRES_URL", "")
 
     if not url.startswith("postgresql"):
-        pytest.skip("POSTGRES_URL is not a PostgreSQL URL.")
+        pytest.skip("AEHUB_TEST_POSTGRES_URL is not a PostgreSQL URL.")
 
     engine = create_engine(url, connect_args={"connect_timeout": 2})
 
