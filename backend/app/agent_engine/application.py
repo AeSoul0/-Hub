@@ -25,8 +25,9 @@ facade and must not reimplement engine behavior.
 from __future__ import annotations
 
 import os
+from datetime import datetime
 from types import SimpleNamespace
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from app.agent_engine.adapters.base import ModelProvider
@@ -40,7 +41,7 @@ from app.agent_engine.routing import (
 )
 from app.agent_engine.runtime import AgentRuntime
 from app.agent_engine.state.manager import AgentStateManager
-from app.core.security import Principal
+from app.core.security import Permission, Principal
 
 
 # ==============================================================================
@@ -415,6 +416,52 @@ class AgentEngine:
                     "run_id": run_id,
                 }
             },
+        )
+
+    async def spawn_subagent(
+        self,
+        parent_run_id: Optional[str],
+        session_id: str,
+        task: str,
+        role: str,
+        budget: float,
+        principal: Principal,
+        allowed_tools: Optional[List[str]] = None,
+        permissions: Optional[List[str]] = None,
+        deadline: Optional[datetime] = None,
+        result_schema: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Delegate a task to a subagent of a running parent.
+
+        The subagent uses the worker the triage picks for its task and the
+        same independent Critic as every run; the runtime narrows its tools,
+        permissions and budget to what the parent may use.
+        """
+        if not isinstance(principal, Principal):
+            raise ValueError(
+                "principal is required."
+            )
+
+        return await self.runtime.spawn_agent(
+            parent_run_id=parent_run_id,
+            child_run_id=f"run_{uuid4().hex}",
+            task={"description": task},
+            role=role,
+            budget=budget,
+            permissions=(
+                list(permissions)
+                if permissions is not None
+                else [permission.value for permission in Permission]
+            ),
+            deadline=deadline,
+            result_schema=result_schema or {},
+            worker_provider=self.worker_for(task).model_provider,
+            checker=self.checker,
+            allowed_tools=allowed_tools,
+            session_id=session_id,
+            workspace_id=principal.workspace_id,
+            principal=principal,
         )
 
     async def resume(

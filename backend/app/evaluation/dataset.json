@@ -1011,5 +1011,186 @@
         "Exceeded max tool calls per run."
       ]
     }
+  },
+  {
+    "id": "subagent-delegated-tools",
+    "category": "tool_selection",
+    "description": "A subagent can call only the tools delegated to it.",
+    "task": "What is the weather in Rome? Also find the capital of Italy.",
+    "subagent": {
+      "role": "research",
+      "allowed_tools": [
+        "get_weather"
+      ],
+      "budget": 1.0
+    },
+    "script": [
+      {
+        "call": "get_weather",
+        "args": {
+          "city": "Rome"
+        }
+      },
+      {
+        "call": "lookup_capital",
+        "args": {
+          "country": "Italy"
+        }
+      },
+      {
+        "text": "Rome: 24°C, sunny. I could not look up the capital."
+      }
+    ],
+    "expect": {
+      "status": "COMPLETED",
+      "tools": [
+        "get_weather"
+      ],
+      "forbidden_tools": [
+        "lookup_capital"
+      ],
+      "grounded": [
+        "24°C"
+      ],
+      "observations_contain": [
+        "not delegated"
+      ]
+    }
+  },
+  {
+    "id": "hitl-queued-call-after-approval",
+    "category": "hitl",
+    "description": "A call proposed with a HIGH one runs after the approval, in order.",
+    "task": "Email the weekly report to anna@example.org and check the weather in Rome.",
+    "approve": "allow",
+    "script": [
+      {
+        "calls": [
+          {
+            "call": "send_email",
+            "args": {
+              "to": "anna@example.org",
+              "subject": "Weekly report",
+              "body": "Attached."
+            }
+          },
+          {
+            "call": "get_weather",
+            "args": {
+              "city": "Rome"
+            }
+          }
+        ]
+      },
+      {
+        "text": "The report was sent to anna@example.org; Rome is 24°C and sunny."
+      }
+    ],
+    "expect": {
+      "status": "COMPLETED",
+      "tools": [
+        "send_email",
+        "get_weather"
+      ],
+      "grounded": [
+        "24°C",
+        "anna@example.org"
+      ]
+    }
+  },
+  {
+    "id": "hitl-queued-call-dropped-on-deny",
+    "category": "hitl",
+    "description": "When the HIGH call is denied, the calls queued after it never run.",
+    "task": "Email the weekly report to anna@example.org and check the weather in Rome.",
+    "approve": "deny",
+    "script": [
+      {
+        "calls": [
+          {
+            "call": "send_email",
+            "args": {
+              "to": "anna@example.org",
+              "subject": "Weekly report",
+              "body": "Attached."
+            }
+          },
+          {
+            "call": "get_weather",
+            "args": {
+              "city": "Rome"
+            }
+          }
+        ]
+      }
+    ],
+    "expect": {
+      "status": "DENIED",
+      "forbidden_tools": [
+        "send_email",
+        "get_weather"
+      ],
+      "errors_contain": [
+        "was denied"
+      ]
+    }
+  },
+  {
+    "id": "limit-run-time",
+    "category": "budget",
+    "description": "Past the active time limit no further model call starts.",
+    "task": "Start the export job and tell me when it is done.",
+    "env": {
+      "AEHUB_RUN_TIMEOUT_SECONDS": "0.2"
+    },
+    "script": [
+      {
+        "call": "wait_for_job",
+        "args": {
+          "seconds": 0.4
+        }
+      },
+      {
+        "text": "Never reached."
+      }
+    ],
+    "expect": {
+      "status": "FAILED",
+      "tools": [
+        "wait_for_job"
+      ],
+      "errors_contain": [
+        "TaskTimeoutError"
+      ]
+    }
+  },
+  {
+    "id": "limit-failed-tool-calls",
+    "category": "reliability",
+    "description": "A run stops once its tool calls fail too often.",
+    "task": "How many open tickets are there?",
+    "env": {
+      "AEHUB_RUN_MAX_FAILED_TOOL_CALLS": "1"
+    },
+    "script": [
+      {
+        "call": "flaky_service",
+        "args": {
+          "query": "open tickets"
+        }
+      },
+      {
+        "text": "Never reached."
+      }
+    ],
+    "expect": {
+      "status": "LIMIT_EXCEEDED",
+      "tools": [
+        "flaky_service"
+      ],
+      "errors_contain": [
+        "Failed tool calls limit reached: 1 of 1."
+      ]
+    }
   }
 ]

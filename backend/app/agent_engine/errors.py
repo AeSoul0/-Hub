@@ -76,3 +76,9 @@ class BudgetExceededError(RunInterrupted):
     """Raised when a run or the monthly spend cap is exhausted."""
 
     status = "failed"
+
+
+class RunLimitExceededError(RunInterrupted):
+    """Raised when a run hits a non-spend limit (failed tool calls, modified files)."""
+
+    status = "failed"

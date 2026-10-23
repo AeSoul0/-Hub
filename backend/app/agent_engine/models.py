@@ -130,6 +130,10 @@ class ToolSpec(BaseModel):
     # True when the tool output is third-party content (provenance).
     untrusted_output: bool = False
 
+    # True when a successful call changes a file; counted against the
+    # per-run limit on modified files.
+    modifies_files: bool = False
+
 
 class ToolProposal(BaseModel):
     """Tool request emitted by a Worker and evaluated by the ToolGateway."""
@@ -208,6 +212,9 @@ class Observation(BaseModel):
     # False when the tool failed or was denied; the State Snapshot lists
     # these calls separately.
     succeeded: bool = True
+
+    # The file a successful call changed, for tools that modify files.
+    modified_file: Optional[str] = None
 
 
 class CheckerDecisionEnum(str, Enum):

@@ -214,16 +214,28 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, default))
+    except ValueError:
+        return default
+
+
 @dataclass(frozen=True)
 class RunLimits:
     """
-    Spend limits, in USD. Read from the environment on every run so a change
-    applies without a restart.
+    Per-run and monthly limits. Spend is in USD. Read from the environment on
+    every run so a change applies without a restart. A limit of 0 disables it.
     """
 
     max_run_cost: float
     monthly_budget: float
     warning_ratio: float = 0.8
+
+    # Active execution time; time spent waiting for an approval never counts.
+    max_run_seconds: float = 900.0
+    max_failed_tool_calls: int = 10
+    max_files_modified: int = 20
 
     @classmethod
     def from_env(cls) -> "RunLimits":
@@ -231,6 +243,9 @@ class RunLimits:
             max_run_cost=_env_float("AEHUB_RUN_MAX_COST", 2.0),
             monthly_budget=_env_float("AEHUB_MONTHLY_BUDGET", 30.0),
             warning_ratio=_env_float("AEHUB_BUDGET_WARNING_RATIO", 0.8),
+            max_run_seconds=_env_float("AEHUB_RUN_TIMEOUT_SECONDS", 900.0),
+            max_failed_tool_calls=_env_int("AEHUB_RUN_MAX_FAILED_TOOL_CALLS", 10),
+            max_files_modified=_env_int("AEHUB_RUN_MAX_FILES_MODIFIED", 20),
         )
 
 

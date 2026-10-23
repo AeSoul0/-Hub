@@ -628,6 +628,9 @@ Do not expose private backend secrets through `NEXT_PUBLIC_*` variables.
 | `AEHUB_MODEL_PRICES` | Prices as JSON, USD per 1M tokens: `{"<model>": {"input": 1.0, "output": 4.0}}`. Unpriced models use a deliberately high fallback price and are flagged as estimated. | none |
 | `AEHUB_DEFAULT_MODEL_PRICE` | Fallback price `input,output` | `15,60` |
 | `AEHUB_RUN_MAX_COST` / `AEHUB_MONTHLY_BUDGET` | Per-run hard stop and monthly cap, in USD (warning at `AEHUB_BUDGET_WARNING_RATIO`) | `2` / `30` (`0.8`) |
+| `AEHUB_RUN_TIMEOUT_SECONDS` | Limit on a run's active execution time; waiting for an approval does not count. `0` disables it | `900` |
+| `AEHUB_RUN_MAX_FAILED_TOOL_CALLS` | Failed tool calls after which a run stops (`LIMIT_EXCEEDED`), e.g. a loop on a failing tool or test. `0` disables it | `10` |
+| `AEHUB_RUN_MAX_FILES_MODIFIED` | Distinct files a run may change through tools flagged `modifies_files`; a call on one more file is refused. `0` disables it | `20` |
 | `AEHUB_CONTEXT_BUDGET` | Token budget of one model request, split across the Context Manager levels L0–L5 (spec 4.2) | `88000` |
 | `AEHUB_SNAPSHOT_EVERY` | Tool calls between State Snapshots; older calls leave the recent window and are summarized (clamped to 10–20) | `15` |
 | `AEHUB_MEMORY_ENABLED` | Cross-session long-term memory: recall at run start, indexing of accepted runs | `1` |
@@ -662,10 +665,14 @@ The endpoint expects multipart form data.
 
 Example:
 
+Every `/api/` route (except `/api/auth/`) needs the HttpOnly session cookie that `/api/auth/login` sets; it is the only credential (no `Authorization` header, no `X-Session-ID`).
+
 ```bash
-curl -X POST "http://localhost:3002/api/orchestrator/ask" \
-  -H "X-AeHub-Key: replace_with_your_secret" \
-  -H "X-Session-Id: demo-session" \
+curl -c cookies.txt -X POST "http://localhost:3002/api/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"key": "replace_with_your_AEHUB_SECRET_KEY"}'
+
+curl -b cookies.txt -X POST "http://localhost:3002/api/orchestrator/ask" \
   -F "text=Search the web for the latest information about LangGraph and summarize it."
 ```
 
@@ -677,23 +684,16 @@ The agent can decide to use the web-search skill when appropriate.
 import httpx
 
 API_URL = "http://localhost:3002"
-API_KEY = "replace_with_your_secret"
+SECRET_KEY = "replace_with_your_AEHUB_SECRET_KEY"
 
-headers = {
-    "X-AeHub-Key": API_KEY,
-    "X-Session-Id": "demo-session",
-}
+with httpx.Client(base_url=API_URL, timeout=120) as client:
+    # The login sets the session cookie; the client sends it from now on.
+    client.post("/api/auth/login", json={"key": SECRET_KEY}).raise_for_status()
 
-data = {
-    "text": "Search the web for the latest information about LangGraph."
-}
-
-response = httpx.post(
-    f"{API_URL}/api/orchestrator/ask",
-    headers=headers,
-    data=data,
-    timeout=120,
-)
+    response = client.post(
+        "/api/orchestrator/ask",
+        data={"text": "Search the web for the latest information about LangGraph."},
+    )
 
 response.raise_for_status()
 print(response.json())

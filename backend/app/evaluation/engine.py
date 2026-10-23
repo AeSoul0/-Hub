@@ -43,7 +43,8 @@ from sqlalchemy.pool import StaticPool
 from app.agent_engine.context import estimate_tokens
 from app.agent_engine.errors import AgentEngineError
 from app.agent_engine.guardrails import GuardrailException
-from app.core.security import Principal, RoleEnum
+from app.agent_engine.resources import PROFILES, TaskClass
+from app.core.security import Permission, Principal, RoleEnum
 from app.evaluation.scripted import ScriptedModel
 from app.evaluation.tools import EvalSkill
 
@@ -152,6 +153,14 @@ def eval_environment(
             patch("app.core.event_bus.event_bus.publish", AsyncMock(side_effect=publish))
         )
         task_manager = stack.enter_context(patch("app.runtime.tool_gateway.TaskManager"))
+        # Subagents are sized by the free RAM of the host; the suite must not
+        # depend on the machine it runs on.
+        stack.enter_context(
+            patch(
+                "app.agent_engine.runtime.ResourceManager.allocate",
+                return_value=PROFILES[TaskClass.STANDARD],
+            )
+        )
         task_manager.create_task.return_value = SimpleNamespace(id="eval-task")
         stack.enter_context(patch("app.agent_engine.runtime.skill_registry", registry))
 
@@ -280,17 +289,38 @@ async def _run_step(
     outcome: Dict[str, Any] = {"run_id": run_id, "result": None, "error": None}
 
     try:
-        result = await engine.runtime.execute_task(
-            task={"description": step["task"]},
-            orchestrator=None,
-            worker=engine.worker_for(step["task"]),
-            checker=engine.checker,
-            run_id=run_id,
-            session_id=session_id,
-            workspace_id=principal.workspace_id,
-            principal=principal,
-            **limits,
-        )
+        if step.get("subagent"):
+            # The case runs as a subagent with its delegated tools.
+            subagent = step["subagent"]
+            spawned = await engine.runtime.spawn_agent(
+                parent_run_id=None,
+                child_run_id=run_id,
+                task={"description": step["task"]},
+                role=str(subagent.get("role", "research")),
+                budget=float(subagent.get("budget", 1.0)),
+                permissions=[permission.value for permission in Permission],
+                deadline=None,
+                result_schema={},
+                worker_provider=engine.worker_for(step["task"]).model_provider,
+                checker=engine.checker,
+                allowed_tools=subagent.get("allowed_tools"),
+                session_id=session_id,
+                workspace_id=principal.workspace_id,
+                principal=principal,
+            )
+            result = spawned["result"]
+        else:
+            result = await engine.runtime.execute_task(
+                task={"description": step["task"]},
+                orchestrator=None,
+                worker=engine.worker_for(step["task"]),
+                checker=engine.checker,
+                run_id=run_id,
+                session_id=session_id,
+                workspace_id=principal.workspace_id,
+                principal=principal,
+                **limits,
+            )
 
         rounds = 0
         while (

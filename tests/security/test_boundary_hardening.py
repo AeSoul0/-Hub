@@ -160,6 +160,28 @@ def test_x_session_id_header_is_not_a_credential(identity_db, login):
     assert response.status_code == 401
 
 
+def test_bearer_header_is_not_a_credential(identity_db, login, monkeypatch):
+    # The HTTP middleware and the routes accept the same credential: the
+    # session cookie only.
+    import main
+
+    monkeypatch.setattr("app.core.db.SessionLocal", identity_db)
+
+    app = FastAPI()
+    app.middleware("http")(main.verify_api_key)
+
+    @app.get("/api/ping")
+    def ping():
+        return {"ok": True}
+
+    response = TestClient(app).get(
+        "/api/ping",
+        headers={"Authorization": f"Bearer {login['token']}"},
+    )
+
+    assert response.status_code == 401
+
+
 def test_session_cookie_is_the_credential(identity_db, login):
     client = _principal_app(identity_db)
     client.cookies.set(SESSION_COOKIE, login["token"])
