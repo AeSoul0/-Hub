@@ -126,7 +126,7 @@ def eval_environment(
     session_factory = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     published: List[Any] = []
 
-    async def publish(session_id: str, event_type: str, data: Any) -> None:
+    async def publish(session_id: str, event_type: str, data: Any, workspace_id: str = "") -> None:
         published.append((session_id, event_type, data))
 
     registry = SkillRegistry()

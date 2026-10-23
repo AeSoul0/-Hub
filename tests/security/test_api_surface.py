@@ -36,6 +36,8 @@ MANAGEMENT = {
     ("POST", "/api/runs/resume"),
     ("POST", "/api/runs/stop-all"),
     ("POST", "/api/runs/{run_id}/cancel"),
+    ("GET", "/api/runs/{run_id}"),
+    ("GET", "/api/audit"),
     ("GET", "/api/memory"),
     ("POST", "/api/memory/preferences"),
     ("DELETE", "/api/memory/{memory_id}"),

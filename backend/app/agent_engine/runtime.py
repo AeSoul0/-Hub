@@ -511,6 +511,7 @@ class AgentRuntime:
                 session_id,
                 run_id,
                 "awaiting_approval" if waiting else "done",
+                workspace_id=workspace_id,
             )
 
     async def _execute_task(
@@ -873,6 +874,7 @@ class AgentRuntime:
                     session_id,
                     run_id,
                     "planning",
+                    workspace_id=workspace_id,
                 )
 
                 model_context, context_report = self.context_manager.build(
@@ -1106,6 +1108,7 @@ class AgentRuntime:
                         session_id,
                         run_id,
                         "tool_running",
+                        workspace_id=workspace_id,
                         tool=proposal.tool_name,
                     )
 
@@ -1711,6 +1714,15 @@ class AgentRuntime:
             },
         )
 
+        # Saved first: whoever reacts to the event reads the parked call.
+        self._save(
+            agent_run,
+            current_attempt,
+            turn,
+            worker_context,
+            last_feedback,
+        )
+
         await self._notify(
             agent_run.session_id,
             "approval.requested",
@@ -1719,14 +1731,7 @@ class AgentRuntime:
                 "run_id": agent_run.run_id,
                 "tool": proposal.tool_name,
             },
-        )
-
-        self._save(
-            agent_run,
-            current_attempt,
-            turn,
-            worker_context,
-            last_feedback,
+            workspace_id=agent_run.workspace_id,
         )
 
         return {
@@ -2135,11 +2140,12 @@ class AgentRuntime:
         session_id: str,
         run_id: str,
         state: str,
+        workspace_id: str = "",
         **details: Any,
     ) -> None:
         """
         Publish the live run state (planning / tool_running /
-        awaiting_approval / done) to the session.
+        awaiting_approval / done) to the session and its workspace.
         """
         await self._notify(
             session_id,
@@ -2149,6 +2155,7 @@ class AgentRuntime:
                 "state": state,
                 **details,
             },
+            workspace_id=workspace_id,
         )
 
     @staticmethod
@@ -2156,10 +2163,12 @@ class AgentRuntime:
         session_id: str,
         event_type: str,
         data: Dict[str, Any],
+        workspace_id: str = "",
     ) -> None:
         """
-        Push a realtime event to the session; delivery is best effort and
-        never affects execution, nor slows it when the bus is unreachable.
+        Push a realtime event to the session (and, for control-plane events,
+        to its workspace); delivery is best effort and never affects
+        execution, nor slows it when the bus is unreachable.
         """
         try:
             from app.core.event_bus import event_bus
@@ -2169,6 +2178,7 @@ class AgentRuntime:
                     session_id,
                     event_type,
                     data,
+                    workspace_id=workspace_id,
                 ),
                 timeout=NOTIFY_TIMEOUT_SECONDS,
             )

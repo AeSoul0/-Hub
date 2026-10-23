@@ -145,6 +145,21 @@ jobs:
           npm ci
 
       # =========================================================================
+      # FRONTEND CODE QUALITY (M11)
+      # =========================================================================
+
+      - name: Lint Frontend (ESLint)
+        working-directory: frontend
+        run: |
+          npm run lint
+
+      # Component and hook tests (Vitest + Testing Library, jsdom).
+      - name: Frontend Unit Tests (Vitest)
+        working-directory: frontend
+        run: |
+          npm test
+
+      # =========================================================================
       # FRONTEND SECURITY AUDIT
       # =========================================================================
 

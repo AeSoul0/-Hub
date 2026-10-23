@@ -7,6 +7,7 @@
  */
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Activity } from "lucide-react";
 
@@ -34,6 +35,12 @@ export default function Header() {
             </div>
 
             <div className="flex items-center gap-5">
+                <Link
+                    href="/control-plane"
+                    className="text-xs font-bold tracking-[0.2em] uppercase text-cyan-300/80 hover:text-cyan-100 px-4 py-2 rounded-full border border-cyan-500/20"
+                >
+                    Control Plane
+                </Link>
                 <div className="flex items-center gap-2 text-[10px] font-bold tracking-[0.2em] uppercase bg-cyan-950/20 backdrop-blur-md px-4 py-2 rounded-full border border-cyan-500/10 shadow-sm transition-colors duration-300">
                     <Activity
                         className={`w-3.5 h-3.5 ${backendStatus === "Online" ? "text-cyan-400 animate-pulse" : "text-cyan-500"}`}

@@ -91,6 +91,43 @@ export async function fetchApi(
 }
 
 // ============================================================================
+// ERRORS
+// ============================================================================
+
+/**
+ * A non-2xx response. `status` lets callers tell an expired session (401)
+ * from other failures; `message` carries the backend's `detail` when present.
+ */
+export class ApiError extends Error {
+    readonly status: number;
+
+    constructor(status: number, message: string) {
+        super(message);
+        this.name = "ApiError";
+        this.status = status;
+    }
+}
+
+async function raiseForStatus(response: Response): Promise<void> {
+    if (response.ok) {
+        return;
+    }
+
+    let message = `HTTP ${response.status} ${response.statusText}`.trim();
+
+    try {
+        const body = await response.json();
+        if (body && typeof body.detail === "string") {
+            message = body.detail;
+        }
+    } catch {
+        // Not JSON: keep the status line.
+    }
+
+    throw new ApiError(response.status, message);
+}
+
+// ============================================================================
 // JSON HELPERS
 // ============================================================================
 
@@ -106,11 +143,7 @@ export async function getJson<T>(
         method: "GET",
     });
 
-    if (!response.ok) {
-        throw new Error(
-            `HTTP request failed with status ${response.status}: ${response.statusText}`,
-        );
-    }
+    await raiseForStatus(response);
 
     return response.json() as Promise<T>;
 }
@@ -135,11 +168,24 @@ export async function postJson<T>(
         body: JSON.stringify(body),
     });
 
-    if (!response.ok) {
-        throw new Error(
-            `HTTP request failed with status ${response.status}: ${response.statusText}`,
-        );
-    }
+    await raiseForStatus(response);
+
+    return response.json() as Promise<T>;
+}
+
+/**
+ * Executes a DELETE request and parses the JSON response.
+ */
+export async function deleteJson<T>(
+    endpoint: string,
+    options?: ApiClientOptions,
+): Promise<T> {
+    const response = await fetchApi(endpoint, {
+        ...options,
+        method: "DELETE",
+    });
+
+    await raiseForStatus(response);
 
     return response.json() as Promise<T>;
 }

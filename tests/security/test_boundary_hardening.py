@@ -304,3 +304,117 @@ def test_mcp_tools_are_always_untrusted(monkeypatch):
 
     assert bridge.tools == [list_tickets]
     assert bridge.get_tool_metadata()["list_tickets"].untrusted_output is True
+
+
+# ==============================================================================
+# CONTROL PLANE EVENTS AND SESSION CHECK (M11)
+# ==============================================================================
+
+
+def _recording_bus():
+    calls = []
+
+    def subscribe(kind):
+        def _subscribe(key):
+            calls.append((kind, key))
+            return asyncio.Queue()
+
+        return _subscribe
+
+    bus = SimpleNamespace(
+        subscribe=subscribe("session"),
+        subscribe_workspace=subscribe("workspace"),
+        unsubscribe=lambda key, queue: calls.append(("unsubscribe", key)),
+        unsubscribe_workspace=lambda key, queue: calls.append(
+            ("unsubscribe_workspace", key)
+        ),
+    )
+    return bus, calls
+
+
+@pytest.mark.parametrize("scope", ["session", "workspace"])
+async def test_event_stream_scopes(identity_db, login, scope):
+    bus, calls = _recording_bus()
+    request = SimpleNamespace(
+        cookies={SESSION_COOKIE: login["token"]},
+        is_disconnected=AsyncMock(return_value=True),
+    )
+
+    with (
+        patch("app.core.db.SessionLocal", identity_db),
+        patch("app.api.realtime.event_bus", bus),
+    ):
+        response = await realtime.get_events_stream(request, scope=scope)
+        assert [chunk async for chunk in response.body_iterator] == []
+
+    if scope == "workspace":
+        # The workspace comes from the session, never from the request.
+        expected = [("workspace", "ws-1"), ("unsubscribe_workspace", "ws-1")]
+    else:
+        session_id = hash_session_token(login["token"])
+        expected = [("session", session_id), ("unsubscribe", session_id)]
+
+    assert calls == expected
+
+
+async def test_event_stream_requires_a_session(identity_db):
+    bus, calls = _recording_bus()
+    request = SimpleNamespace(
+        cookies={},
+        is_disconnected=AsyncMock(return_value=False),
+    )
+
+    with (
+        patch("app.core.db.SessionLocal", identity_db),
+        patch("app.api.realtime.event_bus", bus),
+    ):
+        response = await realtime.get_events_stream(request, scope="workspace")
+
+    assert response.status_code == 401
+    assert calls == []
+
+
+async def test_event_stream_sends_keepalives(monkeypatch):
+    monkeypatch.setattr(realtime, "SSE_KEEPALIVE_SECONDS", 0.01)
+    queue: asyncio.Queue = asyncio.Queue()
+    queue.put_nowait('{"type": "run.state"}')
+    released = []
+    request = SimpleNamespace(
+        is_disconnected=AsyncMock(side_effect=[False, False, True]),
+    )
+
+    chunks = [
+        chunk
+        async for chunk in realtime.sse_event_generator(
+            queue,
+            request,
+            lambda: released.append(True),
+        )
+    ]
+
+    assert chunks == ['data: {"type": "run.state"}\n\n', ": keepalive\n\n"]
+    assert released == [True]
+
+
+def test_verify_checks_the_session(identity_db, login):
+    from app.api import auth
+
+    app = FastAPI()
+    app.include_router(auth.router)
+
+    def db_override():
+        with identity_db() as db:
+            yield db
+
+    app.dependency_overrides[get_db] = db_override
+    client = TestClient(app)
+
+    assert client.get("/api/auth/verify").status_code == 401
+
+    client.cookies.set(SESSION_COOKIE, "forged-token")
+    assert client.get("/api/auth/verify").status_code == 401
+
+    client.cookies.set(SESSION_COOKIE, login["token"])
+    verified = client.get("/api/auth/verify")
+    assert verified.status_code == 200
+    assert verified.json()["workspace_id"] == "ws-1"

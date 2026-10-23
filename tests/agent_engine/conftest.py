@@ -166,11 +166,15 @@ def agent_infrastructure(db_session_factory, tmp_path):
     Returns a namespace with:
     - use_skills(*skills): install skills in a fresh SkillRegistry;
     - published: list of (session_id, event_type, data) sent to the bus.
+    - workspace_published: the same events also sent to a workspace channel.
     """
     published: List[Any] = []
+    workspace_published: List[Any] = []
 
-    async def publish(session_id: str, event_type: str, data: Any) -> None:
+    async def publish(session_id: str, event_type: str, data: Any, workspace_id: str = "") -> None:
         published.append((session_id, event_type, data))
+        if workspace_id:
+            workspace_published.append((workspace_id, event_type, data))
 
     with ExitStack() as stack:
         for target in (
@@ -210,4 +214,5 @@ def agent_infrastructure(db_session_factory, tmp_path):
         yield SimpleNamespace(
             use_skills=use_skills,
             published=published,
+            workspace_published=workspace_published,
         )

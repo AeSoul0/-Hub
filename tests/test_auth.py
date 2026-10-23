@@ -61,6 +61,8 @@ def test_auth_login_success():
 
     assert response.status_code == 200
     assert "aehub_session_token" in response.cookies
+    # The token lives only in the HttpOnly cookie.
+    assert "session_token" not in response.json()
 
 
 def test_auth_login_failure():
@@ -68,6 +70,17 @@ def test_auth_login_failure():
         "/api/auth/login",
         json={
             "key": "wrong-key"
+        },
+    )
+
+    assert response.status_code == 401
+
+
+def test_auth_login_rejects_a_non_string_key():
+    response = client.post(
+        "/api/auth/login",
+        json={
+            "key": 12345
         },
     )
 
