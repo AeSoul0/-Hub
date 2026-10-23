@@ -62,6 +62,10 @@ class ToolMetadata(BaseModel):
 
     idempotent: bool = False
 
+    # Successful calls change a file (the `path` or `file_path` argument);
+    # counted against AEHUB_RUN_MAX_FILES_MODIFIED.
+    modifies_files: bool = False
+
     input_schema: Dict[str, Any] = Field(
         default_factory=dict,
     )

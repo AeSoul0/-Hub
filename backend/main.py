@@ -197,24 +197,12 @@ async def verify_api_key(
         from app.core.db import SessionLocal
         from app.core.security import IdentityService
 
-        auth_header = request.headers.get(
-            "Authorization"
-        )
-
-        cookie_token = request.cookies.get(
+        # The HttpOnly session cookie is the only credential, as in
+        # resolve_session: a Bearer header would pass here and then be
+        # rejected by every route.
+        session_token = request.cookies.get(
             "aehub_session_token"
         )
-
-        session_token = cookie_token
-
-        if (
-            auth_header
-            and auth_header.startswith("Bearer ")
-        ):
-            session_token = auth_header.split(
-                " ",
-                1,
-            )[1]
 
         with SessionLocal() as db:
             session = (

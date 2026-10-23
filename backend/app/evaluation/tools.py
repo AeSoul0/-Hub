@@ -10,6 +10,7 @@ risk classes, so the engine treats them exactly like production tools
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Callable, Dict, List
 
 from app.skills.base import BaseSkill, RiskLevel, SkillMetadata, ToolMetadata
@@ -114,6 +115,11 @@ class EvalSkill(BaseSkill):
             line = f"{shard}: checksum ok, 4096 records verified. "
             return (line * 60)[:3000]
 
+        async def wait_for_job(seconds: float) -> str:
+            self._record("wait_for_job", seconds=seconds)
+            await asyncio.sleep(float(seconds))
+            return "Job finished."
+
         return [
             get_weather,
             lookup_capital,
@@ -122,6 +128,7 @@ class EvalSkill(BaseSkill):
             send_email,
             run_shell,
             read_log_shard,
+            wait_for_job,
         ]
 
     def get_tool_metadata(self) -> Dict[str, ToolMetadata]:
@@ -169,6 +176,11 @@ class EvalSkill(BaseSkill):
                 description="Read one shard of the backup log.",
                 input_schema=_schema(shard=text),
                 max_output=10_000,
+            ),
+            "wait_for_job": ToolMetadata(
+                name="wait_for_job",
+                description="Wait until a background job finishes.",
+                input_schema=_schema(seconds={"type": "number"}),
             ),
         }
 
