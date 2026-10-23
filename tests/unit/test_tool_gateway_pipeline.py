@@ -1,5 +1,5 @@
 """
-@file tests/unit/test_tool_gateway.py
+@file tests/unit/test_tool_gateway_pipeline.py
 @description Unit tests for the secure ToolGateway execution pipeline.
 
 Covers identity, guardrails, schema validation, idempotency, budget,

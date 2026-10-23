@@ -5,7 +5,7 @@
 [![GitHub](https://img.shields.io/badge/GitHub-AeSoul0%2F--Hub-181717?logo=github)](https://github.com/AeSoul0/-Hub)
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688?logo=fastapi)](https://fastapi.tiangolo.com/)
 [![Frontend](https://img.shields.io/badge/frontend-Next.js-000000?logo=next.js)](https://nextjs.org/)
-[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python)](https://www.python.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript)](https://www.typescriptlang.org/)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker)](https://www.docker.com/)
 
@@ -438,7 +438,7 @@ The repository is organized as a frontend/backend monorepo.
 
 Recommended development environment:
 
-* Python 3.10+
+* Python 3.12 (the version of the backend image and of CI)
 * Node.js compatible with the project's Next.js version
 * npm
 * Docker

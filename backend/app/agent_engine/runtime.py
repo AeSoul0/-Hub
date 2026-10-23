@@ -99,6 +99,13 @@ DEFAULT_TOOL_COST = 0.0
 NOTIFY_TIMEOUT_SECONDS = 0.5
 
 
+def _usd(amount: float) -> str:
+    """
+    A spending cap as configured: 2 -> "2", 0.001 -> "0.001" (not "0.00").
+    """
+    return f"{amount:.6f}".rstrip("0").rstrip(".")
+
+
 # ==============================================================================
 # AGENT RUNTIME
 # ==============================================================================
@@ -1602,7 +1609,7 @@ class AgentRuntime:
         if run_cost >= limits.max_run_cost:
             return BudgetExceededError(
                 f"Run budget exhausted: {run_cost:.4f} USD of "
-                f"{limits.max_run_cost:.2f} USD."
+                f"{_usd(limits.max_run_cost)} USD."
             )
 
         try:
@@ -1615,7 +1622,7 @@ class AgentRuntime:
         if month_spent >= limits.monthly_budget:
             return BudgetExceededError(
                 f"Monthly budget exhausted: {month_spent:.4f} USD of "
-                f"{limits.monthly_budget:.2f} USD."
+                f"{_usd(limits.monthly_budget)} USD."
             )
 
         return None
@@ -1712,13 +1719,13 @@ class AgentRuntime:
         if totals["cost"] >= limits.max_run_cost:
             return BudgetExceededError(
                 f"Run budget exhausted: {totals['cost']:.4f} USD of "
-                f"{limits.max_run_cost:.2f} USD."
+                f"{_usd(limits.max_run_cost)} USD."
             )
 
         if month_spent >= limits.monthly_budget:
             return BudgetExceededError(
                 f"Monthly budget exhausted: {month_spent:.4f} USD of "
-                f"{limits.monthly_budget:.2f} USD."
+                f"{_usd(limits.monthly_budget)} USD."
             )
 
         return None

@@ -1,5 +1,5 @@
 """
-@file tests/unit/test_budget.py
+@file tests/unit/test_budget_manager.py
 @description Unit tests for persistent Agent Engine budget management.
 
 The tests mock the shared SQLAlchemy session boundary so budget semantics can
