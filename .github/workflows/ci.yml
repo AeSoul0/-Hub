@@ -242,6 +242,14 @@ jobs:
             aehub-backend:ci \
             python -c "from app.skills.registry import skill_registry; skill_registry.load_from_package(); print(sorted(skill_registry.get_registered_skill_names()))"
 
+      # The container has no GPU: its torch build and size are printed so a
+      # change that brings back the CUDA libraries shows up here.
+      - name: Report Backend Image Size and Torch Build
+        run: |
+          docker image ls aehub-backend:ci --format 'Backend image size: {{.Size}}'
+          docker run --rm aehub-backend:ci python -c "import torch; print('torch', torch.__version__, 'cuda', torch.cuda.is_available())"
+          echo "NVIDIA packages: $(docker run --rm aehub-backend:ci pip list 2>/dev/null | grep -ci nvidia || true)"
+
       - name: Build Frontend Image
         run: |
           docker build --file frontend/dockerfile --tag aehub-frontend:ci frontend
