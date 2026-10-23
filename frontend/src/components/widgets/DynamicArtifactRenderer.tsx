@@ -20,19 +20,11 @@ const WeatherWidget = dynamic(() => import("./WeatherWidget"), {
   loading: () => <WidgetLoader />,
 });
 
-const AcademicWidget = dynamic(() => import("./AcademicWidget"), {
-  loading: () => <WidgetLoader />,
-});
-
 const BentoWidget = dynamic(() => import("./BentoWidget"), {
   loading: () => <WidgetLoader />,
 });
 
 const AudioPlayerWidget = dynamic(() => import("./AudioPlayerWidget"), {
-  loading: () => <WidgetLoader />,
-});
-
-const YtToMp3Widget = dynamic(() => import("./Yt_To_Mp3_Widget"), {
   loading: () => <WidgetLoader />,
 });
 
@@ -66,9 +58,6 @@ export function DynamicArtifactRenderer({
     case "weather":
       return <WeatherWidget {...artifact.data} />;
 
-    case "academic":
-      return <AcademicWidget />;
-
     case "audio_player": {
       // artifact.data is Record<string, unknown>, so narrow the values
       // before passing them to AudioPlayerWidget.
@@ -84,9 +73,6 @@ export function DynamicArtifactRenderer({
 
       return <AudioPlayerWidget src={src} title={title} />;
     }
-
-    case "yt_mp3":
-      return <YtToMp3Widget />;
 
     case "bento":
       return (

@@ -13,7 +13,6 @@ pydantic-settings>=2.0.3
 # ==============================================================================
 
 openai>=1.68.0
-litellm>=1.0.0
 groq>=0.4.1
 httpx>=0.25.0
 
@@ -22,14 +21,10 @@ sentence-transformers>=3.0.0
 
 
 # ==============================================================================
-# AUDIO / SPEECH / MEDIA
+# SPEECH (text-to-speech for voice replies)
 # ==============================================================================
 
 edge-tts>=6.1.9
-faster-whisper>=1.0.0
-silero-vad>=0.0.4
-webrtcvad>=0.0.4
-yt-dlp>=2024.8.6
 
 
 # ==============================================================================
@@ -56,24 +51,18 @@ pgvector>=0.2.4
 
 
 # ==============================================================================
-# DISTRIBUTED EXECUTION
+# EVENT BUS
 # ==============================================================================
 
 redis>=5.0.1
-celery>=5.3.6
-kombu>=5.3.4
 
 
 # ==============================================================================
-# DATA / COMPUTER VISION
+# DATA
 # ==============================================================================
 
 Pillow>=13.0.0
-pyautogui>=0.9.54
-chromadb>=0.4.18
 torch>=2.1.2
-open_clip_torch>=2.24.0
-easyocr>=1.7.1
 numpy>=1.26.0
 
 
@@ -92,7 +81,6 @@ opentelemetry-api>=1.20.0
 opentelemetry-sdk>=1.20.0
 opentelemetry-instrumentation-fastapi>=0.41b0
 opentelemetry-instrumentation-sqlalchemy>=0.41b0
-opentelemetry-instrumentation-celery>=0.41b0
 prometheus-client>=0.19.0
 
 

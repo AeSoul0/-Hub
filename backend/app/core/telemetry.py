@@ -178,14 +178,3 @@ def instrument_sqlalchemy(engine):
         enable_commenter=True,
         commenter_options={},
     )
-
-
-def instrument_celery():
-    """
-    Instrument Celery workers with OpenTelemetry.
-    """
-    from opentelemetry.instrumentation.celery import (
-        CeleryInstrumentor,
-    )
-
-    CeleryInstrumentor().instrument()

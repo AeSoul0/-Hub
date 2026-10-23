@@ -1,12 +1,5 @@
 # Known vulnerabilities that `pip-audit` may skip in CI.
 # One advisory id per line; `#` starts a comment. Every entry needs a reason
 # and the condition that removes it.
-
-# chromadb: no fixed release. All four advisories are in the Chroma HTTP
-# server (/api/v2 endpoints, auth, RBAC). ÆHub only uses the embedded
-# PersistentClient (app/workers/vision_indexer.py) and never starts that
-# server. Remove when chromadb ships a fix or leaves the requirements (M10).
-PYSEC-2026-311
-PYSEC-2026-3813
-PYSEC-2026-3814
-PYSEC-2026-3815
+#
+# Empty since M10: the last entries (chromadb) left with the photo memory.

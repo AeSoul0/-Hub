@@ -104,7 +104,7 @@ The current codebase supports or provides foundations for:
 | Monitoring / observability | ✅      | JSON Semantic Logging, OpenTelemetry tracing, and Prometheus `/metrics` exporter implemented                  |
 | Extensibility              | ✅      | Skill registry, dynamic discovery, MCP bridge, tool metadata, and modular runtime                             |
 | Security / Identity        | ✅      | RBAC Policy Engine, strict Docker Sandboxing (cpus, pids-limit, read-only), and Tool Gateway                  |
-| Distributed Tasks          | ✅      | Durable Task Runtime with state recovery, idempotency, and Celery / Redis execution backend                   |
+| Durable execution          | ✅      | Run state, approvals and idempotency in PostgreSQL; Redis is the event bus (no worker queue, see ADR-019)     |
 
 ---
 
@@ -184,7 +184,6 @@ The API includes:
 * WebSocket communication;
 * Server-Sent Events;
 * agent orchestration endpoints;
-* academic and media functionality;
 * voice processing.
 
 ### A.U.R.O.R.A. runtime
@@ -366,9 +365,11 @@ The repository is organized as a frontend/backend monorepo.
 │   │   │       └── base.py
 │   │   │
 │   │   ├── api/
-│   │   │   ├── academic.py
-│   │   │   ├── media.py
-│   │   │   └── voice.py
+│   │   │   ├── approvals.py
+│   │   │   ├── auth.py
+│   │   │   ├── memory.py
+│   │   │   ├── realtime.py
+│   │   │   └── runs.py
 │   │   │
 │   │   ├── core/
 │   │   │   ├── database.py
@@ -387,13 +388,11 @@ The repository is organized as a frontend/backend monorepo.
 │   │   │   ├── memory_skill.py
 │   │   │   ├── web_search.py
 │   │   │   ├── sandbox_skill.py
-│   │   │   ├── supervisor_skill.py
+│   │   │   ├── browser_skill.py
 │   │   │   └── mcp_bridge.py
 │   │   │
-│   │   ├── workers/
-│   │   │   └── scheduler.py
-│   │   │
-│   │   └── workflows/
+│   │   └── workers/
+│   │       └── sandbox.py
 │   │
 │   ├── main.py
 │   ├── requirements.txt
@@ -423,10 +422,9 @@ The repository is organized as a frontend/backend monorepo.
 | `backend/app/api`       | FastAPI routers and external API boundaries                     |
 | `backend/app/core`      | Shared infrastructure such as persistence, events, and security |
 | `backend/app/memory`    | Persistent agent memory services                                |
-| `backend/app/runtime`   | LangGraph agent runtime                                         |
+| `backend/app/runtime`   | Tool Gateway, durable task state and audit hash chain           |
 | `backend/app/skills`    | Modular agent capabilities and tools                            |
-| `backend/app/workers`   | Background/proactive execution                                  |
-| `backend/app/workflows` | Higher-level automation workflows                               |
+| `backend/app/workers`   | Docker sandbox for code execution                               |
 | `frontend/src`          | Next.js application code                                        |
 | `data`                  | Local persistence volumes used by Docker Compose                |
 
@@ -486,7 +484,7 @@ echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)" > .env
 docker compose up --build
 ```
 
-The backend and Celery containers build their `POSTGRES_URL` from the same variables, so the password lives in one place. `backend/.env` is optional and holds the model settings.
+The backend container builds its `POSTGRES_URL` from the same variables, so the password lives in one place. The agent's working folder `./workspace` is mounted into the backend container. `backend/.env` is optional and holds the model settings.
 
 The current Compose configuration maps:
 
@@ -495,12 +493,6 @@ Frontend  → http://localhost:3000
 Backend   → http://localhost:3002
 PostgreSQL → localhost:5432
 Redis     → localhost:6379
-```
-
-GPU reservations for the Celery worker are in a separate override, for machines with an NVIDIA runtime:
-
-```bash
-docker compose -f docker-compose.yaml -f docker-compose.gpu.yaml up --build
 ```
 
 **Healthcheck**: The backend service includes a Docker `HEALTHCHECK` that probes `http://localhost:3002/health` every 30 seconds. This ensures the container is marked unhealthy if the API does not respond.
@@ -1286,7 +1278,7 @@ Reduce cost through:
 
 Long-running workloads should move outside the request-response lifecycle.
 
-The repository already contains a proactive scheduler abstraction.
+Today the agent engine runs inside the backend process and keeps durable run state in PostgreSQL; the Celery worker and the proactive scheduler were removed in M10 (ADR-019).
 
 A scalable deployment can evolve toward:
 
@@ -1334,28 +1326,26 @@ Stateless API replicas can be scaled horizontally when shared state is externali
 * [x] Prompt-injection filter
 * [x] Risk metadata for tools
 * [x] EventBus and SSE streaming
-* [x] Proactive scheduler foundation
 * [x] Docker Compose environment
 * [x] MCP bridge architecture foundation
 * [x] Voice input/output pipeline
 
 ## Next (Now 100% Implemented)
 
-* [x] Production-grade human approval workflow (WorkflowEngine State)
+* [x] Production-grade human approval workflow (approvals API, M2)
 * [x] Persistent RBAC instead of session-based role placeholders
 * [x] Dedicated vector database and RAG pipeline (pgvector)
-* [x] Retrieval evaluation and citation-aware responses
+* [ ] Citation-aware answers over the user's documents (M13)
 * [x] Distributed tracing (OpenTelemetry)
 * [x] Agent evaluation benchmark suite
 * [x] Tool execution policy engine (ToolGateway)
-* [x] Distributed worker queue (Celery)
 * [x] Better model routing and fallback policies (ModelRouter)
 * [x] API rate limiting
 * [x] CI/CD pipeline (GitHub Actions)
 * [x] Comprehensive unit and integration test coverage
 * [x] Production secret management
 * [x] Hardened sandbox isolation
-* [x] Full MCP client implementation (MCPTransportLayer)
+* [ ] MCP client (the bridge has an allowlist and untrusted output, the connection is a stub; after V1)
 * [x] Multi-agent orchestration patterns beyond supervisor/researcher
 * [x] Production deployment documentation (ADRs)
 
@@ -1434,9 +1424,8 @@ make eval
 The test infrastructure is located in `tests/` and heavily relies on `pytest`.
 It programmatically covers:
 * **Security Middleware:** SSRF, Path Traversal, and Secret Redaction.
-* **Celery & Redis:** Worker pools routing and Dead Letter Queue logic.
-* **Workflow Engine:** Checkpoint resumption and Human-In-The-Loop pauses.
-* **API Boundaries:** Stubs for Voice, Media, Academic, and Orchestrator layers.
+* **Agent engine:** tool loop, human approval, guardrails, budget and limits, routing and failover, Context Manager and memory.
+* **API surface:** the exact list of HTTP and WebSocket routes (`tests/security/test_api_surface.py`).
 
 ## Agent evaluations
 
@@ -1496,7 +1485,7 @@ Until a license is explicitly added to the repository, reuse, modification, and 
 
 The architecture has successfully transitioned from an experimental project to a fully production-ready, zero-trust, durable execution platform. 
 
-All core architectural gates—including Security (SSRF/Traversal defense), Durable Execution (Celery/Redis DLQ), Distributed Testing (Pytest Suite), and CI/CD operations—have been strictly enforced.
+All core architectural gates—including Security (SSRF/Traversal defense), Durable Execution (PostgreSQL run state), Distributed Testing (Pytest Suite), and CI/CD operations—have been strictly enforced.
 
 ---
 

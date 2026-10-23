@@ -90,17 +90,6 @@ def init_db() -> None:
 
             cursor.execute(
                 """
-                CREATE TABLE IF NOT EXISTS academic (
-                    session_id TEXT PRIMARY KEY,
-                    gpa REAL,
-                    cfu INTEGER,
-                    exams INTEGER
-                )
-                """
-            )
-
-            cursor.execute(
-                """
                 CREATE TABLE IF NOT EXISTS settings (
                     session_id TEXT PRIMARY KEY,
                     temperature REAL DEFAULT 0.75,
@@ -391,15 +380,6 @@ def save_chat(
 
         conn.commit()
 
-    # Background summarization is intentionally triggered after the
-    # conversation transaction has been committed.
-    from app.core.celery_app import celery_app
-
-    celery_app.send_task(
-        "memory.summarize_and_forget",
-        args=[session_id],
-    )
-
 
 def get_recent_chat(
     session_id: str,
@@ -474,90 +454,6 @@ def clear_chat(session_id: str) -> None:
 
         conn.commit()
 
-
-def get_academic_data(session_id: str) -> Optional[dict]:
-    """
-    Retrieve academic metrics for one execution session.
-    """
-    if not session_id:
-        raise ValueError("session_id is required")
-
-    with get_connection() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT gpa, cfu, exams
-                FROM academic
-                WHERE session_id = %s
-                """,
-                (session_id,),
-            )
-            row = cursor.fetchone()
-
-    if not row:
-        return None
-
-    return {
-        "gpa": row[0],
-        "cfu": row[1],
-        "exams": row[2],
-    }
-
-
-def save_academic_data(
-    session_id: str,
-    gpa: float,
-    cfu: int,
-    exams: int,
-) -> None:
-    """
-    Upsert academic synchronization metrics for one session.
-    """
-    if not session_id:
-        raise ValueError("session_id is required")
-
-    with get_connection() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute(
-                """
-                INSERT INTO academic (
-                    session_id,
-                    gpa,
-                    cfu,
-                    exams
-                )
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT (session_id) DO UPDATE SET
-                    gpa = EXCLUDED.gpa,
-                    cfu = EXCLUDED.cfu,
-                    exams = EXCLUDED.exams
-                """,
-                (
-                    session_id,
-                    gpa,
-                    cfu,
-                    exams,
-                ),
-            )
-
-        conn.commit()
-
-
-def clear_academic_data(session_id: str) -> None:
-    """
-    Remove academic cache exclusively for one session.
-    """
-    if not session_id:
-        raise ValueError("session_id is required")
-
-    with get_connection() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute(
-                "DELETE FROM academic WHERE session_id = %s",
-                (session_id,),
-            )
-
-        conn.commit()
 
 
 __all__ = [

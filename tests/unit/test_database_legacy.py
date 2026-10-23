@@ -39,14 +39,11 @@ def test_save_chat_uses_schema_column_names() -> None:
         "app.core.database.get_connection",
         return_value=context,
     ):
-        with patch(
-            "app.core.celery_app.celery_app.send_task"
-        ):
-            database.save_chat(
-                "session-1",
-                "hello",
-                "world",
-            )
+        database.save_chat(
+            "session-1",
+            "hello",
+            "world",
+        )
 
     cursor = connection.cursor.return_value
     execute_calls = cursor.execute.call_args_list

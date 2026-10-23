@@ -106,15 +106,6 @@ def _require_memory_scope() -> MemoryScope:
     return scope
 
 
-def _require_memory_context() -> Tuple[str, str]:
-    """
-    Return the (session_id, workspace_id) pair or fail closed.
-    """
-    scope = _require_memory_scope()
-
-    return scope.session_id, scope.workspace_id
-
-
 def _save(
     content: str,
     kind: MemoryKind,
