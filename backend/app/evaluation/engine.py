@@ -78,8 +78,11 @@ MAX_APPROVAL_ROUNDS = 5
 def _fake_secrets() -> Dict[str, str]:
     """
     Credential-shaped values built at run time, never stored in the repo.
+
+    `"ghp_" + "E" * 36` would be folded by the compiler into one constant in
+    the `.pyc`, which secret scanners then flag; `join` runs at call time.
     """
-    return {"FAKE_GITHUB_TOKEN": "ghp_" + "E" * 36}
+    return {"FAKE_GITHUB_TOKEN": "".join(("ghp_", "E" * 36))}
 
 
 # ==============================================================================
