@@ -149,7 +149,7 @@ class EphemeralSandboxManager:
             "apparmor=docker-default",
             "--cap-drop=ALL",
             "--tmpfs",
-            "/tmp:size=50M,exec,mode=1777",
+            "/tmp:size=50M,exec,mode=1777",  # nosec B108 - tmpfs inside the container
             "--env",
             "PYTHONUNBUFFERED=1",
             self.image,
@@ -228,7 +228,7 @@ class EphemeralSandboxManager:
             "apparmor=docker-default",
             "--cap-drop=ALL",
             "--tmpfs",
-            "/tmp:size=50M,exec,mode=1777",
+            "/tmp:size=50M,exec,mode=1777",  # nosec B108 - tmpfs inside the container
             self.image,
             "sh",
             "-c",
