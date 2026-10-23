@@ -1,8 +1,10 @@
 # ==============================================================================
 # BACKEND CORE IMAGE (PLAYWRIGHT BASE)
-# Utilizing the official Microsoft Playwright image to guarantee headless Chromium stability
+# Utilizing the official Microsoft Playwright image to guarantee headless Chromium stability.
+# Ubuntu 24.04 (noble) ships Python 3.12. The tag must match the `playwright`
+# pin in requirements.txt, so the package finds the browsers bundled here.
 # ==============================================================================
-FROM mcr.microsoft.com/playwright/python:v1.40.0-jammy
+FROM mcr.microsoft.com/playwright/python:v1.64.1-noble
 
 # PREVENT PYTHON FROM BUFFERING STDOUT/STDERR (Real-time logs)
 ENV PYTHONUNBUFFERED=1
@@ -12,11 +14,16 @@ ENV PYTHONDONTWRITEBYTECODE=1
 WORKDIR /app
 
 # SYSTEM DEPENDENCIES: Install FFmpeg for advanced audio transcoding (yt-dlp core requirement)
-# Running cleanups immediately to reduce the final image layer size
+# and curl for the healthcheck. Running cleanups immediately to reduce the final image layer size
 RUN apt-get update && \
-    apt-get install -y ffmpeg build-essential python3-dev && \
+    apt-get install -y --no-install-recommends ffmpeg build-essential python3-dev python3-venv curl && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+# VIRTUAL ENVIRONMENT: the system Python is externally managed (PEP 668), so
+# the backend packages live in their own environment
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
 # DEPENDENCY INJECTION: Copy requirements first to leverage Docker's aggressive layer caching
 COPY requirements.txt .

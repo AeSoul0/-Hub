@@ -23,7 +23,7 @@ from fastapi import HTTPException
 from app.agent_engine.application import AgentEngine
 from app.agent_engine.control import SpendLedger, current_period, run_registry
 from app.agent_engine.pricing import FALLBACK_PRICE, usage_from_response
-from app.agent_engine.runtime import AgentRuntime
+from app.agent_engine.runtime import AgentRuntime, _usd
 from app.api import runs as runs_api
 from app.core.security import Principal, RoleEnum
 from app.domain.models.audit import AuditLog
@@ -248,6 +248,7 @@ async def test_run_budget_stops_the_loop_midway(
     # tool never ran and no further model call was made.
     assert outcome["status"] == "BUDGET_EXCEEDED"
     assert "Run budget exhausted" in outcome["reason"]
+    assert outcome["reason"].endswith("of 10 USD.")
     assert ops.calls == ["a"]
     assert len(engine.model_requests) == 2
 
@@ -269,7 +270,17 @@ async def test_monthly_budget_blocks_before_any_model_call(
 
     assert outcome["status"] == "BUDGET_EXCEEDED"
     assert "Monthly budget exhausted" in outcome["reason"]
+    assert outcome["reason"].endswith("of 50 USD.")
     assert engine.model_requests == []
+
+
+@pytest.mark.parametrize(
+    ("amount", "shown"),
+    [(2, "2"), (0.001, "0.001"), (30.5, "30.5"), (0, "0")],
+    ids=["whole", "sub-cent", "decimal", "zero"],
+)
+def test_budget_cap_is_shown_as_configured(amount, shown):
+    assert _usd(amount) == shown
 
 
 async def test_monthly_budget_warns_at_eighty_percent(

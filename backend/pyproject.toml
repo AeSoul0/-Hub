@@ -5,7 +5,7 @@
 
 [tool.ruff]
 # Set the target Python version to ensure compatibility
-target-version = "py310"
+target-version = "py312"
 
 # Enforce a generous but strict line length for readability
 line-length = 100
