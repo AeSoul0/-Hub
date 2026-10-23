@@ -13,10 +13,10 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # WORKDIR ASSIGNMENT: Establish the execution path within the container
 WORKDIR /app
 
-# SYSTEM DEPENDENCIES: Install FFmpeg for advanced audio transcoding (yt-dlp core requirement)
-# and curl for the healthcheck. Running cleanups immediately to reduce the final image layer size
+# SYSTEM DEPENDENCIES: build tools for native wheels, venv support and curl
+# for the healthcheck. Running cleanups immediately to reduce the final image layer size
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ffmpeg build-essential python3-dev python3-venv curl && \
+    apt-get install -y --no-install-recommends build-essential python3-dev python3-venv curl && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 

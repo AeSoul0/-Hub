@@ -31,7 +31,7 @@ interface UIStore {
 export const useUIStore = create<UIStore>((set) => ({
     windows: [],
     spawnArtifact: (artifact) => set((state) => {
-        // Find if we already have a window for this artifact type (to avoid duplicates of singletons like weather/academic)
+        // Find if we already have a window for this artifact type (to avoid duplicates of singletons like weather)
         const exists = state.windows.find(w => w.artifact.type === artifact.type);
         if (exists) {
             // Just update data and bring to front

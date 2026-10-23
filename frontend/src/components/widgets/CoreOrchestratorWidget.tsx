@@ -71,13 +71,7 @@ export default function CoreOrchestratorWidget() {
     const [inputText, setInputText] = useState("");
 
     const liveWeatherData = useAppStore((state) => state.weatherData);
-    const liveMediaStatus = useAppStore(
-        (state) => state.mediaConverterStatus,
-    );
     const liveMusicData = useAppStore((state) => state.musicPlayerData);
-    const liveAcademicData = useAppStore(
-        (state) => state.academicData,
-    );
 
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<BlobPart[]>([]);
@@ -93,9 +87,7 @@ export default function CoreOrchestratorWidget() {
         const dashboardState = {
             systemTime: new Date().toLocaleTimeString("it-IT"),
             weatherWidgetTelemetry: liveWeatherData,
-            mediaConverterTelemetry: liveMediaStatus,
             musicPlayerTelemetry: liveMusicData,
-            academicModuleTelemetry: liveAcademicData,
         };
 
         return JSON.stringify(dashboardState, null, 2);

@@ -31,15 +31,8 @@ interface AppState {
     weatherData: WeatherData | null;
     setWeatherData: (data: WeatherData) => void;
 
-    mediaConverterStatus: string;
-    setMediaConverterStatus: (status: string) => void;
-
     musicPlayerData: string;
-    setMusicPlayerData: (data: string) => void;
-
-    academicData: string;
-    setAcademicData: (data: string) => void;
-}
+    setMusicPlayerData: (data: string) => void;}
 
 // ==============================================================================
 // STORE
@@ -48,12 +41,5 @@ export const useAppStore = create<AppState>((set) => ({
     weatherData: null,
     setWeatherData: (data) => set({ weatherData: data }),
 
-    mediaConverterStatus: "Converter idle.",
-    setMediaConverterStatus: (status) => set({ mediaConverterStatus: status }),
-
     musicPlayerData: "No audio track currently playing.",
-    setMusicPlayerData: (data) => set({ musicPlayerData: data }),
-
-    academicData: "Academic module standby. No active research queries.",
-    setAcademicData: (data) => set({ academicData: data }),
-}));
+    setMusicPlayerData: (data) => set({ musicPlayerData: data }),}));

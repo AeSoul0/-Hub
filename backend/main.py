@@ -28,14 +28,11 @@ from fastapi.responses import JSONResponse
 
 from app.agents import orchestrator
 from app.api import (
-    academic,
     approvals,
     auth,
-    media,
     memory,
     realtime,
     runs,
-    voice,
 )
 from app.core import database
 from app.core.telemetry import (
@@ -44,8 +41,6 @@ from app.core.telemetry import (
 )
 from app.agent_engine.routing import check_routing_at_startup
 from app.skills.registry import skill_registry
-from app.workers.scheduler import proactive_scheduler
-from app.workflows.autonomous import register_workflows
 
 
 # ==============================================================================
@@ -84,8 +79,7 @@ if (
 
 def startup_db():
     """
-    Initialize shared persistence, telemetry instrumentation, workflows, and
-    the proactive scheduler.
+    Initialize shared persistence and telemetry instrumentation.
 
     This function remains in the composition root for compatibility with the
     current test suite. Database-layer consolidation will move the remaining
@@ -113,8 +107,6 @@ def startup_db():
     )
 
     database.init_db()
-    register_workflows()
-    proactive_scheduler.start()
 
     print(
         "[OK] Centralized PostgreSQL database schema initialized."
@@ -152,7 +144,6 @@ async def lifespan(
         yield
 
     finally:
-        proactive_scheduler.stop()
         shutdown_telemetry()
 
 
@@ -347,18 +338,6 @@ async def health_check() -> dict[str, str]:
 
 app.include_router(
     auth.router
-)
-
-app.include_router(
-    media.router
-)
-
-app.include_router(
-    academic.router
-)
-
-app.include_router(
-    voice.router
 )
 
 app.include_router(

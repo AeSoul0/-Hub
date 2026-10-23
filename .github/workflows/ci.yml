@@ -229,6 +229,19 @@ jobs:
         run: |
           docker build --file backend/dockerfile --tag aehub-backend:ci backend
 
+      # The backend loads every skill at startup; an import that only fails
+      # inside the container (no display, missing system library) would stop
+      # the API from starting.
+      - name: Load Skills Inside the Backend Image
+        run: |
+          docker run --rm \
+            -e POSTGRES_URL=sqlite:// \
+            -e AEHUB_SECRET_KEY=ci-only-not-a-secret \
+            -e GROQ_API_KEY=ci-only-not-a-secret \
+            -e AEHUB_EMBEDDER=hash \
+            aehub-backend:ci \
+            python -c "from app.skills.registry import skill_registry; skill_registry.load_from_package(); print(sorted(skill_registry.get_registered_skill_names()))"
+
       - name: Build Frontend Image
         run: |
           docker build --file frontend/dockerfile --tag aehub-frontend:ci frontend

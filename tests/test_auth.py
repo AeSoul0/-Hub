@@ -79,7 +79,7 @@ def test_protected_route_without_auth():
     client.cookies.clear()
 
     response = client.get(
-        "/api/academic/status"
+        "/api/memory"
     )
 
     assert response.status_code == 401
