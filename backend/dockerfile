@@ -13,10 +13,12 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # WORKDIR ASSIGNMENT: Establish the execution path within the container
 WORKDIR /app
 
-# SYSTEM DEPENDENCIES: build tools for native wheels, venv support and curl
-# for the healthcheck. Running cleanups immediately to reduce the final image layer size
+# SYSTEM DEPENDENCIES: venv support and curl for the healthcheck. No compiler:
+# every package in requirements.txt ships a manylinux wheel for Python 3.12,
+# and the ~84 MB of build tools made the build hang on a slow apt mirror.
+# Running cleanups immediately to reduce the final image layer size
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends build-essential python3-dev python3-venv curl && \
+    apt-get install -y --no-install-recommends python3-venv curl && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
