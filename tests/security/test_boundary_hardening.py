@@ -12,7 +12,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -207,9 +209,17 @@ def test_websocket_rejects_foreign_or_missing_origin(identity_db, login, origin)
 def test_websocket_scopes_runs_to_the_login_session(identity_db, login):
     respond = AsyncMock(return_value={"transcription": "ok"})
 
+    # The real event bus starts a Redis listener inside the TestClient loop,
+    # which can hang its shutdown; this test is about session scoping.
+    bus = SimpleNamespace(
+        subscribe=lambda session_id: asyncio.Queue(),
+        unsubscribe=lambda session_id, queue: None,
+    )
+
     with (
         patch("app.core.db.SessionLocal", identity_db),
         patch("app.agents.orchestrator.generate_ai_response", respond),
+        patch("app.api.realtime.event_bus", bus),
     ):
         headers = {
             "origin": FRONTEND,

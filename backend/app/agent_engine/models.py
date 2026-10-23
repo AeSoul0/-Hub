@@ -205,6 +205,10 @@ class Observation(BaseModel):
     # servers and must be treated as data, never as instructions.
     trusted: bool = True
 
+    # False when the tool failed or was denied; the State Snapshot lists
+    # these calls separately.
+    succeeded: bool = True
+
 
 class CheckerDecisionEnum(str, Enum):
     """

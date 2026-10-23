@@ -17,6 +17,7 @@ from typing import Any, Dict, List
 from openai import AsyncOpenAI
 
 from app.agent_engine.adapters.base import ModelProvider
+from app.agent_engine.context import render_block
 from app.agent_engine.models import ToolProposal
 from app.agent_engine.pricing import usage_from_response
 
@@ -264,6 +265,19 @@ class OpenAIAdapter(ModelProvider):
                         "Checker feedback:\n"
                         f"{feedback}"
                     ),
+                }
+            )
+
+        # Context Manager levels L2 (preferences), L5 (recalled memories)
+        # and L3 (State Snapshot), already ordered and bounded.
+        for block in context.get(
+            "context_blocks",
+            [],
+        ):
+            messages.append(
+                {
+                    "role": "user",
+                    "content": render_block(block),
                 }
             )
 

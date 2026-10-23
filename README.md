@@ -616,6 +616,11 @@ Do not expose private backend secrets through `NEXT_PUBLIC_*` variables.
 | `AEHUB_MODEL_PRICES` | Prices as JSON, USD per 1M tokens: `{"<model>": {"input": 1.0, "output": 4.0}}`. Unpriced models use a deliberately high fallback price and are flagged as estimated. | none |
 | `AEHUB_DEFAULT_MODEL_PRICE` | Fallback price `input,output` | `15,60` |
 | `AEHUB_RUN_MAX_COST` / `AEHUB_MONTHLY_BUDGET` | Per-run hard stop and monthly cap, in USD (warning at `AEHUB_BUDGET_WARNING_RATIO`) | `2` / `30` (`0.8`) |
+| `AEHUB_CONTEXT_BUDGET` | Token budget of one model request, split across the Context Manager levels L0–L5 (spec 4.2) | `88000` |
+| `AEHUB_SNAPSHOT_EVERY` | Tool calls between State Snapshots; older calls leave the recent window and are summarized (clamped to 10–20) | `15` |
+| `AEHUB_MEMORY_ENABLED` | Cross-session long-term memory: recall at run start, indexing of accepted runs | `1` |
+| `AEHUB_EMBEDDER` / `AEHUB_EMBEDDING_MODEL` | Memory embedder: `sentence-transformers` (local model) or `hash` (no download, weaker recall) | `sentence-transformers` / `all-MiniLM-L6-v2` |
+| `AEHUB_MEMORY_MIN_SIMILARITY` | Minimum cosine similarity for a vector match in hybrid retrieval | `0.25` |
 | `AEHUB_ALLOWED_DIRS` | Folders that filesystem tools may touch (`os.pathsep`-separated) | `./workspace` |
 | `AEHUB_MCP_ALLOWED_SERVERS` | Comma-separated MCP server URLs the bridge may connect to | none (no MCP server) |
 | `FRONTEND_URL` / `AEHUB_ALLOWED_ORIGINS` | Browser origins allowed by CORS and the WebSocket | `http://localhost:3000` |
@@ -927,95 +932,46 @@ Example:
 Always use concise answers unless explicitly asked for detail.
 ```
 
-## Memory retrieval
+## Context Manager and memory retrieval
 
-The current `AuroraMemoryManager` loads semantic and procedural context and injects it into the agent prompt.
+Every model request of the native engine is assembled by the Context Manager
+(`backend/app/agent_engine/context.py`) inside one token budget
+(`AEHUB_CONTEXT_BUDGET`, ~88k by default):
 
-Conceptually:
+| Level | Content |
+| --- | --- |
+| L0 System | system prompt and tool schemas |
+| L1 Task | the goal of the run and the checker feedback |
+| L2 Project | the user's trusted preferences and rules |
+| L3 Working set | the State Snapshot (Goal / Completed / Failed / Pending) of older tool calls |
+| L4 Recent | the latest tool calls and results |
+| L5 Historical | memories from earlier sessions, recalled by hybrid retrieval |
 
-```text
-Session ID
-   ↓
-Memory Manager
-   ↓
-Semantic Memory
-Procedural Memory
-   ↓
-Context Assembly
-   ↓
-Agent System Prompt
-```
+Every `AEHUB_SNAPSHOT_EVERY` tool calls the older calls leave L4 and are
+summarized in the snapshot. The snapshot is deterministic (no model call) and
+never quotes output of untrusted tools. The durable run state keeps every
+observation; only the model input is compacted.
 
 ## RAG
 
-A dedicated vector-database RAG pipeline is **not currently implemented in the repository**.
+Long-term memory lives in the `memory_chunks` table
+(`backend/app/memory/store.py`), scoped to the workspace and the user, not
+to the login session, so a fact saved in one session is recalled in the next.
 
-The architecture is compatible with adding one.
+- Indexing: memory tools (`save_semantic_memory`, `save_procedural_memory`,
+  `save_user_preference`) and every run accepted by the Critic, chunked and
+  embedded.
+- Retrieval: PostgreSQL full-text search (GIN index on `tsvector`) and
+  pgvector cosine distance, fused with Reciprocal Rank Fusion, packed into the
+  L5 budget at the start of each run.
+- Poisoning: anything written while untrusted content (web, files, MCP) is in
+  the run context is stored as untrusted. It never becomes a preference or
+  rule (L2) and is recalled only inside an untrusted-data fence.
+- Control: `GET /api/memory`, `POST /api/memory/preferences`,
+  `DELETE /api/memory/{id}` let the user review, add and forget memories.
 
-A future RAG implementation could follow:
-
-```text
-Documents
-   ↓
-Chunking
-   ↓
-Embeddings
-   ↓
-Vector Database
-   ↓
-Similarity Search
-   ↓
-Top-K Context
-   ↓
-Agent
-   ↓
-LLM
-```
-
-Candidate technologies include:
-
-* pgvector;
-* Qdrant;
-* Pinecone;
-* Weaviate;
-* another vector store appropriate to the deployment.
-
-RAG should be added as a dedicated retrieval skill rather than tightly coupling document retrieval to the core agent graph.
-
----
-
-# Multi-Agent System
-
-ÆHub already contains a **supervisor-style delegation pattern**.
-
-The supervisor skill can delegate complex research requests to a specialized research subagent.
-
-Current structure:
-
-```text
-                    ┌────────────────────┐
-                    │  A.U.R.O.R.A.      │
-                    │    Supervisor      │
-                    └─────────┬──────────┘
-                              │
-                    delegate_to_researcher
-                              │
-                              ▼
-                    ┌────────────────────┐
-                    │ Research Subagent  │
-                    │                    │
-                    │ Web Search Tool    │
-                    └─────────┬──────────┘
-                              │
-                              ▼
-                       Research Result
-                              │
-                              ▼
-                    Supervisor Synthesis
-                              │
-                              ▼
-                         User Output
-```
+The legacy `AuroraMemoryManager` (session-scoped `vector_memory` table) is
+still used by older workers.
 
 ## Current pattern
 

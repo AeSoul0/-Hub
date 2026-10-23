@@ -12,9 +12,10 @@ No LangChain decorators or implicit default session are used.
 from __future__ import annotations
 
 import contextvars
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from app.memory.manager import AuroraMemoryManager
+from app.memory.store import MemoryKind, MemoryStore
 
 from .base import BaseSkill, RiskLevel, SkillMetadata, ToolMetadata
 
@@ -24,8 +25,24 @@ from .base import BaseSkill, RiskLevel, SkillMetadata, ToolMetadata
 # ==============================================================================
 
 
+@dataclass(frozen=True)
+class MemoryScope:
+    """
+    Trusted memory scope of the tool call in progress.
+
+    trusted is False when the run context already holds untrusted content:
+    whatever the model saves then may be attacker-influenced, so it is
+    stored as untrusted and never becomes a preference or rule (M6).
+    """
+
+    session_id: str
+    workspace_id: str
+    principal_id: Optional[str] = None
+    trusted: bool = True
+
+
 _memory_context: contextvars.ContextVar[
-    Optional[Tuple[str, str]]
+    Optional[MemoryScope]
 ] = contextvars.ContextVar(
     "aehub_memory_context",
     default=None,
@@ -35,6 +52,8 @@ _memory_context: contextvars.ContextVar[
 def set_memory_context(
     session_id: str,
     workspace_id: str,
+    principal_id: Optional[str] = None,
+    trusted: bool = True,
 ) -> None:
     """
     Install the authenticated memory scope for the current execution context.
@@ -52,9 +71,11 @@ def set_memory_context(
         )
 
     _memory_context.set(
-        (
-            session_id,
-            workspace_id,
+        MemoryScope(
+            session_id=session_id,
+            workspace_id=workspace_id,
+            principal_id=principal_id,
+            trusted=trusted,
         )
     )
 
@@ -66,37 +87,68 @@ def clear_memory_context() -> None:
     _memory_context.set(None)
 
 
-def _require_memory_context() -> Tuple[str, str]:
+def _require_memory_scope() -> MemoryScope:
     """
     Return the authenticated memory scope or fail closed.
     """
-    context = _memory_context.get()
+    scope = _memory_context.get()
 
-    if context is None:
+    if scope is None:
         raise PermissionError(
             "Memory execution context is not available."
         )
 
-    session_id, workspace_id = context
-
-    if not session_id or not workspace_id:
+    if not scope.session_id or not scope.workspace_id:
         raise PermissionError(
             "Memory execution context is incomplete."
         )
 
-    return session_id, workspace_id
+    return scope
 
 
-def _build_manager() -> AuroraMemoryManager:
+def _require_memory_context() -> Tuple[str, str]:
     """
-    Construct a memory manager bound to the trusted execution scope.
+    Return the (session_id, workspace_id) pair or fail closed.
     """
-    session_id, workspace_id = _require_memory_context()
+    scope = _require_memory_scope()
 
-    return AuroraMemoryManager(
-        session_id=session_id,
-        workspace_id=workspace_id,
+    return scope.session_id, scope.workspace_id
+
+
+def _save(
+    content: str,
+    kind: MemoryKind,
+    label: str,
+) -> str:
+    """
+    Persist content in the long-term store of the authenticated principal.
+    """
+    if not content or not content.strip():
+        raise ValueError(
+            f"{label} memory content cannot be empty."
+        )
+
+    scope = _require_memory_scope()
+
+    if not scope.principal_id:
+        raise PermissionError(
+            "Memory execution context has no principal."
+        )
+
+    MemoryStore(
+        workspace_id=scope.workspace_id,
+        principal_id=scope.principal_id,
+    ).add(
+        content.strip(),
+        kind,
+        trusted=scope.trusted,
+        source="agent",
+        session_id=scope.session_id,
     )
+
+    suffix = "" if scope.trusted else " (stored as untrusted)"
+
+    return f"{label} memory saved{suffix}: {content.strip()}"
 
 
 # ==============================================================================
@@ -108,40 +160,27 @@ def save_semantic_memory(
     fact: str,
 ) -> str:
     """
-    Persist a semantic fact inside the authenticated workspace.
+    Persist a durable fact about the user or their projects.
     """
-    if not fact or not fact.strip():
-        raise ValueError(
-            "Semantic memory content cannot be empty."
-        )
-
-    manager = _build_manager()
-
-    manager.save_semantic(
-        fact.strip()
-    )
-
-    return f"Semantic memory saved: {fact.strip()}"
+    return _save(fact, MemoryKind.FACT, "Semantic")
 
 
 def save_procedural_memory(
     rule: str,
 ) -> str:
     """
-    Persist a procedural rule inside the authenticated workspace.
+    Persist a durable procedure or working rule.
     """
-    if not rule or not rule.strip():
-        raise ValueError(
-            "Procedural memory content cannot be empty."
-        )
+    return _save(rule, MemoryKind.RULE, "Procedural")
 
-    manager = _build_manager()
 
-    manager.save_procedural(
-        rule.strip()
-    )
-
-    return f"Procedural memory saved: {rule.strip()}"
+def save_user_preference(
+    preference: str,
+) -> str:
+    """
+    Persist a durable user preference (tone, language, habits).
+    """
+    return _save(preference, MemoryKind.PREFERENCE, "Preference")
 
 
 # ==============================================================================
@@ -165,10 +204,10 @@ class MemorySkill(BaseSkill):
         return SkillMetadata(
             name="memory",
             description=(
-                "Allows A.U.R.O.R.A. to persist semantic and procedural "
-                "memories inside the authenticated workspace."
+                "Allows A.U.R.O.R.A. to persist facts, rules and user "
+                "preferences that are recalled in later sessions."
             ),
-            version="1.0.0",
+            version="1.1.0",
         )
 
     @property
@@ -179,6 +218,7 @@ class MemorySkill(BaseSkill):
         return [
             save_semantic_memory,
             save_procedural_memory,
+            save_user_preference,
         ]
 
     def get_tool_metadata(self) -> Dict[str, ToolMetadata]:
@@ -240,6 +280,33 @@ class MemorySkill(BaseSkill):
                 idempotent=False,
                 audit_policy="standard",
             ),
+            "save_user_preference": ToolMetadata(
+                name="save_user_preference",
+                description="Stores a durable preference of the user.",
+                risk_level=RiskLevel.LOW,
+                permissions_required=[
+                    "memory:write",
+                ],
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "preference": {
+                            "type": "string",
+                            "minLength": 1,
+                        }
+                    },
+                    "required": [
+                        "preference",
+                    ],
+                    "additionalProperties": False,
+                },
+                output_schema={
+                    "type": "string",
+                },
+                max_output=2000,
+                idempotent=False,
+                audit_policy="standard",
+            ),
         }
 
     @property
@@ -250,7 +317,8 @@ class MemorySkill(BaseSkill):
         return (
             "You have access to a long-term Memory system. "
             "When the user explicitly asks you to remember a durable fact, "
-            "preference, or procedure, use the appropriate memory tool. "
+            "preference, or procedure, use the appropriate memory tool; "
+            "relevant memories from earlier sessions are recalled for you. "
             "Do not persist transient conversational context."
         )
 

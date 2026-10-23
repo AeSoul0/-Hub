@@ -21,7 +21,7 @@ from .identity import (
 
 # Audit and memory domain models.
 from .audit import AuditLog
-from .memory import VectorMemory, MemoryType
+from .memory import MemoryChunk, VectorMemory, MemoryType
 
 # Runtime persistence models.
 # Aliasing AgentRun avoids a naming collision with the Pydantic AgentRun model
@@ -42,6 +42,7 @@ __all__ = [
     "RefreshToken",
     "RoleEnum",
     "AuditLog",
+    "MemoryChunk",
     "VectorMemory",
     "MemoryType",
     "RuntimeAgentRun",
