@@ -53,19 +53,26 @@ DOCS = {
 }
 
 
-def _surface():
-    surface = set()
+def _walk(routes, prefix: str = ""):
+    for route in routes:
+        # Newer FastAPI keeps each included router as one branch instead of
+        # copying its routes into the app; descend into it.
+        included = getattr(route, "original_router", None)
 
-    for route in main.app.routes:
-        if isinstance(route, Mount):
-            surface.add(("MOUNT", route.path))
+        if included is not None:
+            context = getattr(route, "include_context", None)
+            yield from _walk(included.routes, prefix + getattr(context, "prefix", ""))
+        elif isinstance(route, Mount):
+            yield ("MOUNT", prefix + route.path)
         elif isinstance(route, WebSocketRoute):
-            surface.add(("WS", route.path))
+            yield ("WS", prefix + route.path)
         else:
             for method in route.methods - {"HEAD"}:
-                surface.add((method, route.path))
+                yield (method, prefix + route.path)
 
-    return surface
+
+def _surface():
+    return set(_walk(main.app.routes))
 
 
 def test_api_surface_is_exactly_the_reviewed_one():
