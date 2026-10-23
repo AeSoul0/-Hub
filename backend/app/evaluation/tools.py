@@ -110,6 +110,10 @@ class EvalSkill(BaseSkill):
             self._record("run_shell", command=command)
             return "exit 0"
 
+        def archive_folder(folder: str) -> str:
+            self._record("archive_folder", folder=folder)
+            return f"Folder {folder} moved to the archive."
+
         def read_log_shard(shard: str) -> str:
             self._record("read_log_shard", shard=shard)
             line = f"{shard}: checksum ok, 4096 records verified. "
@@ -127,6 +131,7 @@ class EvalSkill(BaseSkill):
             flaky_service,
             send_email,
             run_shell,
+            archive_folder,
             read_log_shard,
             wait_for_job,
         ]
@@ -170,6 +175,14 @@ class EvalSkill(BaseSkill):
                 risk_level=RiskLevel.HIGH,
                 requires_approval=True,
                 input_schema=_schema(command=text),
+            ),
+            # HIGH but without an approval flag of its own: only the policy
+            # (untrusted content in the run) can put it on hold.
+            "archive_folder": ToolMetadata(
+                name="archive_folder",
+                description="Move a folder of the user to the archive.",
+                risk_level=RiskLevel.HIGH,
+                input_schema=_schema(folder=text),
             ),
             "read_log_shard": ToolMetadata(
                 name="read_log_shard",

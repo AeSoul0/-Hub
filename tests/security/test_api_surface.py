@@ -45,6 +45,9 @@ MANAGEMENT = {
     ("GET", "/api/memory"),
     ("POST", "/api/memory/preferences"),
     ("DELETE", "/api/memory/{memory_id}"),
+    # M13: the document index of the working folder; search is a tool.
+    ("GET", "/api/documents"),
+    ("POST", "/api/documents/sync"),
     ("GET", "/api/events"),
     ("GET", "/health"),
     ("MOUNT", "/metrics"),

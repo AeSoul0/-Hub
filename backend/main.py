@@ -31,6 +31,7 @@ from app.api import (
     approvals,
     audit,
     auth,
+    documents,
     memory,
     realtime,
     runs,
@@ -362,6 +363,10 @@ app.include_router(
 
 app.include_router(
     memory.router
+)
+
+app.include_router(
+    documents.router
 )
 
 app.include_router(

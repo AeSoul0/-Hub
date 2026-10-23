@@ -36,6 +36,9 @@ from .runtime_state import (
 # Settings edited from the Control Plane (M12).
 from .settings import AppSetting
 
+# Files of the working folder indexed for document search (M13).
+from .documents import DocumentFile
+
 __all__ = [
     "Base",
     "Workspace",
@@ -53,4 +56,5 @@ __all__ = [
     "Budget",
     "MonthlySpend",
     "AppSetting",
+    "DocumentFile",
 ]

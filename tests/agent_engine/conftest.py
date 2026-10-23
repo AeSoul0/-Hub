@@ -23,6 +23,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.agent_engine.adapters.openai_adapter import OpenAIAdapter
 from app.domain.models.audit import ApprovalRecord, AuditChainLink, AuditLog
+from app.domain.models.documents import DocumentFile
 from app.domain.models.identity import Base
 from app.domain.models.memory import MemoryChunk
 from app.domain.models.runtime_state import AgentRun as DbAgentRun
@@ -150,6 +151,7 @@ def db_session_factory():
             ApprovalRecord.__table__,
             MemoryChunk.__table__,
             AppSetting.__table__,
+            DocumentFile.__table__,
         ],
     )
 

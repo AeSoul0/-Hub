@@ -90,6 +90,7 @@ class MemoryHit:
     session_id: Optional[str]
     created_at: Optional[datetime]
     score: float = 0.0
+    source: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -100,6 +101,7 @@ class MemoryHit:
             "session_id": self.session_id,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "score": self.score,
+            "source": self.source,
         }
 
 
@@ -330,6 +332,7 @@ class MemoryStore:
             session_id=row.session_id,
             created_at=row.created_at,
             score=score,
+            source=row.source,
         )
 
     # ------------------------------------------------------------------ write
