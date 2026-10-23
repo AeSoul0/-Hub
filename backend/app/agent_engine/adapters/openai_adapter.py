@@ -20,6 +20,7 @@ from app.agent_engine.adapters.base import ModelProvider
 from app.agent_engine.context import render_block
 from app.agent_engine.models import ToolProposal
 from app.agent_engine.pricing import usage_from_response
+from app.core.runtime_config import config_value
 
 
 # Prepended to tool output whose provenance is untrusted (web, files, MCP).
@@ -53,10 +54,8 @@ class OpenAIAdapter(ModelProvider):
         Initialize the adapter without performing network I/O.
         """
         resolved_model = (
-            os.getenv(
-                "OPENAI_MODEL",
-                "gpt-5.5",
-            )
+            config_value("OPENAI_MODEL")
+            or "gpt-5.5"
             if model_name == "default"
             else model_name
         )

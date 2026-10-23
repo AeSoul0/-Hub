@@ -33,6 +33,9 @@ from .runtime_state import (
     MonthlySpend,
 )
 
+# Settings edited from the Control Plane (M12).
+from .settings import AppSetting
+
 __all__ = [
     "Base",
     "Workspace",
@@ -49,4 +52,5 @@ __all__ = [
     "IdempotencyKey",
     "Budget",
     "MonthlySpend",
+    "AppSetting",
 ]

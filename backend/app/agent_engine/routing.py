@@ -40,6 +40,7 @@ from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from app.agent_engine.adapters.base import ModelProvider
+from app.core.runtime_config import config_value
 
 
 logger = logging.getLogger(__name__)
@@ -105,10 +106,10 @@ class ModelTarget:
 
 
 def _default_chain(role: Role) -> List[ModelTarget]:
-    model = os.getenv("OPENAI_MODEL", "gpt-5.5")
+    model = config_value("OPENAI_MODEL") or "gpt-5.5"
 
     if role is Role.CRITIC:
-        model = os.getenv("AEHUB_CHECKER_MODEL") or model
+        model = config_value("AEHUB_CHECKER_MODEL") or model
 
     return [ModelTarget("openai", model)]
 
@@ -119,7 +120,7 @@ class RoutingConfig:
 
     @classmethod
     def from_env(cls) -> "RoutingConfig":
-        raw = os.getenv("AEHUB_MODEL_ROLES", "").strip()
+        raw = (config_value("AEHUB_MODEL_ROLES") or "").strip()
         configured: Dict[str, Any] = {}
 
         if raw:

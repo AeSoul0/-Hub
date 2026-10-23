@@ -96,15 +96,19 @@ export async function fetchApi(
 
 /**
  * A non-2xx response. `status` lets callers tell an expired session (401)
- * from other failures; `message` carries the backend's `detail` when present.
+ * from other failures; `message` carries the backend's `detail` when present;
+ * `errors` holds per-field messages when the detail is
+ * `{message, errors: {field: message}}` (Settings, M12).
  */
 export class ApiError extends Error {
     readonly status: number;
+    readonly errors: Record<string, string>;
 
-    constructor(status: number, message: string) {
+    constructor(status: number, message: string, errors: Record<string, string> = {}) {
         super(message);
         this.name = "ApiError";
         this.status = status;
+        this.errors = errors;
     }
 }
 
@@ -114,17 +118,26 @@ async function raiseForStatus(response: Response): Promise<void> {
     }
 
     let message = `HTTP ${response.status} ${response.statusText}`.trim();
+    let errors: Record<string, string> = {};
 
     try {
         const body = await response.json();
-        if (body && typeof body.detail === "string") {
-            message = body.detail;
+        const detail = body?.detail;
+        if (typeof detail === "string") {
+            message = detail;
+        } else if (detail && typeof detail === "object") {
+            if (typeof detail.message === "string") {
+                message = detail.message;
+            }
+            if (detail.errors && typeof detail.errors === "object") {
+                errors = detail.errors;
+            }
         }
     } catch {
         // Not JSON: keep the status line.
     }
 
-    throw new ApiError(response.status, message);
+    throw new ApiError(response.status, message, errors);
 }
 
 // ============================================================================
@@ -164,6 +177,31 @@ export async function postJson<T>(
     const response = await fetchApi(endpoint, {
         ...options,
         method: "POST",
+        headers,
+        body: JSON.stringify(body),
+    });
+
+    await raiseForStatus(response);
+
+    return response.json() as Promise<T>;
+}
+
+/**
+ * Executes a JSON PUT request and parses the JSON response.
+ */
+export async function putJson<T>(
+    endpoint: string,
+    body: unknown,
+    options?: ApiClientOptions,
+): Promise<T> {
+    const headers = new Headers(options?.headers);
+    if (!headers.has("Content-Type")) {
+        headers.set("Content-Type", "application/json");
+    }
+
+    const response = await fetchApi(endpoint, {
+        ...options,
+        method: "PUT",
         headers,
         body: JSON.stringify(body),
     });

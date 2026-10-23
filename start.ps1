@@ -1,38 +1,33 @@
 <#
 .SYNOPSIS
-    A.U.R.O.R.A. System Genesis Script (M10)
-    
+    Start ÆHub on Windows.
+
 .DESCRIPTION
-    Bootstraps the entire 100/100 AI Operating Platform.
-    Builds the Docker containers, initializes the Vector DB, 
-    and launches the UI and backend.
+    Thin wrapper over the launcher (scripts/aehub.py): on the first run it
+    stores the keys in Windows Credential Manager and picks the working
+    folder, then it starts the stack with Docker Compose. Keys never go to a
+    file.
 #>
 
-Write-Host "=======================================" -ForegroundColor Cyan
-Write-Host " A.U.R.O.R.A. 100/100 GENESIS (M10) " -ForegroundColor Cyan
-Write-Host "=======================================" -ForegroundColor Cyan
-
-# Check dependencies
 if (!(Get-Command docker -ErrorAction SilentlyContinue)) {
     Write-Host "[ERROR] Docker is not installed or not running." -ForegroundColor Red
     exit 1
 }
 
-Write-Host "[INFO] Bootstrapping Docker Infrastructure..." -ForegroundColor Yellow
-docker compose up -d postgres redis
+$python = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } else { "py" }
 
-Write-Host "[INFO] Waiting for PostgreSQL (pgvector) to initialize..." -ForegroundColor Yellow
-Start-Sleep -Seconds 5
+# No login key in the keyring yet: this is the first run.
+& $python scripts/aehub.py login-key *> $null
+if ($LASTEXITCODE -ne 0) {
+    & $python scripts/aehub.py setup
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
 
-Write-Host "[INFO] Building AI Backend and Next.js Frontend..." -ForegroundColor Yellow
-docker compose build
-
-Write-Host "[INFO] Igniting the Core (Backend, Frontend, Celery Workers)..." -ForegroundColor Yellow
-docker compose up -d
+& $python scripts/aehub.py up
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host ""
-Write-Host "[OK] A.U.R.O.R.A. System is now Online." -ForegroundColor Green
-Write-Host "Dashboard: http://localhost:3000" -ForegroundColor White
-Write-Host "API Gateway: http://localhost:3002/docs" -ForegroundColor White
-Write-Host "=======================================" -ForegroundColor Cyan
-Write-Host "To view logs in real-time, run: docker compose logs -f" -ForegroundColor DarkGray
+Write-Host "[OK] ÆHub is starting." -ForegroundColor Green
+Write-Host "Control Plane: http://localhost:3000/control-plane" -ForegroundColor White
+Write-Host "Login key:     python scripts/aehub.py login-key" -ForegroundColor White
+Write-Host "Logs:          docker compose logs -f" -ForegroundColor DarkGray

@@ -15,13 +15,13 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import threading
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Awaitable, Dict, List, Optional, TypeVar
 
 from app.agent_engine.errors import RunCancelledError
+from app.core.runtime_config import config_value
 
 
 T = TypeVar("T")
@@ -209,14 +209,14 @@ run_registry = RunRegistry()
 
 def _env_float(name: str, default: float) -> float:
     try:
-        return float(os.getenv(name, default))
+        return float(config_value(name, str(default)))
     except ValueError:
         return default
 
 
 def _env_int(name: str, default: int) -> int:
     try:
-        return int(os.getenv(name, default))
+        return int(config_value(name, str(default)))
     except ValueError:
         return default
 
@@ -224,8 +224,9 @@ def _env_int(name: str, default: int) -> int:
 @dataclass(frozen=True)
 class RunLimits:
     """
-    Per-run and monthly limits. Spend is in USD. Read from the environment on
-    every run so a change applies without a restart. A limit of 0 disables it.
+    Per-run and monthly limits. Spend is in USD. Read on every run (Control
+    Plane settings, then the environment) so a change applies without a
+    restart. A limit of 0 disables it.
     """
 
     max_run_cost: float

@@ -24,7 +24,6 @@ facade and must not reimplement engine behavior.
 
 from __future__ import annotations
 
-import os
 from datetime import datetime
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
@@ -41,6 +40,7 @@ from app.agent_engine.routing import (
 )
 from app.agent_engine.runtime import AgentRuntime
 from app.agent_engine.state.manager import AgentStateManager
+from app.core.runtime_config import config_value
 from app.core.security import Permission, Principal
 
 
@@ -178,7 +178,7 @@ class AgentEngine:
             checker_provider = checker_provider or OpenAIAdapter(
                 model_name=(
                     checker_model_name
-                    or os.getenv("AEHUB_CHECKER_MODEL")
+                    or config_value("AEHUB_CHECKER_MODEL")
                     or model_provider.model_name
                 ),
             )
@@ -590,8 +590,18 @@ async def get_agent_engine() -> AgentEngine:
     return _agent_engine
 
 
+def reset_agent_engine() -> None:
+    """
+    Drop the engine so the next request builds one from the current model
+    settings (M12). Runs already started keep the engine they hold.
+    """
+    global _agent_engine
+    _agent_engine = None
+
+
 __all__ = [
     "AgentEngine",
     "NativeAgentWorker",
     "get_agent_engine",
+    "reset_agent_engine",
 ]

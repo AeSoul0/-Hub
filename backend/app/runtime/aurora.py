@@ -87,6 +87,15 @@ async def get_aurora_app() -> NativeAuroraApplication:
     return _aurora_app
 
 
+def reset_aurora_app() -> None:
+    """
+    Drop the facade so the next request builds it from the current model
+    settings (M12).
+    """
+    global _aurora_app
+    _aurora_app = None
+
+
 # ==============================================================================
 # LEGACY DIRECT EXECUTION ENTRYPOINT
 # ==============================================================================
@@ -154,5 +163,6 @@ __all__ = [
     "NativeAuroraApplication",
     "NativeAuroraWorker",
     "get_aurora_app",
+    "reset_aurora_app",
     "run_aurora_agent",
 ]

@@ -47,6 +47,9 @@ async def process_audio_to_text(base64_audio: str) -> str:
     The helper owns only temporary-file handling and the external HTTP request.
     Agent execution and authentication remain outside this function.
     """
+    if not (os.getenv("GROQ_API_KEY") or "").strip():
+        return "Voice input is off: GROQ_API_KEY is not set."
+
     temp_path = None
 
     try:

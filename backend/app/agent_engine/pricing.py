@@ -16,9 +16,10 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
+
+from app.core.runtime_config import config_value
 
 
 logger = logging.getLogger(__name__)
@@ -54,30 +55,69 @@ class ModelUsage:
         }
 
 
-def _configured_prices() -> Dict[str, Tuple[float, float]]:
-    raw = os.getenv("AEHUB_MODEL_PRICES", "").strip()
+def parse_prices(raw: str) -> Dict[str, Tuple[float, float]]:
+    """
+    Parse AEHUB_MODEL_PRICES. Raises ValueError on anything but a JSON object
+    of model -> {"input": USD, "output": USD} with non-negative prices.
+    """
+    raw = raw.strip()
 
     if not raw:
         return {}
 
     try:
         table = json.loads(raw)
-        return {
+        prices = {
             str(model): (float(price["input"]), float(price["output"]))
             for model, price in table.items()
         }
-    except (ValueError, TypeError, KeyError, AttributeError):
+    except (ValueError, TypeError, KeyError, AttributeError) as exc:
+        raise ValueError(
+            'Prices must be a JSON object: model -> {"input": USD, "output": USD}.'
+        ) from exc
+
+    if any(value < 0 for pair in prices.values() for value in pair):
+        raise ValueError("Prices cannot be negative.")
+
+    return prices
+
+
+def parse_price_pair(raw: str) -> Tuple[float, float]:
+    """
+    Parse AEHUB_DEFAULT_MODEL_PRICE ("input,output"). Raises ValueError.
+    """
+    try:
+        input_price, output_price = (float(part) for part in raw.split(","))
+    except ValueError as exc:
+        raise ValueError("The price must be 'input,output' in USD per 1M tokens.") from exc
+
+    if input_price < 0 or output_price < 0:
+        raise ValueError("Prices cannot be negative.")
+
+    return input_price, output_price
+
+
+def _configured_prices() -> Dict[str, Tuple[float, float]]:
+    try:
+        return parse_prices(config_value("AEHUB_MODEL_PRICES") or "")
+    except ValueError:
         logger.error("AEHUB_MODEL_PRICES is not valid JSON pricing; using the fallback price.")
         return {}
 
 
+def configured_price_models() -> set:
+    """
+    Models with a configured (not estimated) price.
+    """
+    return set(_configured_prices())
+
+
 def _fallback_price() -> Tuple[float, float]:
-    raw = os.getenv("AEHUB_DEFAULT_MODEL_PRICE", "").strip()
+    raw = (config_value("AEHUB_DEFAULT_MODEL_PRICE") or "").strip()
 
     if raw:
         try:
-            input_price, output_price = (float(part) for part in raw.split(","))
-            return input_price, output_price
+            return parse_price_pair(raw)
         except ValueError:
             logger.error("AEHUB_DEFAULT_MODEL_PRICE must be 'input,output'.")
 

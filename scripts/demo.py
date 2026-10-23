@@ -6,12 +6,16 @@
     UI -> outcome and cost visible.
 
 Steps:
-1. Creates the configuration on a clean machine: `.env` (database password)
-   and `backend/.env` (session secret, model settings). Secrets are random
-   and never printed; the model API key is asked once, without echo.
-2. Starts PostgreSQL, Redis, backend and frontend with Docker Compose.
-3. Logs in and sends a real command whose execution needs a HIGH tool
-   (a shell command in the sandbox), so the run stops for approval.
+1. Creates the configuration on a clean machine through the launcher
+   (scripts/aehub.py): database password in `.env`, login key and model API
+   key in the OS keyring. Secrets are random or asked once without echo, and
+   never printed.
+2. Starts PostgreSQL, Redis, backend and frontend with Docker Compose, with
+   the keys from the keyring.
+3. Logs in, sets the Worker and Critic models through the Settings API if
+   they are not configured yet, and sends a real command whose execution
+   needs a HIGH tool (a shell command in the sandbox), so the run stops for
+   approval.
 4. Waits until you approve or deny it from http://localhost:3000.
 5. Prints what happened and what it cost.
 
@@ -22,23 +26,18 @@ dependency is installed.
 from __future__ import annotations
 
 import argparse
-import getpass
 import http.cookiejar
 import json
 import secrets
 import shutil
-import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
-from pathlib import Path
 from typing import Any, Dict, Optional
 
+import aehub
 
-ROOT = Path(__file__).resolve().parents[1]
-ROOT_ENV = ROOT / ".env"
-BACKEND_ENV = ROOT / "backend" / ".env"
 
 API = "http://127.0.0.1:3002"
 UI = "http://localhost:3000"
@@ -57,88 +56,69 @@ DEMO_COMMAND = (
 # ==============================================================================
 
 
-def read_env(path: Path) -> Dict[str, str]:
-    values: Dict[str, str] = {}
-
-    if not path.exists():
-        return values
-
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-
-        key, value = line.split("=", 1)
-        values[key.strip()] = value.strip().strip('"').strip("'")
-
-    return values
-
-
-def append_env(path: Path, values: Dict[str, str], note: str) -> None:
-    if not values:
-        return
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    existing = path.read_text(encoding="utf-8") if path.exists() else ""
-    lines = [] if not existing or existing.endswith("\n") else [""]
-    lines.append(f"# {note}")
-    lines.extend(f"{key}={value}" for key, value in values.items())
-    path.write_text(existing + "\n".join(lines) + "\n", encoding="utf-8")
-
-
 def ask(prompt: str, secret: bool = False) -> str:
     while True:
-        value = (getpass.getpass(prompt) if secret else input(prompt)).strip()
+        value = aehub.prompt(prompt, secret)
 
         if value:
             return value
 
 
-def ensure_configuration() -> Dict[str, str]:
+def ensure_configuration(store: aehub.SecretStore) -> None:
     """
     Fill in what a clean checkout lacks. Existing values are never changed.
     """
-    root = read_env(ROOT_ENV)
-    if "POSTGRES_PASSWORD" not in root:
-        append_env(
-            ROOT_ENV,
-            {"POSTGRES_PASSWORD": secrets.token_urlsafe(24)},
-            "Created by make demo: password of the local PostgreSQL container.",
-        )
+    if aehub.ensure_database_password():
         print("  created .env with a random database password")
 
-    backend = read_env(BACKEND_ENV)
-    missing: Dict[str, str] = {}
+    moved = aehub.migrate_env_secrets(store)
+    if moved:
+        print(f"  moved {', '.join(moved)} from backend/.env into the keyring")
 
-    if "AEHUB_SECRET_KEY" not in backend:
-        missing["AEHUB_SECRET_KEY"] = secrets.token_urlsafe(32)
+    if aehub.ensure_login_key(store):
+        print("  created the Control Plane login key in the keyring")
 
-    # Required by the settings loader; only the legacy voice path uses it.
-    if "GROQ_API_KEY" not in backend:
-        missing["GROQ_API_KEY"] = "not-configured"
-
-    has_model = any(
-        key in backend for key in ("OPENAI_API_KEY", "OPENROUTER_API_KEY", "AEHUB_MODEL_ROLES")
-    )
-
-    if not has_model:
+    if not aehub.has_model_key(store):
         print(
-            "\n  The demo needs a real model. Enter an OpenAI API key and two\n"
-            "  different models: one implements, the other (the Critic) reviews.\n"
-            "  (For OpenRouter or a local model, set AEHUB_MODEL_ROLES in\n"
-            "  backend/.env instead and run make demo again.)\n"
+            "\n  The demo needs a real model. Enter an OpenAI API key; it goes to\n"
+            f"  the OS keyring ({store.name}), not to a file.\n"
+            "  (For OpenRouter, run python scripts/aehub.py setup instead.)\n"
         )
-        missing["OPENAI_API_KEY"] = ask("  OPENAI_API_KEY (hidden): ", secret=True)
-        missing["OPENAI_MODEL"] = ask("  Worker model (OPENAI_MODEL): ")
-        missing["AEHUB_CHECKER_MODEL"] = ask("  Critic model, different from the worker: ")
+        store.set("OPENAI_API_KEY", ask("  OPENAI_API_KEY (hidden): ", secret=True))
 
-    append_env(BACKEND_ENV, missing, "Created by make demo.")
 
-    if missing:
-        print(f"  added {', '.join(sorted(missing))} to backend/.env")
+def ensure_models(client: "Client") -> bool:
+    """
+    Worker and Critic models through the Settings API (M12), when the
+    configuration would stop every run. Returns True when runs can start.
+    """
+    view = client.get("/api/settings")
+    codes = {issue["code"] for issue in view["issues"] if issue["severity"] == "error"}
 
-    return read_env(BACKEND_ENV)
+    if "routing_invalid" in codes:
+        print(
+            "\n  Choose two different models: one implements, the other (the Critic)\n"
+            "  reviews. You can change them later in Settings.\n"
+        )
+        worker = ask("  Worker model (e.g. an OpenAI model id): ")
+        critic = ask("  Critic model, different from the worker: ")
+
+        try:
+            view = client.request(
+                "PUT",
+                "/api/settings",
+                json.dumps({"values": {"OPENAI_MODEL": worker, "AEHUB_CHECKER_MODEL": critic}}).encode("utf-8"),
+            )
+        except urllib.error.HTTPError as exc:
+            print(f"  Settings refused: {exc.read().decode('utf-8', 'replace')}")
+            return False
+
+    errors = [issue["message"] for issue in view["issues"] if issue["severity"] == "error"]
+
+    for message in errors:
+        print(f"  ! {message}")
+
+    return not errors
 
 
 # ==============================================================================
@@ -222,12 +202,6 @@ def wait_for_health(timeout: float) -> None:
 # ==============================================================================
 
 
-def compose(*args: str) -> None:
-    command = ["docker", "compose", *args]
-    print("  $ " + " ".join(command))
-    subprocess.run(command, cwd=ROOT, check=True)
-
-
 def latest_run(client: Client, known: set) -> Optional[Dict[str, Any]]:
     for run in client.get("/api/runs/stats?days=1").get("runs", []):
         if run["run_id"] not in known:
@@ -247,15 +221,26 @@ def main() -> int:
         return 1
 
     print("1/5 Configuration")
-    backend_env = ensure_configuration()
+    try:
+        store = aehub.open_store()
+    except aehub.LauncherError as exc:
+        print(exc)
+        return 1
+
+    ensure_configuration(store)
 
     print("2/5 Starting the stack (the first build takes a while)")
-    compose("up", "-d", *([] if args.no_build else ["--build"]), *SERVICES)
+    aehub.up(store, build=not args.no_build, services=SERVICES)
     wait_for_health(timeout=300)
 
     print("3/5 Sending a real command")
     client = Client()
-    client.post_json("/api/auth/login", {"key": backend_env["AEHUB_SECRET_KEY"]})
+    client.post_json("/api/auth/login", {"key": store.get("AEHUB_SECRET_KEY")})
+
+    if not ensure_models(client):
+        print(f"  Fix the configuration at {UI}/control-plane/settings and run make demo again.")
+        return 1
+
     known = {run["run_id"] for run in client.get("/api/runs/stats?days=1").get("runs", [])}
     print(f"  > {DEMO_COMMAND}")
 
@@ -310,7 +295,7 @@ def main() -> int:
         f"{run['total_tokens']} tokens, cost ${run['cost']:.4f}"
     )
     print(f"  Details: {UI}/control-plane/runs")
-    print("\n  Stop the stack with: docker compose down")
+    print("\n  Stop the stack with: python scripts/aehub.py down")
 
     return 0
 
