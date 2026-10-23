@@ -38,6 +38,10 @@ MANAGEMENT = {
     ("POST", "/api/runs/{run_id}/cancel"),
     ("GET", "/api/runs/{run_id}"),
     ("GET", "/api/audit"),
+    # M12: settings change routing, prices and limits, never tools or secrets.
+    ("GET", "/api/settings"),
+    ("PUT", "/api/settings"),
+    ("POST", "/api/settings/onboarding"),
     ("GET", "/api/memory"),
     ("POST", "/api/memory/preferences"),
     ("DELETE", "/api/memory/{memory_id}"),

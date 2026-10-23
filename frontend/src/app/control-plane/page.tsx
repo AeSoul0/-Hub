@@ -1,9 +1,26 @@
 /**
  * @file frontend/src/app/control-plane/page.tsx
- * @description The Control Plane opens on the approval queue.
+ * @description The Control Plane opens on the first-run setup until it is
+ * done (M12), then on the approval queue.
  */
-import { redirect } from "next/navigation";
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+
+import { getJson } from "@/lib/api/client";
+import type { SettingsView } from "@/lib/api/settings";
 
 export default function ControlPlaneIndex() {
-    redirect("/control-plane/approvals");
+    const router = useRouter();
+
+    useEffect(() => {
+        getJson<SettingsView>("/api/settings")
+            .then((view) =>
+                router.replace(view.onboarding.completed ? "/control-plane/approvals" : "/control-plane/setup"),
+            )
+            .catch(() => router.replace("/control-plane/approvals"));
+    }, [router]);
+
+    return <div className="p-8 text-gray-400">Loading…</div>;
 }

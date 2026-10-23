@@ -461,6 +461,28 @@ The repository includes services for:
 * PostgreSQL;
 * Redis.
 
+### First run (about ten minutes)
+
+```bash
+python scripts/aehub.py setup    # or: make setup
+python scripts/aehub.py up       # or: make up
+```
+
+Then open http://localhost:3000/control-plane, sign in with the key printed by `python scripts/aehub.py login-key`, and follow the first-run setup: models (Worker and a different Critic), prices, budget, and a final check. Everything it sets can be changed later in **Settings** without a restart.
+
+The launcher (`scripts/aehub.py`, Python standard library only) keeps every secret in the **OS keyring** — Windows Credential Manager, macOS Keychain or the Linux Secret Service — never in a file:
+
+| Command | What it does |
+| --- | --- |
+| `setup` | Creates the database password (`.env`) and the Control Plane login key; asks for the provider keys (hidden input) and the agent's working folder; moves any key found in `backend/.env` into the keyring and removes it from the file. |
+| `up` / `down` | Starts / stops the stack. `up` reads the keys from the keyring and hands them to `docker compose` through its process environment; `docker-compose.yaml` passes them to the backend container. |
+| `secrets` | Which keys are set (never their values). |
+| `login-key` | Prints the Control Plane login key. |
+
+On Windows the launcher talks to Credential Manager directly. Elsewhere it needs the `keyring` package (`pip install keyring`), which it also prefers on Windows when installed; both read the same entries (service `aehub`). `start.ps1` runs `setup` on the first start and `up` afterwards.
+
+Keys passed by the launcher win over `backend/.env`, which now holds only non-secret settings. Running `docker compose up` by hand starts the backend without keys (it exits without a login key); put them in your shell environment or use the launcher.
+
 ### One-command demo
 
 ```bash
@@ -469,22 +491,13 @@ make demo
 
 `make demo` (or `python scripts/demo.py`, which needs only the Python standard library) runs the whole loop on a clean machine:
 
-1. writes `.env` (database password) and `backend/.env` (session secret, model settings) when they are missing. Secrets are random and never printed; the model API key is asked once, without echo;
+1. through the launcher, creates the database password and the login key, and asks once (without echo) for the model API key, which goes to the OS keyring;
 2. starts PostgreSQL, Redis, backend and frontend with Docker Compose and waits for `/health`;
-3. sends a real command that needs a HIGH-risk tool (a shell command in the sandbox), so the run stops for approval;
+3. if the Worker and Critic models are not configured, asks for them and saves them through the Settings API; then sends a real command that needs a HIGH-risk tool (a shell command in the sandbox), so the run stops for approval;
 4. waits while you approve or deny it from http://localhost:3000;
 5. prints the outcome and its cost.
 
-### Manual start
-
-Compose needs `POSTGRES_PASSWORD`, read from the shell or from a root `.env` file (ignored by Git):
-
-```bash
-echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)" > .env
-docker compose up --build
-```
-
-The backend container builds its `POSTGRES_URL` from the same variables, so the password lives in one place. The agent's working folder `./workspace` is mounted into the backend container. `backend/.env` is optional and holds the model settings.
+The backend container builds its `POSTGRES_URL` from `POSTGRES_PASSWORD` in the root `.env`, so the password lives in one place; the database is reachable only on this machine. The agent's working folder (`./workspace`, or the one chosen with `setup`, stored as `AEHUB_WORKSPACE_DIR` in `.env`) is mounted into the backend container.
 
 The current Compose configuration maps:
 
@@ -550,39 +563,27 @@ http://localhost:2003
 
 # Configuration
 
-The repository expects environment-specific configuration to remain outside version control.
+Configuration has three homes:
 
-Create:
+* **Secrets** (provider API keys, the login key) — the OS keyring, through the launcher (see *First run*). The backend reads them from its environment.
+* **Settings** — model roles, prices, budget and run limits. Edited in the Control Plane (**Settings**, `GET`/`PUT /api/settings`), stored in the `app_settings` table, applied from the next run without a restart. A setting never edited falls back to the environment variable of the same name, then to its default, so `backend/.env`, CI and tests keep working. Every change is validated as a whole (a Critic equal to a Worker is refused before it is saved) and recorded in the audit log as `settings.update`.
+* **Infrastructure** — database, Redis, CORS, paths: environment only (`backend/.env`, root `.env` for Compose).
 
-```text
-backend/.env
-frontend/.env.local
-```
+At startup the backend logs one line per configuration problem (`[CONFIG ERROR]`, `[CONFIG WARNING]`, …): Critic equal to a Worker, a provider without its key, models without a price, a run limit above the monthly budget, a missing working folder. The Settings page shows the same list. The API starts anyway, so the page can fix what it can; runs are refused while an error remains.
 
-Never commit real credentials.
+## Backend `.env` (local development)
 
-## Backend `.env`
-
-Example:
+Example for running the backend outside Docker:
 
 ```env
-# LLM provider
-GROQ_API_KEY=your_groq_api_key_here
-
-# API authentication
-AEHUB_SECRET_KEY=replace_with_a_long_random_secret
-
 # PostgreSQL
 POSTGRES_URL=postgresql://aehub_user:replace_password@localhost:5432/aehub_db
 
 # Optional Redis infrastructure
 REDIS_URL=redis://localhost:6379/0
-
-# Optional LangSmith configuration
-LANGSMITH_TRACING=false
-LANGSMITH_API_KEY=your_langsmith_key_here
-LANGSMITH_PROJECT=aehub
 ```
+
+Outside Docker, put the keys in your shell environment (for example `AEHUB_SECRET_KEY`, `OPENAI_API_KEY`) rather than in this file. `GROQ_API_KEY` is optional: without it the API starts and voice input is off.
 
 ## Frontend `.env.local`
 
@@ -600,14 +601,16 @@ Do not expose private backend secrets through `NEXT_PUBLIC_*` variables.
 
 | Variable              | Purpose                                                     |
 | --------------------- | ----------------------------------------------------------- |
-| `GROQ_API_KEY`        | Authentication for Groq LLM and speech-related integrations |
-| `AEHUB_SECRET_KEY`    | Shared backend API authentication secret                    |
+| `AEHUB_SECRET_KEY`    | Control Plane login key (keyring; required, the API exits without it) |
+| `OPENAI_API_KEY` / `OPENROUTER_API_KEY` | Provider keys (keyring)                   |
+| `GROQ_API_KEY`        | Voice transcription (keyring; optional)                     |
 | `POSTGRES_URL`        | PostgreSQL connection string used by the agent runtime      |
 | `REDIS_URL`           | Redis connection information                                |
-| `LANGSMITH_*`         | Optional LangSmith observability configuration              |
 | `NEXT_PUBLIC_API_URL` | Public frontend endpoint for backend communication          |
 
 ## Agent engine settings
+
+The model, price and limit variables below (`OPENAI_MODEL`, `AEHUB_CHECKER_MODEL`, `AEHUB_MODEL_ROLES`, `AEHUB_MODEL_PRICES`, `AEHUB_DEFAULT_MODEL_PRICE`, `AEHUB_RUN_*`, `AEHUB_MONTHLY_BUDGET`, `AEHUB_BUDGET_WARNING_RATIO`) are also editable in Settings; a value set there wins over the environment.
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
@@ -633,13 +636,11 @@ Do not expose private backend secrets through `NEXT_PUBLIC_*` variables.
 | `FRONTEND_URL` / `AEHUB_ALLOWED_ORIGINS` | Browser origins allowed by CORS and the WebSocket | `http://localhost:3000` |
 | `AEHUB_HOST` | Bind address of `python main.py` | `127.0.0.1` |
 
-### Security warning
+### Security notes
 
-The current backend defines an unsafe fallback for `AEHUB_SECRET_KEY`.
+The backend refuses to start without `AEHUB_SECRET_KEY` (or with the old placeholder value). The launcher creates a random one in the keyring.
 
-Production deployments should require a strong secret explicitly and should fail closed when it is missing.
-
-The development Compose file also contains example PostgreSQL credentials. Replace them before exposing the database outside a local environment.
+The PostgreSQL password is the one secret kept in a file (the root `.env`, ignored by Git), because the database container reads it too. All ports are bound to `127.0.0.1`.
 
 ---
 

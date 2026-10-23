@@ -7,6 +7,7 @@
  */
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { Menu, ChevronLeft, History, Settings, FolderOpen, Network } from "lucide-react";
 
@@ -90,10 +91,13 @@ export default function Sidebar() {
 
                 {/* Footer Settings */}
                 <div className="p-4 border-t border-cyan-900/30">
-                    <button className="w-full flex items-center gap-3 px-2 py-2 text-sm text-cyan-500/60 hover:text-cyan-300 transition-colors">
+                    <Link
+                        href="/control-plane/settings"
+                        className="w-full flex items-center gap-3 px-2 py-2 text-sm text-cyan-500/60 hover:text-cyan-300 transition-colors"
+                    >
                         <Settings className="w-4 h-4" />
                         <span>Core Settings</span>
-                    </button>
+                    </Link>
                 </div>
             </aside>
         </>

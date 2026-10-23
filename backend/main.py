@@ -34,13 +34,14 @@ from app.api import (
     memory,
     realtime,
     runs,
+    settings as settings_api,
 )
 from app.core import database
 from app.core.telemetry import (
     setup_telemetry,
     shutdown_telemetry,
 )
-from app.agent_engine.routing import check_routing_at_startup
+from app.core.settings_service import load_settings, log_configuration_issues
 from app.skills.registry import skill_registry
 
 
@@ -132,14 +133,16 @@ async def lifespan(
             skill_registry.load_from_package
         )
 
-    # Spec 4.1: the Critic must differ from every Implementer. The API still
-    # starts, but the agent engine refuses runs until routing is fixed.
-    routing_error = check_routing_at_startup()
+    # Settings edited from the Control Plane win over the environment (M12).
+    from app.core.db import SessionLocal
 
-    if routing_error:
-        print(
-            f"[ERROR] Agent runs disabled: {routing_error}"
-        )
+    with SessionLocal() as db:
+        load_settings(db)
+
+    # One line per problem (Critic equal to a Worker, missing provider key,
+    # missing prices, ...). The API still starts, so the Settings page can
+    # fix what it can; the engine refuses runs while routing is invalid.
+    log_configuration_issues()
 
     try:
         yield
@@ -363,6 +366,10 @@ app.include_router(
 
 app.include_router(
     audit.router
+)
+
+app.include_router(
+    settings_api.router
 )
 
 

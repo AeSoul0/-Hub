@@ -33,7 +33,6 @@ from fastapi import (
     Request,
     UploadFile,
 )
-from groq import AsyncGroq
 
 from app.core import database
 from app.core.event_bus import event_bus
@@ -52,19 +51,12 @@ router = APIRouter(
     tags=["orchestrator"],
 )
 
+# Voice transcription (Groq Whisper) is optional: without the key the API
+# still starts and the voice endpoint answers 503 (M12).
 GROQ_API_KEY = os.getenv(
-    "GROQ_API_KEY"
-)
-
-if not GROQ_API_KEY:
-    raise RuntimeError(
-        "CRITICAL CORE CONFIGURATION FAULT: "
-        "'GROQ_API_KEY' is missing from the environment."
-    )
-
-groq_client = AsyncGroq(
-    api_key=GROQ_API_KEY
-)
+    "GROQ_API_KEY",
+    "",
+).strip()
 
 
 # ==============================================================================
@@ -447,6 +439,12 @@ async def process_orchestration_voice(
     Session identity is derived from the authenticated Principal.
     """
     del x_session_id
+
+    if not GROQ_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="Voice input is off: GROQ_API_KEY is not set.",
+        )
 
     try:
         from app.core.db import SessionLocal
