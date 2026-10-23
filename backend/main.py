@@ -29,6 +29,7 @@ from fastapi.responses import JSONResponse
 from app.agents import orchestrator
 from app.api import (
     approvals,
+    audit,
     auth,
     memory,
     realtime,
@@ -358,6 +359,10 @@ app.include_router(
 
 app.include_router(
     memory.router
+)
+
+app.include_router(
+    audit.router
 )
 
 

@@ -2,15 +2,20 @@
  * @file frontend/src/app/control-plane/runs/page.tsx
  * @description Agent runs: kill switch and spend dashboard (roadmap M4).
  *
- * Reads GET /api/runs/live and GET /api/runs/stats. A live run can be
+ * Reads GET /api/runs/live and GET /api/runs/stats, again whenever a run
+ * of the workspace changes state (live events, no polling). A live run can be
  * cancelled (POST /api/runs/{id}/cancel); the global kill switch stops every
  * run and refuses new ones until resumed (POST /api/runs/stop-all, /resume).
+ * Each run opens its own view (/control-plane/runs/{id}).
  */
 "use client";
 
+import Link from "next/link";
 import React, { useCallback, useEffect, useState } from "react";
 
+import LiveBadge from "@/components/control-plane/LiveBadge";
 import { getJson, postJson } from "@/lib/api/client";
+import { useLiveRefresh } from "@/lib/api/events";
 
 interface LiveRun {
     run_id: string;
@@ -54,10 +59,16 @@ interface RunStats {
     };
 }
 
-const REFRESH_INTERVAL_MS = 3000;
-
 function usd(value: number | null | undefined): string {
     return value === null || value === undefined ? "-" : `$${value.toFixed(4)}`;
+}
+
+function RunLink({ runId }: { runId: string }) {
+    return (
+        <Link href={`/control-plane/runs/${encodeURIComponent(runId)}`} className="text-cyan-400 hover:underline">
+            {runId}
+        </Link>
+    );
 }
 
 // Renders the run monitor with the kill switch and the spend dashboard
@@ -81,13 +92,11 @@ export default function RunsPage() {
         }
     }, []);
 
+    const liveState = useLiveRefresh(refresh, ["run.state", "run.resumed", "approval.decided"]);
+
     useEffect(() => {
         const first = setTimeout(refresh, 0);
-        const poll = setInterval(refresh, REFRESH_INTERVAL_MS);
-        return () => {
-            clearTimeout(first);
-            clearInterval(poll);
-        };
+        return () => clearTimeout(first);
     }, [refresh]);
 
     const act = async (endpoint: string) => {
@@ -109,8 +118,11 @@ export default function RunsPage() {
             : 0;
 
     return (
-        <div className="p-8 text-white min-h-screen" style={{ backgroundColor: "#111" }}>
-            <h1 className="text-3xl font-bold mb-6 text-orange-500">Agent Runs</h1>
+        <div className="p-8">
+            <div className="flex items-center gap-4 mb-6">
+                <h1 className="text-3xl font-bold text-orange-500">Agent Runs</h1>
+                <LiveBadge state={liveState} />
+            </div>
 
             {error && <p className="mb-4 text-red-400">{error}</p>}
 
@@ -156,7 +168,9 @@ export default function RunsPage() {
                         <tbody>
                             {live.runs.map((run) => (
                                 <tr key={run.run_id} className="border-b border-gray-800">
-                                    <td className="p-2 font-mono">{run.run_id}</td>
+                                    <td className="p-2 font-mono">
+                                        <RunLink runId={run.run_id} />
+                                    </td>
                                     <td className="p-2 text-gray-400">{run.started_at}</td>
                                     <td className="p-2">
                                         <button
@@ -258,7 +272,9 @@ export default function RunsPage() {
                             <tbody>
                                 {stats.runs.map((run) => (
                                     <tr key={run.run_id} className="border-b border-gray-800">
-                                        <td className="p-2 font-mono">{run.run_id}</td>
+                                        <td className="p-2 font-mono">
+                                            <RunLink runId={run.run_id} />
+                                        </td>
                                         <td className="p-2">{run.status}</td>
                                         <td className="p-2">{run.model_calls}</td>
                                         <td className="p-2">{run.tool_calls}</td>

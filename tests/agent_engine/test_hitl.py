@@ -572,3 +572,124 @@ def test_approvals_http_contract(
     ).status_code == 422
 
     assert client.get("/api/approvals").json() == []
+
+
+# ==============================================================================
+# CONTROL PLANE (M11)
+# ==============================================================================
+
+
+def control_client(principal: Principal) -> TestClient:
+    """
+    The Control Plane routes, authenticated as the given Principal.
+    """
+    from app.api import audit as audit_api
+    from app.api import runs as runs_api
+
+    app = FastAPI()
+    for module in (approvals_api, runs_api, audit_api):
+        app.include_router(module.router)
+    app.dependency_overrides[resolve_principal] = lambda: principal
+    return TestClient(app)
+
+
+STRANGER = Principal(
+    id="admin-elsewhere",
+    role=RoleEnum.ADMIN,
+    workspace_id="workspace-other",
+)
+
+
+async def test_control_plane_sees_the_parked_call(
+    agent_infrastructure,
+    records_skill,
+    db_session_factory,
+    make_engine,
+    owner,
+    decider,
+):
+    engine = make_engine(after_tool=[], checker=[])
+    parked = await start_parked_run(engine, owner)
+    run_id = parked["run_id"]
+
+    # The workspace channel carries the events the Control Plane reacts to.
+    workspace_events = {
+        (workspace, event_type)
+        for workspace, event_type, _ in agent_infrastructure.workspace_published
+    }
+    assert (WORKSPACE_ID, "approval.requested") in workspace_events
+    assert (WORKSPACE_ID, "run.state") in workspace_events
+
+    client = control_client(decider)
+
+    # The decider sees what will run, not only its hash.
+    listed = client.get("/api/approvals").json()
+    assert [item["arguments"] for item in listed] == [{"record_id": "r1"}]
+
+    detail = client.get(f"/api/runs/{run_id}")
+    assert detail.status_code == 200
+    body = detail.json()
+    assert body["status"] == "waiting_approval"
+    assert body["pending_tool_call"]["tool_name"] == "delete_record"
+    assert body["pending_tool_call"]["approval_id"] == parked["approval_id"]
+
+    # Fixed paths are not read as run ids.
+    assert client.get("/api/runs/live").status_code == 200
+    assert client.get("/api/runs/does-not-exist").status_code == 404
+
+    stranger = control_client(STRANGER)
+    assert stranger.get(f"/api/runs/{run_id}").status_code == 404
+    assert stranger.get("/api/approvals").json() == []
+
+    # Arguments that no longer match the approved hash are not shown.
+    with db_session_factory() as db:
+        row = db.query(DbAgentRun).filter(DbAgentRun.id == run_id).one()
+        snapshot = json.loads(row.input_data)
+        snapshot["current_state"]["worker_context"]["pending_tool_call"][
+            "arguments"
+        ] = {"record_id": "r2"}
+        row.input_data = json.dumps(snapshot)
+        db.commit()
+
+    assert client.get("/api/approvals").json()[0]["arguments"] is None
+
+
+async def test_run_view_and_audit_after_approval(
+    agent_infrastructure,
+    records_skill,
+    make_engine,
+    fake_model,
+    owner,
+    decider,
+):
+    engine = make_engine(
+        after_tool=[fake_model.text("Record r1 deleted.")],
+        checker=[fake_model.accept()],
+    )
+    parked = await start_parked_run(engine, owner)
+    run_id = parked["run_id"]
+
+    await decide_and_resume(engine, parked["approval_id"], "allow", decider)
+
+    workspace_events = [
+        event_type
+        for _, event_type, _ in agent_infrastructure.workspace_published
+    ]
+    assert "approval.decided" in workspace_events
+    assert "run.resumed" in workspace_events
+
+    client = control_client(decider)
+
+    body = client.get(f"/api/runs/{run_id}").json()
+    assert body["status"] == "completed"
+    assert body["pending_tool_call"] is None
+    assert [item["tool_name"] for item in body["observations"]] == ["delete_record"]
+    # Audit is fail-closed: one record before the tool runs, one after.
+    assert [entry["decision"] for entry in body["audit"]] == ["EXECUTING", "ALLOW"]
+    assert body["audit"][-1]["success"] is True
+
+    audit = client.get("/api/audit").json()
+    assert audit["chain"]["valid"] is True
+    assert {entry["run_id"] for entry in audit["entries"]} == {run_id}
+
+    assert control_client(STRANGER).get("/api/audit").json()["entries"] == []

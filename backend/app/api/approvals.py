@@ -2,7 +2,8 @@
 @file backend/app/api/approvals.py
 @description Human-in-the-loop approval API (spec 3.4).
 
-GET  /api/approvals             pending requests of the caller's workspace
+GET  /api/approvals             pending requests of the caller's workspace,
+                                with the arguments of the parked call
 POST /api/approvals/{id}        decide one request: {"decision": "allow"|"deny"}
 
 The decider is the authenticated Principal and must belong to the same
@@ -17,6 +18,7 @@ request), so the ToolGateway re-checks the approval for the exact call.
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any, Dict, List, Literal, Set
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -107,6 +109,7 @@ async def resume_after_decision(
             session_id,
             "run.resumed",
             payload,
+            workspace_id=approval["workspace_id"],
         )
     except Exception:
         pass
@@ -127,6 +130,60 @@ def _schedule_resume(
 # ==============================================================================
 
 
+def _parked_arguments(
+    approval: Dict[str, Any],
+) -> Dict[str, Any] | None:
+    """
+    Arguments of the call parked on this approval, read from the run's
+    durable state.
+
+    The request itself stores only their hash. They are returned only when
+    the run is in the same workspace, is parked on this very approval and
+    the arguments still hash to what was approved: the user decides on what
+    will actually run.
+    """
+    from app.core.db import SessionLocal
+    from app.domain.models.runtime_state import AgentRun as DbAgentRun
+
+    if not approval.get("run_id"):
+        return None
+
+    with SessionLocal() as db:
+        row = (
+            db.query(DbAgentRun)
+            .filter(DbAgentRun.id == approval["run_id"])
+            .first()
+        )
+
+    if row is None:
+        return None
+
+    try:
+        snapshot = json.loads(row.input_data)
+    except (TypeError, ValueError):
+        return None
+
+    if snapshot.get("workspace_id") != approval.get("workspace_id"):
+        return None
+
+    pending = (
+        (snapshot.get("current_state") or {})
+        .get("worker_context", {})
+        .get("pending_tool_call")
+    ) or {}
+
+    arguments = pending.get("arguments")
+
+    if (
+        pending.get("approval_id") != approval["id"]
+        or not isinstance(arguments, dict)
+        or ApprovalManager.argument_hash(arguments) != approval.get("arguments_hash")
+    ):
+        return None
+
+    return arguments
+
+
 @router.get("")
 async def list_pending_approvals(
     principal: Principal = Depends(resolve_principal),
@@ -134,9 +191,19 @@ async def list_pending_approvals(
     """
     Return the pending approval requests of the caller's workspace.
     """
-    return await ApprovalManager.list_pending(
+    pending = await ApprovalManager.list_pending(
         principal.workspace_id
     )
+
+    for approval in pending:
+        approval.setdefault("workspace_id", principal.workspace_id)
+
+        try:
+            approval["arguments"] = _parked_arguments(approval)
+        except Exception:
+            approval["arguments"] = None
+
+    return pending
 
 
 @router.post("/{approval_id}")
@@ -176,6 +243,7 @@ async def decide_approval(
                 "run_id": approval["run_id"],
                 "decision": approval["decision"],
             },
+            workspace_id=approval["workspace_id"],
         )
     except Exception:
         pass

@@ -22,6 +22,7 @@ import json
 import os
 import tempfile
 from datetime import datetime
+from typing import Literal
 
 import edge_tts
 import httpx
@@ -143,53 +144,66 @@ async def process_text_to_audio(text: str) -> str:
 # ==============================================================================
 
 
+# A comment line every so often keeps proxies from closing an idle stream and
+# lets the server notice a closed tab without waiting for the next event.
+SSE_KEEPALIVE_SECONDS = 15.0
+
+
 async def sse_event_generator(
-    session_id: str,
+    queue: asyncio.Queue,
     request: Request,
+    release,
 ):
     """
-    Yield EventBus messages for the authenticated realtime session.
+    Yield EventBus messages from a subscribed queue until the client leaves.
 
     The EventBus is used only for transient event delivery. Durable execution
     state remains owned by the Agent Engine persistence layer.
     """
-    queue = event_bus.subscribe(session_id)
-
     try:
         while True:
             if await request.is_disconnected():
                 break
 
-            message = await queue.get()
+            try:
+                message = await asyncio.wait_for(
+                    queue.get(),
+                    timeout=SSE_KEEPALIVE_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                yield ": keepalive\n\n"
+                continue
 
             yield f"data: {message}\n\n"
 
     finally:
-        event_bus.unsubscribe(
-            session_id,
-            queue,
-        )
+        release()
 
 
 @router.get("/api/events")
 async def get_events_stream(
     request: Request,
+    scope: Literal["session", "workspace"] = "session",
 ):
     """
     Open an authenticated SSE stream for realtime application events.
 
-    The stream is scoped to the login session, the same id the WebSocket
-    channel uses for its runs.
+    - scope=session (default): the login session, the same id the WebSocket
+      channel uses for its runs;
+    - scope=workspace: run states and approvals of every session of the
+      caller's workspace, for the Control Plane.
     """
     from app.core.db import SessionLocal
     from app.core.security import resolve_session
 
     try:
         with SessionLocal() as db:
-            session_id = resolve_session(
+            session = resolve_session(
                 request,
                 db,
-            ).id
+            )
+            session_id = session.id
+            workspace_id = session.workspace_id
     except Exception:
         return JSONResponse(
             status_code=401,
@@ -198,12 +212,36 @@ async def get_events_stream(
             },
         )
 
+    if scope == "workspace":
+        if not workspace_id:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "detail": "The session has no workspace.",
+                },
+            )
+
+        queue = event_bus.subscribe_workspace(workspace_id)
+
+        def release():
+            event_bus.unsubscribe_workspace(workspace_id, queue)
+    else:
+        queue = event_bus.subscribe(session_id)
+
+        def release():
+            event_bus.unsubscribe(session_id, queue)
+
     return StreamingResponse(
         sse_event_generator(
-            session_id,
+            queue,
             request,
+            release,
         ),
         media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 

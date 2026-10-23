@@ -5,13 +5,14 @@
 This module manages the internal business logic for general logic modules.
 It provides specialized functionality to handle: login, logout, verify_auth.
 """
+import hmac
 import os
 from fastapi import APIRouter, Request, Response, Depends
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.security import IdentityService
+from app.core.security import IdentityService, Principal, resolve_principal
 from app.domain.models.identity import User, Workspace, WorkspaceMembership, RoleEnum
 from app.core.config import settings
 
@@ -32,7 +33,12 @@ async def login(request: Request, response: Response, db: Session = Depends(get_
         return JSONResponse(status_code=429, content={"detail": "Too Many Requests. Login rate limit exceeded."})
         
     data = await request.json()
-    if data.get("key") == settings.AEHUB_SECRET_KEY:
+    key = data.get("key") if isinstance(data, dict) else None
+    # Constant-time comparison: the response time must not reveal how much
+    # of the key was right.
+    if isinstance(key, str) and hmac.compare_digest(
+        key.encode(), settings.AEHUB_SECRET_KEY.encode()
+    ):
         # Check if admin user exists, if not create it (LAN-first bootstrapping)
         user = db.query(User).filter(User.username == "admin").first()
         workspace = db.query(Workspace).filter(Workspace.name == "default").first()
@@ -58,8 +64,9 @@ async def login(request: Request, response: Response, db: Session = Depends(get_
             role=RoleEnum.ADMIN
         )
         
-        # Set HttpOnly cookie for session
-        response_obj = JSONResponse(content={"status": "ok", "session_token": session_token})
+        # The token travels only in the HttpOnly cookie, never in the body
+        # where page scripts could read it.
+        response_obj = JSONResponse(content={"status": "ok"})
         is_prod = os.getenv("ENVIRONMENT", "development") == "production"
         response_obj.set_cookie(key="aehub_session_token", value=session_token, httponly=True, samesite="lax", secure=is_prod)
         return response_obj
@@ -76,9 +83,14 @@ async def logout(request: Request, response: Response, db: Session = Depends(get
     return response_obj
 
 @router.get("/verify")
-async def verify_auth(request: Request):
+async def verify_auth(principal: Principal = Depends(resolve_principal)):
     """
-    Executes verify_auth logic.
+    Tell the frontend whether its session cookie is valid (401 if not).
+
+    The auth middleware skips /api/auth/*, so the check happens here.
     """
-    # If it reaches here, the middleware has already approved it.
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "role": principal.role.value,
+        "workspace_id": principal.workspace_id,
+    }

@@ -1033,18 +1033,14 @@ These patterns should only be introduced when they provide measurable improvemen
 
 ## Current observability
 
-The application includes an internal EventBus and an SSE endpoint:
+The application includes an internal EventBus (Redis Pub/Sub) and an SSE endpoint:
 
 ```text
-GET /api/events
+GET /api/events                    events of the login session
+GET /api/events?scope=workspace    run states and approvals of the whole workspace
 ```
 
-The frontend can use this stream to receive runtime information such as:
-
-* agent logs;
-* notifications;
-* execution state;
-* security events.
+The session stream carries agent logs and the live state of the session's runs. The workspace stream feeds the Control Plane (`/control-plane`): Approvals, Runs, the single-run view, Memory and Security re-read their data when a run changes state or an approval is requested or decided, instead of polling.
 
 The agent runtime also emits diagnostic events when routing work through A.U.R.O.R.A.
 
@@ -1426,6 +1422,12 @@ It programmatically covers:
 * **Security Middleware:** SSRF, Path Traversal, and Secret Redaction.
 * **Agent engine:** tool loop, human approval, guardrails, budget and limits, routing and failover, Context Manager and memory.
 * **API surface:** the exact list of HTTP and WebSocket routes (`tests/security/test_api_surface.py`).
+
+The frontend has component and hook tests (Vitest, Testing Library, jsdom) in `frontend/tests/`:
+
+```bash
+cd frontend && npm test && npm run lint
+```
 
 ## Agent evaluations
 

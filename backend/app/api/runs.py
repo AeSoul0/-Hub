@@ -8,6 +8,7 @@ POST /api/runs/stop-all          kill switch: cancel every live run and
 POST /api/runs/resume            lift the kill switch (admin)
 GET  /api/runs/live              live runs of the workspace + kill switch state
 GET  /api/runs/stats             spend dashboard of the workspace
+GET  /api/runs/{run_id}          one run: task, steps, observations, audit
 """
 
 from __future__ import annotations
@@ -261,3 +262,118 @@ async def run_stats(
     principal: Principal = Depends(resolve_principal),
 ) -> Dict[str, Any]:
     return build_stats(principal, days)
+
+
+# ==============================================================================
+# SINGLE RUN
+# ==============================================================================
+
+# Observation contents can be whole web pages; the run view shows a preview.
+OBSERVATION_PREVIEW_CHARS = 1000
+
+
+def _preview(text: Any, limit: int = OBSERVATION_PREVIEW_CHARS) -> str:
+    text = text if isinstance(text, str) else json.dumps(text, default=str)
+
+    if len(text) <= limit:
+        return text
+
+    return text[:limit] + "…"
+
+
+def run_detail(run_id: str, workspace_id: str) -> Dict[str, Any] | None:
+    """
+    Everything the Control Plane shows about one run of a workspace, or
+    None when the run does not exist there.
+    """
+    from app.api.audit import audit_entry
+    from app.core.db import SessionLocal
+    from app.domain.models.audit import AuditLog
+    from app.domain.models.runtime_state import AgentRun as DbAgentRun
+
+    with SessionLocal() as db:
+        row = db.query(DbAgentRun).filter(DbAgentRun.id == run_id).first()
+
+        if row is None:
+            return None
+
+        try:
+            snapshot = json.loads(row.input_data)
+        except (TypeError, ValueError):
+            return None
+
+        # A run of another workspace does not exist for this caller.
+        if snapshot.get("workspace_id") != workspace_id:
+            return None
+
+        audit_rows = (
+            db.query(AuditLog)
+            .filter(
+                AuditLog.run_id == run_id,
+                AuditLog.workspace_id == workspace_id,
+            )
+            .order_by(AuditLog.timestamp.asc())
+            .all()
+        )
+        audit = [audit_entry(audit_row) for audit_row in audit_rows]
+
+        try:
+            result = json.loads(row.result) if row.result is not None else None
+        except (TypeError, ValueError):
+            result = row.result
+
+        state = snapshot.get("current_state") or {}
+        context = state.get("worker_context") or {}
+
+        return {
+            "run_id": row.id,
+            "parent_run_id": snapshot.get("parent_run_id"),
+            "session_id": row.session_id,
+            "principal_id": row.principal_id,
+            "role": row.role,
+            "status": str(row.status).lower(),
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+            "task": context.get("task"),
+            "attempts": snapshot.get("task_attempts", 0),
+            "turn": state.get("turn"),
+            "result": result,
+            "error": row.error,
+            "errors": snapshot.get("errors") or [],
+            "usage": snapshot.get("usage") or {},
+            "untrusted_context": bool(context.get("untrusted_context")),
+            "pending_tool_call": context.get("pending_tool_call"),
+            "queued_tool_calls": context.get("queued_tool_calls") or [],
+            "last_feedback": state.get("last_feedback"),
+            "observations": [
+                {
+                    "tool_call_id": observation.get("tool_call_id"),
+                    "tool_name": observation.get("tool_name"),
+                    "arguments": observation.get("arguments") or {},
+                    "trusted": bool(observation.get("trusted")),
+                    "succeeded": observation.get("succeeded", True),
+                    "modified_file": observation.get("modified_file"),
+                    "content": _preview(observation.get("content", "")),
+                }
+                for observation in context.get("observations") or []
+                if isinstance(observation, dict)
+            ],
+            "audit": audit,
+        }
+
+
+# Registered after /live and /stats so those paths are not read as run ids.
+@router.get("/{run_id}")
+async def get_run(
+    run_id: str,
+    principal: Principal = Depends(resolve_principal),
+) -> Dict[str, Any]:
+    detail = run_detail(run_id, principal.workspace_id)
+
+    if detail is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No run with this id in your workspace.",
+        )
+
+    return detail
