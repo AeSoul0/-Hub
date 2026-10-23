@@ -28,6 +28,12 @@ ENV PATH="/opt/venv/bin:$PATH"
 # DEPENDENCY INJECTION: Copy requirements first to leverage Docker's aggressive layer caching
 COPY requirements.txt .
 
+# CPU-ONLY TORCH: the default Linux wheel on PyPI pulls the whole CUDA stack
+# (several GB) into a container that has no GPU. Installing the CPU build
+# first, with the requirement line from requirements.txt, leaves torch
+# already satisfied for the step below.
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "$(grep -E '^torch([<>=!~ ]|$)' requirements.txt)"
+
 # PACKAGE INSTALLATION: Install Python modules required by the orchestration nodes
 RUN pip install --no-cache-dir -r requirements.txt
 

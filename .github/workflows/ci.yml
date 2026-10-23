@@ -257,6 +257,17 @@ jobs:
             aehub-backend:ci \
             python -c "from app.skills.registry import skill_registry; skill_registry.load_from_package(); print(sorted(skill_registry.get_registered_skill_names()))"
 
+      # The container has no GPU, so backend/dockerfile installs the CPU build
+      # of torch. A change that brings back the CUDA libraries fails here.
+      - name: Check the Backend Image Ships CPU-Only Torch
+        run: |
+          docker image ls aehub-backend:ci --format 'Backend image size: {{.Size}}'
+          docker run --rm aehub-backend:ci python -c "import torch; print('torch', torch.__version__, 'cuda', torch.cuda.is_available()); assert torch.__version__.endswith('+cpu')"
+          if docker run --rm aehub-backend:ci pip list 2>/dev/null | grep -i nvidia; then
+            echo "::error::the backend image ships NVIDIA packages"
+            exit 1
+          fi
+
       - name: Build Frontend Image
         run: |
           docker build --file frontend/dockerfile --tag aehub-frontend:ci frontend
