@@ -76,7 +76,7 @@ jobs:
       - name: Install Backend Dependencies
         working-directory: backend
         run: |
-          python -m pip install --upgrade pip
+          python -m pip install --upgrade pip "setuptools>=83"
           pip install ruff pytest httpx pip-audit bandit
           pip install -r requirements.txt
 
@@ -85,10 +85,18 @@ jobs:
       # =========================================================================
 
       # Known vulnerabilities in the installed dependency tree.
+      # Ignored: chromadb advisories with no fixed release. All of them are in
+      # the Chroma HTTP server (/api/v2 endpoints, auth, RBAC); ÆHub only uses
+      # the embedded PersistentClient (workers/vision_indexer.py) and never
+      # starts that server. Drop these when chromadb ships a fix or is removed.
       - name: Dependency Audit (pip-audit)
         working-directory: backend
         run: |
-          pip-audit --progress-spinner off
+          pip-audit --progress-spinner off \
+            --ignore-vuln PYSEC-2026-311 \
+            --ignore-vuln PYSEC-2026-3813 \
+            --ignore-vuln PYSEC-2026-3814 \
+            --ignore-vuln PYSEC-2026-3815
 
       # Static analysis of the backend code, medium severity and above.
       - name: Static Security Analysis (bandit)
