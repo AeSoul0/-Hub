@@ -66,6 +66,9 @@ backend/.venv/
 # Backend Environment Secrets & Database
 backend/.env
 backend/.env.*
+
+# Compose variables written by `make demo`
+/.env
 backend/*.db
 backend/*.sqlite3
 # Ignore SQLite WAL mode temporary files

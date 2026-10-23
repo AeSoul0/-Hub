@@ -10,7 +10,7 @@ services:
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile
+      dockerfile: dockerfile
     container_name: aehub-backend
     ports:
       - "127.0.0.1:3002:3002"
@@ -20,9 +20,10 @@ services:
       - ./backend/temp_downloads:/app/temp_downloads
       - ./workspace/chromadb:/app/workspace/chromadb
     env_file:
-      - ./backend/.env
+      - path: ./backend/.env
+        required: false
     environment:
-      - POSTGRES_URL=${POSTGRES_URL}
+      - POSTGRES_URL=postgresql://${POSTGRES_USER:-aehub_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-aehub_db}
       - REDIS_URL=redis://redis:6379/0
     depends_on:
       - postgres
@@ -36,13 +37,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
 
   # ---------------------------------------------------------
   # FRONTEND SERVICE NODE (Next.js Dashboard)
@@ -50,12 +44,13 @@ services:
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
+      dockerfile: dockerfile
     container_name: aehub-frontend
     ports:
       - "127.0.0.1:3000:3000"
     env_file:
-      - ./frontend/.env.local
+      - path: ./frontend/.env.local
+        required: false
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:3002
     depends_on:
@@ -73,7 +68,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-aehub_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (make demo creates it)}
       POSTGRES_DB: ${POSTGRES_DB:-aehub_db}
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
@@ -91,7 +86,7 @@ services:
   celery-worker:
     build:
       context: ./backend
-      dockerfile: Dockerfile
+      dockerfile: dockerfile
     container_name: aehub-celery
     command: celery -A app.core.celery_app.celery_app worker --loglevel=info
     volumes:
@@ -99,9 +94,10 @@ services:
       - ./backend/temp_downloads:/app/temp_downloads
       - ./workspace/chromadb:/app/workspace/chromadb
     env_file:
-      - ./backend/.env
+      - path: ./backend/.env
+        required: false
     environment:
-      - POSTGRES_URL=${POSTGRES_URL}
+      - POSTGRES_URL=postgresql://${POSTGRES_USER:-aehub_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-aehub_db}
       - REDIS_URL=redis://redis:6379/0
     depends_on:
       - postgres
@@ -110,13 +106,6 @@ services:
     restart: unless-stopped
     networks:
       - aehub-network
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
 
   # ---------------------------------------------------------
   # CACHE & EVENT BUS (Redis)

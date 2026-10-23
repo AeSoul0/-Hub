@@ -463,11 +463,30 @@ The repository includes services for:
 * PostgreSQL;
 * Redis.
 
-Start the stack with:
+### One-command demo
 
 ```bash
+make demo
+```
+
+`make demo` (or `python scripts/demo.py`, which needs only the Python standard library) runs the whole loop on a clean machine:
+
+1. writes `.env` (database password) and `backend/.env` (session secret, model settings) when they are missing. Secrets are random and never printed; the model API key is asked once, without echo;
+2. starts PostgreSQL, Redis, backend and frontend with Docker Compose and waits for `/health`;
+3. sends a real command that needs a HIGH-risk tool (a shell command in the sandbox), so the run stops for approval;
+4. waits while you approve or deny it from http://localhost:3000;
+5. prints the outcome and its cost.
+
+### Manual start
+
+Compose needs `POSTGRES_PASSWORD`, read from the shell or from a root `.env` file (ignored by Git):
+
+```bash
+echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)" > .env
 docker compose up --build
 ```
+
+The backend and Celery containers build their `POSTGRES_URL` from the same variables, so the password lives in one place. `backend/.env` is optional and holds the model settings.
 
 The current Compose configuration maps:
 
@@ -478,20 +497,13 @@ PostgreSQL → localhost:5432
 Redis     → localhost:6379
 ```
 
-### Important Docker filename note
-
-The repository currently contains lowercase `dockerfile` files, while `docker-compose.yaml` references `Dockerfile`.
-
-On case-sensitive filesystems, align the filenames before building:
+GPU reservations for the Celery worker are in a separate override, for machines with an NVIDIA runtime:
 
 ```bash
-mv backend/dockerfile backend/Dockerfile
-mv frontend/dockerfile frontend/Dockerfile
+docker compose -f docker-compose.yaml -f docker-compose.gpu.yaml up --build
 ```
 
-Alternatively, update the corresponding `dockerfile:` entries in `docker-compose.yaml`.
-
-**Healthcheck**: The backend service now includes a Docker `HEALTHCHECK` that probes `http://localhost:3002/health` every 30 seconds. This ensures the container is marked unhealthy if the API does not respond.
+**Healthcheck**: The backend service includes a Docker `HEALTHCHECK` that probes `http://localhost:3002/health` every 30 seconds. This ensures the container is marked unhealthy if the API does not respond.
 
 ## Option B — Local backend development
 
@@ -1410,17 +1422,16 @@ Avoid unrelated refactors in feature pull requests.
 
 # Testing
 
-The repository contains a fully structured **Test Pyramid** spanning Unit, Integration, E2E, Security, and Performance boundaries.
-
-To execute the entire 100/100 infrastructure validation locally, run:
+Run the backend tests and the evaluation gate locally:
 
 ```bash
-python evals/run_all_tests.py
+cd backend && python -m pytest ../tests -q && cd ..
+make eval
 ```
 
 ## Unit & Integration Tests
 
-The test infrastructure is located in `tests/` and heavily relies on `pytest`. 
+The test infrastructure is located in `tests/` and heavily relies on `pytest`.
 It programmatically covers:
 * **Security Middleware:** SSRF, Path Traversal, and Secret Redaction.
 * **Celery & Redis:** Worker pools routing and Dead Letter Queue logic.
@@ -1429,28 +1440,21 @@ It programmatically covers:
 
 ## Agent evaluations
 
-A dedicated evaluation suite should eventually run representative tasks such as:
+`evals/run_evals.py` runs the cases in `backend/app/evaluation/dataset.json` through the real agent engine (planner loop, Tool Gateway, guardrails, approvals, Critic, Context Manager, memory). By default the model is scripted and the tools are deterministic, so the suite runs offline in seconds and costs nothing. `--live` uses the configured models instead.
 
-```text
-Input
-  ↓
-Expected tool selection
-  ↓
-Expected state transitions
-  ↓
-Expected result constraints
+The dataset covers successful tasks, retries after tool failures, tool selection, hallucination (answers must be grounded in tool output), human approval of HIGH-risk tools, prompt injection and secret leaks, cross-session memory, long context (50 tool calls under budget) and budget limits.
+
+Each run reports the metrics of the spec (6.5): `success_rate`, `tool_accuracy`, `hallucination_rate`, `reliability`, `security_pass_rate`, `mean_cost` and latency. The release gate fails when:
+
+* any security case fails (`security_pass_rate` must be 100%);
+* any other metric is worse than `evals/baseline.json`, or mean cost grows by more than 10%.
+
+```bash
+make eval            # check against evals/baseline.json
+make eval-baseline   # re-record the baseline after an intended change
 ```
 
-Evaluation datasets should include:
-
-* successful tasks;
-* ambiguous requests;
-* tool failures;
-* malicious prompts;
-* prompt injection;
-* long-context tasks;
-* memory-dependent interactions;
-* multi-agent delegation.
+CI runs the same gate on every push and pull request and uploads `eval-report.json`. It also runs `pip-audit`, `bandit`, Trivy and TruffleHog, checks the Compose file and builds both images. Third-party actions are pinned to commit SHAs.
 
 ---
 
