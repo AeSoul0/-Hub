@@ -8,6 +8,10 @@
 //!
 //! Closing the app closes the engine's stdin: the engine stops the API and
 //! Postgres by itself. If it does not within 30 seconds it is killed.
+//!
+//! Updates are signed (the updater's key pair, ADR-021): on start the app
+//! looks for one on GitHub Releases and installs it only if the owner says
+//! yes, after stopping the engine so no file is in use.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -20,7 +24,8 @@ use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 use tauri::{AppHandle, Manager, RunEvent, Url, WebviewUrl, WebviewWindowBuilder};
-use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+use tauri_plugin_updater::UpdaterExt;
 
 const STOP_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -185,9 +190,52 @@ fn follow_engine(app: AppHandle, stdout: ChildStdout) {
     }
 }
 
+/// Offer a signed update, if there is one; never install without a yes.
+fn offer_update(app: AppHandle) {
+    std::thread::spawn(move || {
+        let found: tauri_plugin_updater::Result<Option<tauri_plugin_updater::Update>> =
+            tauri::async_runtime::block_on(async { app.updater()?.check().await });
+
+        let update = match found {
+            Ok(Some(update)) => update,
+            Ok(None) => return,
+            Err(error) => {
+                eprintln!("Update check failed: {error}");
+                return;
+            }
+        };
+
+        let accepted = app
+            .dialog()
+            .message(format!(
+                "ÆHub {} is available (this is {}). Install it now? ÆHub will restart.",
+                update.version, update.current_version
+            ))
+            .title("ÆHub update")
+            .kind(MessageDialogKind::Info)
+            .buttons(MessageDialogButtons::OkCancelCustom(
+                "Install".into(),
+                "Later".into(),
+            ))
+            .blocking_show();
+
+        if !accepted {
+            return;
+        }
+
+        stop_engine(&app);
+
+        match tauri::async_runtime::block_on(update.download_and_install(|_, _| {}, || {})) {
+            Ok(()) => app.restart(),
+            Err(error) => fail(&app, &format!("The update could not be installed: {error}")),
+        }
+    });
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("ÆHub")
@@ -206,7 +254,9 @@ fn main() {
                         child: Mutex::new(Some(child)),
                         stdin: Mutex::new(stdin),
                     });
-                    std::thread::spawn(move || follow_engine(handle, stdout));
+                    let engine_handle = handle.clone();
+                    std::thread::spawn(move || follow_engine(engine_handle, stdout));
+                    offer_update(handle);
                 }
                 Err(message) => {
                     std::thread::spawn(move || fail(&handle, &message));
