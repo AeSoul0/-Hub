@@ -6,10 +6,52 @@ This module manages the internal business logic for CacheService.
 It provides specialized functionality to handle: get_pool, get_client, get, set, delete, check_rate_limit.
 """
 import json
-from typing import Any, Optional
+import time
+from typing import Any, Dict, Optional, Tuple
 import redis.asyncio as redis
 
 from app.core.config import settings
+from app.core.event_bus import in_process
+
+
+class LocalCache:
+    """
+    The few Redis commands CacheService uses, inside this process: the
+    desktop app has no Redis (ADR-020). Keys expire lazily, when read.
+    """
+
+    def __init__(self) -> None:
+        self._data: Dict[str, Tuple[Any, Optional[float]]] = {}
+
+    def _live(self, key: str) -> Optional[Any]:
+        item = self._data.get(key)
+        if item is None:
+            return None
+        value, expires_at = item
+        if expires_at is not None and expires_at <= time.monotonic():
+            del self._data[key]
+            return None
+        return value
+
+    async def get(self, key: str) -> Optional[Any]:
+        return self._live(key)
+
+    async def set(self, key: str, value: Any, ex: Optional[int] = None) -> None:
+        self._data[key] = (value, time.monotonic() + ex if ex else None)
+
+    async def delete(self, key: str) -> None:
+        self._data.pop(key, None)
+
+    async def incr(self, key: str) -> int:
+        current = int(self._live(key) or 0) + 1
+        _, expires_at = self._data.get(key, (None, None))
+        self._data[key] = (current, expires_at)
+        return current
+
+    async def expire(self, key: str, seconds: int) -> None:
+        if self._live(key) is not None:
+            self._data[key] = (self._data[key][0], time.monotonic() + seconds)
+
 
 class CacheService:
     """
@@ -20,6 +62,7 @@ class CacheService:
     Manages Redis connections for Session caching, Rate Limiting, and LLM Response caching.
     """
     _pool: Optional[redis.ConnectionPool] = None
+    _local: Optional[LocalCache] = None
 
     @classmethod
     def get_pool(cls) -> redis.ConnectionPool:
@@ -35,10 +78,15 @@ class CacheService:
         return cls._pool
 
     @classmethod
-    async def get_client(cls) -> redis.Redis:
+    async def get_client(cls) -> Any:
         """
         Executes get_client logic.
         """
+        if in_process():
+            if cls._local is None:
+                cls._local = LocalCache()
+            return cls._local
+
         # Retrieve a new Redis client instance from the connection pool
         # Retrieve a new Redis client instance from the connection pool
         return redis.Redis(connection_pool=cls.get_pool())

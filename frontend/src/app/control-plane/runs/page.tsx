@@ -6,7 +6,7 @@
  * of the workspace changes state (live events, no polling). A live run can be
  * cancelled (POST /api/runs/{id}/cancel); the global kill switch stops every
  * run and refuses new ones until resumed (POST /api/runs/stop-all, /resume).
- * Each run opens its own view (/control-plane/runs/{id}).
+ * Each run opens its own view (/control-plane/runs/view?id=...).
  */
 "use client";
 
@@ -16,6 +16,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import LiveBadge from "@/components/control-plane/LiveBadge";
 import { getJson, postJson } from "@/lib/api/client";
 import { useLiveRefresh } from "@/lib/api/events";
+import { runHref } from "@/lib/routes";
 
 interface LiveRun {
     run_id: string;
@@ -65,7 +66,7 @@ function usd(value: number | null | undefined): string {
 
 function RunLink({ runId }: { runId: string }) {
     return (
-        <Link href={`/control-plane/runs/${encodeURIComponent(runId)}`} className="text-cyan-400 hover:underline">
+        <Link href={runHref(runId)} className="text-cyan-400 hover:underline">
             {runId}
         </Link>
     );

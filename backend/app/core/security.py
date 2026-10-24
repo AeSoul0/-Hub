@@ -78,6 +78,56 @@ def is_origin_allowed(origin: Optional[str]) -> bool:
     return origin.rstrip("/") in allowed_origins()
 
 
+LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "::1")
+
+# Methods that change state: a cross-origin page must not trigger them with
+# the owner's cookie (SameSite ignores ports, so localhost:<any> is same-site).
+UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+def allowed_hosts() -> List[str]:
+    """
+    Host names the API answers to: loopback plus the comma-separated
+    AEHUB_ALLOWED_HOSTS. Any other Host header is a DNS-rebinding attempt
+    or a deployment that has to be declared.
+    """
+    extra = [
+        host.strip().lower()
+        for host in os.getenv("AEHUB_ALLOWED_HOSTS", "").split(",")
+        if host.strip()
+    ]
+
+    return list(LOOPBACK_HOSTS) + extra
+
+
+def host_name(host_header: Optional[str]) -> str:
+    """
+    The name part of a Host header: "127.0.0.1:3002" -> "127.0.0.1",
+    "[::1]:3002" -> "::1".
+    """
+    host = (host_header or "").strip().lower()
+
+    if host.startswith("["):
+        return host[1:].split("]", 1)[0]
+
+    return host.rsplit(":", 1)[0] if host.count(":") == 1 else host
+
+
+def is_host_allowed(host_header: Optional[str]) -> bool:
+    name = host_name(host_header)
+
+    return bool(name) and name in allowed_hosts()
+
+
+def is_cross_origin_write(method: str, origin: Optional[str]) -> bool:
+    """
+    True for a state-changing request from a browser page that is not ours.
+    Requests without Origin (curl, tests, same-origin GETs) are not browser
+    cross-origin writes: browsers always send Origin on these methods.
+    """
+    return method.upper() in UNSAFE_METHODS and bool(origin) and not is_origin_allowed(origin)
+
+
 class Permission(str, Enum):
     EXECUTE_SAFE_TOOL = "tool:execute:safe"
     EXECUTE_SENSITIVE_TOOL = "tool:execute:sensitive"

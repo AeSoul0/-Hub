@@ -41,7 +41,7 @@ export function IssueList({ issues }: { issues: ConfigIssue[] }) {
     );
 }
 
-export function SecretList({ secrets }: { secrets: SecretStatus[] }) {
+export function SecretList({ secrets, desktop = false }: { secrets: SecretStatus[]; desktop?: boolean }) {
     return (
         <div>
             <ul className="space-y-1 text-sm" aria-label="Keys">
@@ -59,11 +59,17 @@ export function SecretList({ secrets }: { secrets: SecretStatus[] }) {
                     </li>
                 ))}
             </ul>
-            <p className="mt-3 text-xs text-gray-400">
-                Keys stay in the OS keyring, never in the browser or in a file. To add or change one, run{" "}
-                <code className="text-gray-200">python scripts/aehub.py setup</code>, then restart with{" "}
-                <code className="text-gray-200">python scripts/aehub.py up</code>.
-            </p>
+            {desktop ? (
+                <p className="mt-3 text-xs text-gray-400">
+                    Keys stay in the OS keyring and are never shown again. Type a new one below to replace it.
+                </p>
+            ) : (
+                <p className="mt-3 text-xs text-gray-400">
+                    Keys stay in the OS keyring, never in the browser or in a file. To add or change one, run{" "}
+                    <code className="text-gray-200">python scripts/aehub.py setup</code>, then restart with{" "}
+                    <code className="text-gray-200">python scripts/aehub.py up</code>.
+                </p>
+            )}
         </div>
     );
 }

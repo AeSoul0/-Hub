@@ -5,6 +5,8 @@
 import Link from "next/link";
 import React from "react";
 
+import { runHref } from "@/lib/routes";
+
 export interface ToolCall {
     tool_call_id: string;
     tool_name: string;
@@ -131,7 +133,7 @@ export default function RunDetailView({ run, onCancel }: { run: RunDetail; onCan
                             <dt className="text-gray-400">Parent run</dt>
                             <dd>
                                 <Link
-                                    href={`/control-plane/runs/${encodeURIComponent(run.parent_run_id)}`}
+                                    href={runHref(run.parent_run_id)}
                                     className="text-cyan-400 hover:underline font-mono"
                                 >
                                     {run.parent_run_id}

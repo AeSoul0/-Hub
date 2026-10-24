@@ -16,6 +16,7 @@ import LiveBadge from "@/components/control-plane/LiveBadge";
 import type { AuditEntry } from "@/components/control-plane/RunDetailView";
 import { getJson } from "@/lib/api/client";
 import { useLiveRefresh } from "@/lib/api/events";
+import { runHref } from "@/lib/routes";
 
 interface AuditView {
     entries: AuditEntry[];
@@ -120,7 +121,7 @@ export default function SecurityPage() {
                                 <td className="p-2 font-mono">
                                     {entry.run_id ? (
                                         <Link
-                                            href={`/control-plane/runs/${encodeURIComponent(entry.run_id)}`}
+                                            href={runHref(entry.run_id)}
                                             className="text-cyan-400 hover:underline"
                                         >
                                             {entry.run_id.slice(0, 16)}

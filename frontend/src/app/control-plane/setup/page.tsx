@@ -3,13 +3,15 @@
  * @description First-run setup (M12, spec 5.4): keys and working folder,
  * models, prices, budget, then a final check. Each step saves through the
  * Settings API, so nothing needs a restart; keys are added with the launcher
- * because they never pass through the browser.
+ * because they never pass through the browser, except in the desktop app,
+ * which has no terminal: there they are typed once and go to the OS keyring.
  */
 "use client";
 
 import Link from "next/link";
 import React, { useState } from "react";
 
+import DesktopKeys, { useDesktopMode } from "@/components/control-plane/DesktopKeys";
 import SettingsForm from "@/components/control-plane/SettingsForm";
 import { IssueList, PriceTable, SecretList, type PriceRows } from "@/components/control-plane/SettingsPanels";
 import { mergePrices, useSettings, type SettingChanges } from "@/lib/api/settings";
@@ -25,6 +27,7 @@ export default function SetupPage() {
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [message, setMessage] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
+    const desktop = useDesktopMode();
 
     if (!view) {
         return <div className="p-8 text-gray-400">{error ?? "Loading…"}</div>;
@@ -127,7 +130,8 @@ export default function SetupPage() {
                 <section className="space-y-6">
                     <div>
                         <h2 className="text-xl font-semibold mb-3">Keys</h2>
-                        <SecretList secrets={view.secrets} />
+                        <SecretList secrets={view.secrets} desktop={desktop} />
+                        {desktop && <DesktopKeys onSaved={() => void refresh()} />}
                         {!hasModelKey && (
                             <p className="mt-3 text-yellow-300">
                                 No model provider key yet: the agent cannot run until you add one.

@@ -10,6 +10,10 @@ Two kinds of channel:
   Plane updates without polling. Approvals are already workspace-scoped.
 
 Delivery is best effort: durable state lives in PostgreSQL.
+
+The desktop app (ADR-020) runs one process for one user and no Redis: with
+AEHUB_EVENT_BUS=memory, or REDIS_URL=memory://, events go straight to the
+subscriber queues of this process.
 """
 import asyncio
 import json
@@ -18,6 +22,16 @@ import os
 import redis.asyncio as redis
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
+
+def in_process() -> bool:
+    """
+    True when events and cache stay inside this process (no Redis).
+    """
+    return (
+        os.getenv("AEHUB_EVENT_BUS", "").strip().lower() == "memory"
+        or os.getenv("REDIS_URL", "").startswith("memory://")
+    )
 
 
 def session_channel(session_id: str) -> str:
@@ -34,8 +48,9 @@ class EventBus:
     """
 
     def __init__(self):
-        self.redis = redis.from_url(REDIS_URL, decode_responses=True)
-        self.pubsub = self.redis.pubsub()
+        self.local = in_process()
+        self.redis = None if self.local else redis.from_url(REDIS_URL, decode_responses=True)
+        self.pubsub = None if self.local else self.redis.pubsub()
         self.listeners: dict[str, list[asyncio.Queue]] = {}
         self._listener_task = None
 
@@ -43,11 +58,14 @@ class EventBus:
         await self.pubsub.psubscribe("session:*", "workspace:*")
         async for message in self.pubsub.listen():
             if message["type"] == "pmessage":
-                for queue in self.listeners.get(message["channel"], []):
-                    await queue.put(message["data"])
+                self._deliver(message["channel"], message["data"])
+
+    def _deliver(self, channel: str, message: str) -> None:
+        for queue in list(self.listeners.get(channel, [])):
+            queue.put_nowait(message)
 
     def _subscribe(self, channel: str) -> asyncio.Queue:
-        if not self._listener_task:
+        if not self.local and not self._listener_task:
             self._listener_task = asyncio.create_task(self._listen_to_redis())
 
         queue = asyncio.Queue()
@@ -87,6 +105,13 @@ class EventBus:
         channel the Control Plane listens on.
         """
         message = json.dumps({"type": event_type, "data": data})
+
+        if self.local:
+            self._deliver(session_channel(session_id), message)
+            if workspace_id:
+                self._deliver(workspace_channel(workspace_id), message)
+            return
+
         await self.redis.publish(session_channel(session_id), message)
         if workspace_id:
             await self.redis.publish(workspace_channel(workspace_id), message)

@@ -22,6 +22,9 @@ _TEST_ENV_DEFAULTS = {
     # download.
     "AEHUB_MEMORY_ENABLED": "0",
     "AEHUB_EMBEDDER": "hash",
+    # TestClient sends Host: testserver; the API answers only to the host
+    # names it knows (ADR-020).
+    "AEHUB_ALLOWED_HOSTS": "testserver",
 }
 
 for _key, _value in _TEST_ENV_DEFAULTS.items():

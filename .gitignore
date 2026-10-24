@@ -39,6 +39,15 @@ frontend/.next-env.d.ts
 frontend/coverage/
 frontend/.vercel
 
+# =========================
+# DESKTOP (Tauri, M14)
+# =========================
+desktop/node_modules/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+# Assembled by desktop/scripts/bundle.py: Python, backend, frontend, Postgres.
+desktop/src-tauri/resources/
+
 # Frontend Environment Secrets
 frontend/.env
 frontend/.env.local

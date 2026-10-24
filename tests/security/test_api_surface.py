@@ -48,6 +48,10 @@ MANAGEMENT = {
     # M13: the document index of the working folder; search is a tool.
     ("GET", "/api/documents"),
     ("POST", "/api/documents/sync"),
+    # M14: the desktop app's launch token and provider keys into the keyring.
+    ("GET", "/desktop/launch/{token}"),
+    ("GET", "/api/desktop"),
+    ("PUT", "/api/desktop/secrets"),
     ("GET", "/api/events"),
     ("GET", "/health"),
     ("MOUNT", "/metrics"),
