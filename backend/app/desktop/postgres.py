@@ -91,7 +91,25 @@ class EmbeddedPostgres:
             text=True,
             timeout=timeout,
             creationflags=flags,
+            check=False,
         )
+
+    def _grant_current_user(self, folder: Path) -> None:
+        """
+        Run as an administrator, initdb and pg_ctl restart themselves with a
+        restricted token that drops the Administrators group, and on Windows
+        files an administrator creates can be owned by that group. An explicit
+        grant to this account keeps the folder readable by the server.
+        """
+        if sys.platform != "win32":
+            return
+
+        account = os.getenv("USERNAME", "")
+        domain = os.getenv("USERDOMAIN", "")
+        if not account:
+            return
+
+        self._run(["icacls", str(folder), "/grant", f"{domain}\\{account}:(OI)(CI)F" if domain else f"{account}:(OI)(CI)F"])
 
     @property
     def log_file(self) -> Path:
@@ -105,6 +123,7 @@ class EmbeddedPostgres:
         Create the cluster: superuser `aehub` with the password, loopback only.
         """
         self.data_dir.parent.mkdir(parents=True, exist_ok=True)
+        self._grant_current_user(self.data_dir.parent)
         password_file = self.data_dir.parent / ".pgpass-init"
         password_file.write_text(self.password, encoding="utf-8")
 
@@ -179,6 +198,7 @@ class EmbeddedPostgres:
                 stderr=subprocess.STDOUT,
                 timeout=START_TIMEOUT_SECONDS + 10,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                check=False,
             ).returncode
 
         if returncode != 0:
