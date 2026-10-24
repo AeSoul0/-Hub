@@ -215,6 +215,20 @@ jobs:
           npm run build
           test -f out/index.html && test -f out/control-plane/runs/view/index.html
 
+      # M11 leftover, done in M15: a real Chromium on the desktop engine with
+      # the static frontend and a scripted model. Launch URL -> typed command
+      # -> HIGH call allowed from the Approvals page -> run completed.
+      - name: Browser Smoke (Playwright)
+        working-directory: backend
+        env:
+          AEHUB_BROWSER_SMOKE: "1"
+          AEHUB_REQUIRE_DESKTOP_TEST: "1"
+          AEHUB_TELEMETRY_CONSOLE: "0"
+          PYTHONPATH: .
+        run: |
+          python -m playwright install --with-deps chromium
+          pytest ../tests/desktop/test_desktop_sidecar.py -k browser_smoke -v -rs --import-mode=importlib
+
       # =========================================================================
       # SECURITY SCANNING
       # =========================================================================
