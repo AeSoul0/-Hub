@@ -1,41 +1,35 @@
 /**
  * @file frontend/src/app/layout.tsx
- * @description Implements layout.tsx.
- * 
- * This module manages the frontend logic for RootLayout.
- * Core interfaces: data structures.
+ * @description Root layout: fonts, the space theme and the star field
+ * behind every page.
  */
 import type { Metadata } from "next";
 // Fonts are bundled from npm (no request to Google at build or run time):
 // the build works offline and the browser loads nothing from third parties.
-import "@fontsource-variable/nunito";
-import "@fontsource-variable/quicksand";
+import "@fontsource-variable/oxanium";
+import "@fontsource-variable/ibm-plex-sans";
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource/ibm-plex-mono/500.css";
 import "./style/globals.css";
 
-// Define application metadata for SEO and browser tab display
+import StarField from "@/components/nucleo/StarField";
+
 export const metadata: Metadata = {
     title: "ÆHub",
-    description: "Core Orchestrator Interface",
+    description: "ÆHub, the personal agent.",
 };
 
-// Root layout component that wraps all application pages
 export default function RootLayout({
     children,
 }: Readonly<{
     children: React.ReactNode;
 }>) {
-    // Dynamic hydration wrapper configuring root font variable injections and establishing global theme
     return (
-        <html
-            lang="en"
-            suppressHydrationWarning
-            className="h-full antialiased dark"
-        >
-            {/* Root compositional layer establishing absolute background nodes with hardware-accelerated 150ms transitions */}
-            <body className="min-h-full flex flex-col bg-[#030508] transition-colors duration-150 ease-out text-cyan-50 font-[family-name:var(--font-nunito)]">
-                {children}
+        <html lang="it" className="h-full antialiased">
+            <body className="min-h-full flex flex-col">
+                <StarField />
+                <div className="relative z-10 flex flex-1 flex-col">{children}</div>
             </body>
         </html>
     );
 }
-
