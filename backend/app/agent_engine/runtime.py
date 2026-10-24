@@ -2593,6 +2593,16 @@ class AgentRuntime:
             capabilities=capability_set,
         )
 
+        # The Nucleo draws each subagent as a moon of its parent run (F1).
+        EventDispatcher().dispatch(
+            "subagent.spawned",
+            run_id=child_run_id,
+            parent_run_id=parent_run_id,
+            session_id=session_id,
+            workspace_id=workspace_id,
+            role=role,
+        )
+
         result = await self.execute_task(
             task=task,
             orchestrator=None,
@@ -2606,6 +2616,23 @@ class AgentRuntime:
             capabilities=capability_set,
             max_cost=child_budget,
             inherit_untrusted=inherit_untrusted,
+        )
+
+        EventDispatcher().dispatch(
+            "subagent.completed",
+            run_id=child_run_id,
+            parent_run_id=parent_run_id,
+            session_id=session_id,
+            workspace_id=workspace_id,
+            role=role,
+            # A finished subagent returns its answer; a stopped one a status.
+            details={
+                "status": (
+                    result.get("status") or "COMPLETED"
+                    if isinstance(result, dict)
+                    else "COMPLETED"
+                ),
+            },
         )
 
         return {
