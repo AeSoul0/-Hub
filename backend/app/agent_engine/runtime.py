@@ -646,8 +646,11 @@ class AgentRuntime:
                 ),
                 "max_cost": max_cost,
                 # A subagent starts tainted when its parent has read
-                # untrusted content.
-                "untrusted_context": bool(inherit_untrusted),
+                # untrusted content, and so does a run that recalls an
+                # untrusted memory: an injection read in an earlier session
+                # (a web page, a document) is back in the prompt.
+                "untrusted_context": bool(inherit_untrusted)
+                or any(not item.get("trusted", False) for item in recalled),
             }
 
             last_feedback: Optional[str] = None

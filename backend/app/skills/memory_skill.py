@@ -106,6 +106,14 @@ def _require_memory_scope() -> MemoryScope:
     return scope
 
 
+def current_memory_scope() -> MemoryScope:
+    """
+    The authenticated scope of the tool call in progress, for other native
+    skills that need the caller's workspace (fails closed outside a call).
+    """
+    return _require_memory_scope()
+
+
 def _save(
     content: str,
     kind: MemoryKind,
@@ -324,6 +332,7 @@ def get_skill() -> BaseSkill:
 __all__ = [
     "MemorySkill",
     "clear_memory_context",
+    "current_memory_scope",
     "get_skill",
     "save_procedural_memory",
     "save_semantic_memory",

@@ -98,7 +98,7 @@ The current codebase supports or provides foundations for:
 | Planning and reasoning     | ✅      | Agent decisions emerge from the LangGraph execution cycle                                                     |
 | Short-term memory          | ✅      | LangGraph message state                                                                                       |
 | Persistent memory          | ✅      | PostgreSQL-backed semantic, episodic, and procedural memory (with pgvector embedding)                         |
-| RAG                        | ✅      | Semantic Memory integrated with pgvector for contextual retrieval                                             |
+| RAG                        | ✅      | Hybrid search (full text + pgvector) over memory and the documents of the working folder, with cited sources |
 | Multi-agent collaboration  | ✅      | Supervisor skill delegates tasks dynamically using deterministic role-based Llama models                      |
 | Human-in-the-loop          | 🟡     | Risk metadata and approval flags exist; full approval workflow is not yet enforced end-to-end                 |
 | Monitoring / observability | ✅      | JSON Semantic Logging, OpenTelemetry tracing, and Prometheus `/metrics` exporter implemented                  |
@@ -247,7 +247,8 @@ The memory layer currently provides:
 * conversational persistence through PostgreSQL checkpoints;
 * semantic memory;
 * episodic memory;
-* procedural memory.
+* procedural memory;
+* document search over the working folder (see [Asking about your documents](#asking-about-your-documents)).
 
 ### PostgreSQL
 
@@ -631,7 +632,8 @@ The model, price and limit variables below (`OPENAI_MODEL`, `AEHUB_CHECKER_MODEL
 | `AEHUB_MEMORY_ENABLED` | Cross-session long-term memory: recall at run start, indexing of accepted runs | `1` |
 | `AEHUB_EMBEDDER` / `AEHUB_EMBEDDING_MODEL` | Memory embedder: `sentence-transformers` (local model) or `hash` (no download, weaker recall) | `sentence-transformers` / `all-MiniLM-L6-v2` |
 | `AEHUB_MEMORY_MIN_SIMILARITY` | Minimum cosine similarity for a vector match in hybrid retrieval | `0.25` |
-| `AEHUB_ALLOWED_DIRS` | Folders that filesystem tools may touch (`os.pathsep`-separated) | `./workspace` |
+| `AEHUB_ALLOWED_DIRS` | Folders that filesystem tools may touch (`os.pathsep`-separated); the first one is the working folder searched by `search_documents` | `./workspace` |
+| `AEHUB_DOCUMENTS_MAX_FILE_MB` | Files larger than this are listed in the document index with an error and are not searched | `5` |
 | `AEHUB_MCP_ALLOWED_SERVERS` | Comma-separated MCP server URLs the bridge may connect to | none (no MCP server) |
 | `FRONTEND_URL` / `AEHUB_ALLOWED_ORIGINS` | Browser origins allowed by CORS and the WebSocket | `http://localhost:3000` |
 | `AEHUB_HOST` | Bind address of `python main.py` | `127.0.0.1` |
@@ -670,6 +672,21 @@ curl -b cookies.txt -X POST "http://localhost:3002/api/orchestrator/ask" \
 ```
 
 The agent can decide to use the web-search skill when appropriate.
+
+## Asking about your documents
+
+Put text, Markdown or PDF files in the working folder (`./workspace`, or the folder chosen with `setup`) and ask about them:
+
+```text
+When should I water the tomatoes? Check my notes.
+```
+
+The agent calls `search_documents`, which brings the index up to date (only new or changed files are read, deleted ones leave the index) and returns the best excerpts. Every fact in the answer carries its source: `[doc: notes/garden.md#L3-9]` for lines of a text file, `[doc: report.pdf#p3]` for a PDF page.
+
+* Hidden files and folders are skipped, and so is any link that leads outside the working folder.
+* Documents are treated as untrusted data: after a search, any HIGH-risk action needs your approval, even if a document tells the agent otherwise. The same holds in a later session that recalls that conversation.
+* Document excerpts are never stored as preferences or rules, and they are not recalled automatically: only `search_documents` reads them.
+* `GET /api/documents` lists the indexed files (with errors such as an encrypted PDF); `POST /api/documents/sync` re-indexes now, which is useful after copying many files at once. Both need file access (the admin role).
 
 ## Python client example
 

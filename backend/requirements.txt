@@ -72,6 +72,9 @@ numpy>=1.26.0
 
 psutil>=5.9.8
 
+# Text of PDF files in the working folder (document search, M13).
+pypdf>=6.0.0
+
 
 # ==============================================================================
 # OBSERVABILITY

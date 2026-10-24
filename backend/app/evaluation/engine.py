@@ -14,6 +14,10 @@ Two modes:
 - live (--live): the models configured by the user answer; scripts are
   ignored. Measures the models too, and costs real money.
 
+A case may put files in the working folder (`documents`), and its follow-up
+may delete some (`delete_documents`) before running. Every [doc: ...]
+citation in a final answer must point to an indexed location (M13).
+
 Metrics (spec 6.5): success rate, tool-selection accuracy, hallucination
 rate, mean cost and latency, reliability, security. The release gate fails
 when a critical security case fails or any metric regresses against the
@@ -45,8 +49,11 @@ from app.agent_engine.errors import AgentEngineError
 from app.agent_engine.guardrails import GuardrailException
 from app.agent_engine.resources import PROFILES, TaskClass
 from app.core.security import Permission, Principal, RoleEnum
+from app.documents.index import DocumentIndex, find_citations, missing_citations
 from app.evaluation.scripted import ScriptedModel
 from app.evaluation.tools import EvalSkill
+from app.skills import documents_skill
+from app.skills.documents_skill import DocumentsSkill
 
 
 DATASET_PATH = Path(__file__).with_name("dataset.json")
@@ -91,16 +98,50 @@ def _fake_secrets() -> Dict[str, str]:
 # ==============================================================================
 
 
+class RecordedDocumentsSkill(DocumentsSkill):
+    """
+    The real document search, with its calls recorded among the evaluation
+    tools so cases can expect it.
+    """
+
+    def __init__(self, recorder: EvalSkill) -> None:
+        self._recorder = recorder
+
+    @property
+    def tools(self) -> List[Any]:
+        def search_documents(query: str) -> str:
+            self._recorder._record("search_documents", query=query)
+            return documents_skill.search_documents(query)
+
+        return [search_documents]
+
+
+def write_documents(workspace: Path, documents: Dict[str, str]) -> None:
+    """
+    Create the working folder with the given files (relative POSIX paths).
+    """
+    workspace.mkdir(parents=True, exist_ok=True)
+
+    for relative, content in documents.items():
+        target = workspace / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+
+
+
 @contextmanager
 def eval_environment(
     skill: EvalSkill,
     extra_env: Optional[Dict[str, str]] = None,
+    documents: Optional[Dict[str, str]] = None,
 ) -> Iterator[SimpleNamespace]:
     """
     Isolated engine environment: in-memory database, recorded event bus, no
-    Celery, the evaluation tools as the only skills.
+    Celery, the evaluation tools plus memory and document search as the only
+    skills, and a temporary working folder holding the case's documents.
     """
     from app.domain.models.audit import ApprovalRecord, AuditChainLink, AuditLog
+    from app.domain.models.documents import DocumentFile
     from app.domain.models.identity import Base
     from app.domain.models.memory import MemoryChunk
     from app.domain.models.runtime_state import AgentRun, MonthlySpend
@@ -121,6 +162,7 @@ def eval_environment(
             MonthlySpend.__table__,
             ApprovalRecord.__table__,
             MemoryChunk.__table__,
+            DocumentFile.__table__,
         ],
     )
     session_factory = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -132,9 +174,17 @@ def eval_environment(
     registry = SkillRegistry()
     registry.register_skill(skill)
     registry.register_skill(MemorySkill())
+    registry.register_skill(RecordedDocumentsSkill(skill))
 
     with ExitStack() as stack, tempfile.TemporaryDirectory() as tmp:
-        stack.enter_context(patch.dict(os.environ, {**EVAL_ENV, **(extra_env or {})}))
+        workspace = Path(tmp) / "workspace"
+        write_documents(workspace, documents or {})
+        stack.enter_context(
+            patch.dict(
+                os.environ,
+                {**EVAL_ENV, "AEHUB_ALLOWED_DIRS": str(workspace), **(extra_env or {})},
+            )
+        )
 
         for target in (
             "app.core.db.SessionLocal",
@@ -164,7 +214,11 @@ def eval_environment(
         task_manager.create_task.return_value = SimpleNamespace(id="eval-task")
         stack.enter_context(patch("app.agent_engine.runtime.skill_registry", registry))
 
-        yield SimpleNamespace(published=published, session_factory=session_factory)
+        yield SimpleNamespace(
+            published=published,
+            session_factory=session_factory,
+            workspace=workspace,
+        )
 
     engine.dispose()
 
@@ -373,6 +427,11 @@ async def _run_step(
     return outcome
 
 
+def _result_text(outcome: Dict[str, Any]) -> str:
+    result = outcome.get("result")
+    return "" if result is None or isinstance(result, dict) else str(result)
+
+
 def _requests(outcome: Dict[str, Any]) -> List[str]:
     worker = outcome.get("worker")
     provider = getattr(worker, "model_provider", None)
@@ -388,12 +447,31 @@ async def run_case(case: Dict[str, Any], live: bool = False) -> CaseResult:
     expect = ScriptedModel("expect", [], secrets)._expand(case.get("expect", {}))
     started = time.perf_counter()
 
-    with eval_environment(skill, case.get("env")):
+    with eval_environment(skill, case.get("env"), case.get("documents")) as environment:
         outcome = await _run_step(case, f"eval-{case['id']}-A", live)
         follow_up = None
 
         if case.get("follow_up"):
+            for relative in case["follow_up"].get("delete_documents", []):
+                (environment.workspace / relative).unlink()
+
+            write_documents(environment.workspace, case["follow_up"].get("documents", {}))
             follow_up = await _run_step(case["follow_up"], f"eval-{case['id']}-B", live)
+
+        invalid_citations = missing_citations(
+            _result_text(follow_up or outcome),
+            _principal().workspace_id,
+            environment.session_factory,
+        )
+        cited = len(find_citations(_result_text(follow_up or outcome)))
+        indexed = [
+            row["path"]
+            for row in DocumentIndex(
+                _principal().workspace_id,
+                root=environment.workspace,
+                session_factory=environment.session_factory,
+            ).files()
+        ]
 
     latency = time.perf_counter() - started
     final = follow_up or outcome
@@ -404,7 +482,7 @@ async def run_case(case: Dict[str, Any], live: bool = False) -> CaseResult:
             (outcome["run"].usage or {}).get("cost", 0.0)
         )
 
-    result_text = "" if final["result"] is None or isinstance(final["result"], dict) else str(final["result"])
+    result_text = _result_text(final)
     executed = [call["tool"] for call in skill.calls]
     failures: List[str] = []
 
@@ -449,6 +527,19 @@ async def run_case(case: Dict[str, Any], live: bool = False) -> CaseResult:
         if excluded:
             failures.append(f"result contains forbidden content: {excluded}")
 
+    # A citation of a location that is not in the index is invented.
+    if invalid_citations:
+        hallucinated = True
+        failures.append(f"citations of no indexed location: {invalid_citations}")
+    elif cited and hallucinated is None:
+        hallucinated = False
+
+    if cited < expect.get("min_citations", 0):
+        failures.append(f"{cited} citations < {expect['min_citations']}")
+
+    if "documents_indexed" in expect and indexed != expect["documents_indexed"]:
+        failures.append(f"indexed documents {indexed} != {expect['documents_indexed']}")
+
     requests = _requests(final)
     for term in expect.get("context_contains", []):
         if not any(term in request for request in requests):
@@ -465,6 +556,10 @@ async def run_case(case: Dict[str, Any], live: bool = False) -> CaseResult:
     for term in expect.get("observations_contain", []):
         if term not in observation_text:
             failures.append(f"no tool observation contained {term!r}")
+
+    for term in expect.get("observations_exclude", []):
+        if term in observation_text:
+            failures.append(f"a tool observation contained {term!r}")
 
     error_text = " ".join(
         [str(final.get("error") or ""), str(getattr(run, "error", "") or "")]
