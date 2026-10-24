@@ -5,11 +5,52 @@
 This module manages the internal business logic for RunEvent, EventDispatcher.
 It provides specialized functionality to handle: __new__, dispatch, get_events_for_run.
 """
+import asyncio
 import json
 import os
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from pydantic import BaseModel, Field
+
+# Every dispatched event is also pushed live (F1): the Nucleo shows the
+# engine at work. Delivery is best effort and never slows a run.
+LIVE_EVENT_TYPE = "engine.event"
+LIVE_TIMEOUT_SECONDS = 0.5
+_live_tasks: set = set()
+
+
+def broadcast(event: "RunEvent") -> None:
+    """
+    Publish `event` to its session and workspace channels without waiting.
+
+    Outside an event loop (a script, a sync test) there is nobody listening
+    live, so nothing is sent.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+
+    async def send() -> None:
+        try:
+            from app.core.event_bus import event_bus
+
+            await asyncio.wait_for(
+                event_bus.publish(
+                    event.session_id,
+                    LIVE_EVENT_TYPE,
+                    event.model_dump(),
+                    workspace_id=event.workspace_id,
+                ),
+                timeout=LIVE_TIMEOUT_SECONDS,
+            )
+        except Exception:
+            pass
+
+    task = loop.create_task(send())
+    _live_tasks.add(task)
+    task.add_done_callback(_live_tasks.discard)
+
 
 # Updated RunEvent schema based on Phase 9 requirements
 class RunEvent(BaseModel):
@@ -76,7 +117,9 @@ class EventDispatcher:
         # Append to jsonl flight recorder
         with open(FLIGHT_RECORDER_FILE, "a", encoding="utf-8") as f:
             f.write(json.dumps(event.model_dump()) + "\n")
-            
+
+        broadcast(event)
+
         return event
 
     def get_events_for_run(self, run_id: str) -> List[RunEvent]:

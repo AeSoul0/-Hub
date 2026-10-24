@@ -160,15 +160,15 @@ flowchart TD
 
 ### Frontend
 
-The frontend is a **Next.js application** using React, TypeScript, Tailwind CSS, Zustand, Recharts, and Radix-based UI components.
+The frontend is a **Next.js application** using React, TypeScript and Tailwind CSS. Fonts are bundled from npm, so it loads nothing from third parties.
 
-Its responsibilities include:
+- **The Nucleo** (`/`, ADR-022) is the home:
+  - a dotted sphere in the centre reacts to what the engine does: model calls, tool calls, subagents as small moons, approvals in amber, the microphone, the spoken reply;
+  - the conversation sits on the left and the engine's live events on the right; both panes grow from their top edge and can be hidden;
+  - pending approvals are decided there.
+- **The Control Plane** (`/control-plane`) has runs, approvals, memory, security, settings and setup.
 
-* user interaction;
-* dashboard presentation;
-* agent interaction;
-* real-time event consumption;
-* API communication.
+The look is a deep-blue space theme with squircle corners. The visual reference is `docs/design/hud-prototype.html`.
 
 The frontend development server is configured to run on port `2003`.
 
@@ -747,7 +747,7 @@ print(response.json())
 
 Voice runs on this machine: faster-whisper turns speech into text and Piper speaks the reply, both on the CPU. No audio leaves the computer, and voice works offline once the models are downloaded (about 150 MB and 60 MB, on first use).
 
-- The microphone button of the home page records and sends the audio to `/api/orchestrator/listen`; the WebSocket accepts the same audio.
+- The microphone button of the Nucleo (or the space bar) records and sends the audio to `/api/orchestrator/listen`; the WebSocket accepts the same audio. The sphere follows the real level of your voice and of the reply.
 - The transcript is your instruction, checked like a typed one.
 - **A HIGH-risk action asked by voice always waits for your approval on screen**, also in a clean run: the microphone also hears a TV or another person.
 - `AEHUB_VOICE=off` turns voice off. Without the speech engine the written reply still arrives.
