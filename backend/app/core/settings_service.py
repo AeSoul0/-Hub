@@ -50,7 +50,7 @@ PROVIDER_KEYS: Dict[str, str] = {
 SECRETS = (
     ("OPENAI_API_KEY", "OpenAI API key", "models with the openai provider"),
     ("OPENROUTER_API_KEY", "OpenRouter API key", "models with the openrouter provider"),
-    ("GROQ_API_KEY", "Groq API key", "voice transcription"),
+    ("AEHUB_MQTT_PASSWORD", "MQTT broker password", "home devices (optional)"),
 )
 
 SETUP_HINT = "Add it with: python scripts/aehub.py setup, then restart with: python scripts/aehub.py up."
@@ -381,14 +381,39 @@ def check_configuration() -> List[ConfigIssue]:
             )
         )
 
-    if not _env_set("GROQ_API_KEY"):
+    from app.voice.engines import missing_packages, voice_enabled
+
+    if not voice_enabled():
         issues.append(
             ConfigIssue(
                 "voice_disabled",
                 "info",
-                f"Voice input is off: GROQ_API_KEY is not set. {SETUP_HINT}",
+                "Voice is off (AEHUB_VOICE=off).",
             )
         )
+    elif missing_packages():
+        issues.append(
+            ConfigIssue(
+                "voice_disabled",
+                "warning",
+                f"Voice needs {', '.join(missing_packages())}: install the backend requirements.",
+            )
+        )
+
+    from app.home.devices import DeviceConfigError, load_devices
+    from app.home.mqtt import MqttNotConfigured, broker
+
+    try:
+        devices = load_devices()
+    except DeviceConfigError as exc:
+        issues.append(ConfigIssue("home_devices_invalid", "error", f"Home devices are off: {exc}"))
+        devices = {}
+
+    if devices:
+        try:
+            broker()
+        except MqttNotConfigured as exc:
+            issues.append(ConfigIssue("home_broker_missing", "error", f"{len(devices)} home devices declared, but: {exc}"))
 
     return issues
 

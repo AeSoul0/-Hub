@@ -6,10 +6,11 @@ This module handles:
 - speech-oriented response sanitization,
 - slash-command processing,
 - authenticated text orchestration,
-- authenticated voice orchestration,
+- authenticated voice orchestration (local speech engines, app/voice),
 - multimodal input normalization.
 
 The module delegates actual agent execution to the native Aurora facade.
+A run started from speech is marked input_channel="voice" (ADR-021).
 No LangChain message classes are required by this application boundary.
 """
 
@@ -17,13 +18,9 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import os
 import re
-import tempfile
 from typing import Any, Optional
 
-import edge_tts
-import httpx
 from dotenv import load_dotenv
 from fastapi import (
     APIRouter,
@@ -35,9 +32,10 @@ from fastapi import (
     UploadFile,
 )
 
-from app.core import database
 from app.core.event_bus import event_bus
 from app.runtime.aurora import get_aurora_app
+from app.voice.engines import VoiceUnavailable
+from app.voice.pipeline import AudioTooLarge, MAX_AUDIO_BYTES, speak, transcribe_audio
 
 
 # ==============================================================================
@@ -52,15 +50,7 @@ router = APIRouter(
     tags=["orchestrator"],
 )
 
-# Voice transcription (Groq Whisper) is optional: without the key the API
-# still starts and the voice endpoint answers 503 (M12).
-GROQ_API_KEY = os.getenv(
-    "GROQ_API_KEY",
-    "",
-).strip()
-
-# The spoken reply must not hold the written one back for long.
-TTS_TIMEOUT_SECONDS = 15.0
+INPUT_CHANNELS = ("text", "voice")
 
 
 # ==============================================================================
@@ -146,28 +136,6 @@ def clean_text_for_speech(
     ).strip()
 
 
-async def generate_voice_base64(
-    text: str,
-) -> str:
-    """
-    Convert text to speech and return the audio payload as Base64.
-    """
-    communicate = edge_tts.Communicate(
-        text,
-        "it-IT-ElsaNeural",
-    )
-
-    tts_audio_data = b""
-
-    async for chunk in communicate.stream():
-        if chunk["type"] == "audio":
-            tts_audio_data += chunk["data"]
-
-    return base64.b64encode(
-        tts_audio_data
-    ).decode("utf-8")
-
-
 # ==============================================================================
 # SLASH COMMAND PROCESSING
 # ==============================================================================
@@ -178,8 +146,12 @@ async def execute_slash_command(
     session_id: str,
 ) -> dict[str, str]:
     """
-    Execute a supported slash command against the authenticated session state.
+    Execute a slash command. Only /stop exists: /clear, /precise, /creative,
+    /deep and /fast wrote session settings nobody read, so they never had an
+    effect and were removed with the legacy database module (M15). To stop a
+    running agent, use Stop on the Runs page (the kill switch).
     """
+    del session_id
     cmd = cmd.lower().strip()
 
     if cmd == "/stop":
@@ -191,71 +163,9 @@ async def execute_slash_command(
             "audio_base64": "",
         }
 
-    if cmd == "/clear":
-        database.clear_chat(
-            session_id
-        )
-        reply_text = (
-            "Memoria di sistema inizializzata. "
-            "Cronologia cancellata."
-        )
-
-    elif cmd == "/precise":
-        database.update_settings(
-            session_id,
-            temperature=0.1,
-        )
-        reply_text = (
-            "Modalità precisione attivata. "
-            "Varianza logica ridotta al minimo."
-        )
-
-    elif cmd == "/creative":
-        database.update_settings(
-            session_id,
-            temperature=0.9,
-        )
-        reply_text = (
-            "Modalità creativa ingaggiata. "
-            "Reti neurali espanse."
-        )
-
-    elif cmd == "/deep":
-        database.update_settings(
-            session_id,
-            max_tokens=1024,
-            deep_mode=True,
-        )
-        reply_text = (
-            "Analisi profonda abilitata. "
-            "Parametri di sintesi disattivati."
-        )
-
-    elif cmd == "/fast":
-        database.update_settings(
-            session_id,
-            temperature=0.75,
-            max_tokens=300,
-            deep_mode=False,
-        )
-        reply_text = (
-            "Operatività rapida ingaggiata. "
-            "Parametri standard ripristinati."
-        )
-
-    else:
-        reply_text = (
-            "Comando sconosciuto. Direttive accettate: "
-            "stop, clear, precise, creative, deep, fast."
-        )
-
-    base64_audio = await generate_voice_base64(
-        reply_text
-    )
-
     return {
-        "transcription": reply_text,
-        "audio_base64": base64_audio,
+        "transcription": "Comando sconosciuto. Direttive accettate: stop.",
+        "audio_base64": "",
     }
 
 
@@ -270,9 +180,12 @@ async def generate_ai_response(
     ui_context: str,
     session_id: str,
     principal: Optional[Any] = None,
+    input_channel: str = "text",
 ) -> dict[str, str]:
     """
     Delegate an authenticated interaction to the native Aurora runtime.
+
+    input_channel is "voice" when the intent is a transcript (ADR-021).
 
     The caller must provide an explicit Principal. The principal is preserved
     unchanged through the compatibility facade and native AgentRuntime.
@@ -317,11 +230,11 @@ async def generate_ai_response(
             "Missing principal. Execution denied."
         )
 
-    session_settings = database.get_settings(
-        session_id
-    )
+    if input_channel not in INPUT_CHANNELS:
+        raise ValueError(
+            f"Unknown input channel '{input_channel}'."
+        )
 
-    del session_settings
     del ui_context
 
     await event_bus.publish(
@@ -345,6 +258,7 @@ async def generate_ai_response(
         "current_intent": intent_str,
         "principal": principal,
         "system_prompt": system_prompt,
+        "input_channel": input_channel,
     }
 
     try:
@@ -404,30 +318,15 @@ async def generate_ai_response(
         ai_response_text
     )
 
-    # Speech is a network service (edge-tts): offline, or when it fails, the
-    # answer still arrives, without audio.
-    try:
-        base64_audio = await asyncio.wait_for(
-            generate_voice_base64(
-                clean_response
-            ),
-            timeout=TTS_TIMEOUT_SECONDS,
-        )
-    except Exception as exc:
-        print(
-            f"Speech synthesis unavailable: {exc}"
-        )
-        base64_audio = ""
-
-    database.save_chat(
-        session_id,
-        intent_str,
-        clean_response,
+    # Best effort: without the speech engine the written reply still arrives.
+    base64_audio, audio_mime = await speak(
+        clean_response
     )
 
     return {
         "transcription": clean_response,
         "audio_base64": base64_audio,
+        "audio_mime": audio_mime,
     }
 
 
@@ -446,109 +345,74 @@ async def process_orchestration_voice(
     ),
 ):
     """
-    Authenticate the request, transcribe the audio, and execute Aurora.
+    Authenticate the request, transcribe the audio locally and execute
+    Aurora with the transcript as a voice instruction.
 
     The client-provided X-Session-ID header is intentionally ignored.
     Session identity is derived from the authenticated Principal.
     """
     del x_session_id
 
-    if not GROQ_API_KEY:
-        raise HTTPException(
-            status_code=503,
-            detail="Voice input is off: GROQ_API_KEY is not set.",
+    from app.core.db import SessionLocal
+    from app.core.security import resolve_principal
+
+    with SessionLocal() as db:
+        principal = resolve_principal(
+            request,
+            db,
         )
 
+    audio_bytes = await file.read(
+        MAX_AUDIO_BYTES + 1
+    )
+
     try:
-        from app.core.db import SessionLocal
-        from app.core.security import resolve_principal
+        transcript = await transcribe_audio(
+            audio_bytes
+        )
+    except AudioTooLarge as exc:
+        raise HTTPException(
+            status_code=413,
+            detail=str(exc),
+        ) from exc
+    except VoiceUnavailable as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Transcription failed: {exc}",
+        ) from exc
 
-        with SessionLocal() as db:
-            principal = resolve_principal(
-                request,
-                db,
-            )
+    if not transcript:
+        return {
+            "heard": "",
+            "transcription": "",
+            "audio_base64": "",
+            "audio_mime": "",
+        }
 
-        audio_bytes = await file.read()
-
-        temp_path = None
-
-        try:
-            with tempfile.NamedTemporaryFile(
-                delete=False,
-                suffix=".webm",
-            ) as temp:
-                temp.write(
-                    audio_bytes
-                )
-                temp_path = temp.name
-
-            async with httpx.AsyncClient(
-                timeout=30.0
-            ) as client:
-                with open(
-                    temp_path,
-                    "rb",
-                ) as file_handle:
-                    response = await client.post(
-                        "https://api.groq.com/openai/v1/audio/transcriptions",
-                        files={
-                            "file": (
-                                os.path.basename(
-                                    temp_path
-                                ),
-                                file_handle,
-                                "audio/webm",
-                            )
-                        },
-                        data={
-                            "model": "whisper-large-v3",
-                        },
-                        headers={
-                            "Authorization": (
-                                f"Bearer {GROQ_API_KEY}"
-                            )
-                        },
-                    )
-
-            user_intent = (
-                response.json().get(
-                    "text",
-                    "",
-                )
-                if response.status_code == 200
-                else ""
-            )
-
-        finally:
-            if (
-                temp_path
-                and os.path.exists(temp_path)
-            ):
-                os.remove(temp_path)
-
-        if (
-            not user_intent
-            or user_intent == "Transcription error."
-        ):
-            return {
-                "transcription": "",
-                "audio_base64": "",
-            }
-
-        return await generate_ai_response(
-            user_intent,
+    try:
+        reply = await generate_ai_response(
+            transcript,
             AESOUL_SYSTEM_PROMPT,
             ui_context,
             principal.id,
             principal,
+            input_channel="voice",
         )
-
     except Exception as exc:
         raise HTTPException(
             status_code=500,
             detail=f"Voice node failure: {exc}",
         ) from exc
+
+    return {
+        "heard": transcript,
+        **reply,
+    }
 
 
 # ==============================================================================

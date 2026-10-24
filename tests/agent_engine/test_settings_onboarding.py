@@ -235,7 +235,8 @@ def test_settings_http_contract(agent_infrastructure, db_session_factory, monkey
     assert FAKE_OPENAI_KEY not in view.text
     secrets = {secret["name"]: secret["configured"] for secret in body["secrets"]}
     assert secrets["OPENAI_API_KEY"] is True
-    assert secrets["GROQ_API_KEY"] is False
+    assert secrets["AEHUB_MQTT_PASSWORD"] is False
+    assert "GROQ_API_KEY" not in secrets
 
     by_name = {setting["name"]: setting for setting in body["settings"]}
     assert by_name["AEHUB_RUN_MAX_COST"]["value"] == "2.5"

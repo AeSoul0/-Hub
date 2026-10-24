@@ -183,6 +183,13 @@ class TaskExecutionContext(BaseModel):
     workspace_id: Optional[str] = None
     # Set once the run has read untrusted content (web, files, MCP).
     untrusted_context: bool = False
+    # "voice" when the task was spoken (ADR-021): the microphone also hears
+    # a TV or another person, so HIGH-risk actions always wait for a human.
+    input_channel: str = "text"
+    # The tools the skill index picked for the run from the user's task;
+    # None when it picked none (every tool). A call to any other tool is
+    # refused: an injection cannot reach a tool the task never called for.
+    exposed_tools: Optional[List[str]] = None
 
 
 class SubagentCapabilitySet(BaseModel):
@@ -573,6 +580,18 @@ class PolicyEngine:
                 reason="Insufficient execution budget.",
             )
 
+        if (
+            task_context.exposed_tools is not None
+            and tool_spec.name not in task_context.exposed_tools
+        ):
+            return PolicyDecision(
+                decision=PolicyDecisionEnum.DENY,
+                reason=(
+                    f"Tool {tool_spec.name} is not among the tools "
+                    "picked for this task."
+                ),
+            )
+
         allowed_tools = set(
             workspace_policy.allowed_tools
         )
@@ -776,6 +795,18 @@ class PolicyEngine:
                 reason=(
                     "HIGH-risk action proposed after untrusted "
                     "content requires explicit approval."
+                ),
+            )
+
+        if (
+            task_context.input_channel == "voice"
+            and tool_spec.risk_level.upper() == "HIGH"
+        ):
+            return PolicyDecision(
+                decision=PolicyDecisionEnum.REQUIRE_APPROVAL,
+                reason=(
+                    "HIGH-risk action asked by voice requires "
+                    "approval on screen."
                 ),
             )
 

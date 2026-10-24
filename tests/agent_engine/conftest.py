@@ -2,8 +2,8 @@
 @file tests/agent_engine/conftest.py
 @description Shared end-to-end fixtures for the native agent engine.
 
-The only fake boundaries are the OpenAI client, the Redis event bus and the
-TaskManager connection pool. Everything else (AgentEngine, AgentRuntime,
+The only fake boundaries are the OpenAI client and the Redis event bus.
+Everything else (AgentEngine, AgentRuntime,
 OpenAIAdapter, ToolGateway, ApprovalManager, AgentStateManager, AuditLog)
 runs for real against an in-memory database.
 """
@@ -200,11 +200,6 @@ def agent_infrastructure(db_session_factory, tmp_path):
                 AsyncMock(side_effect=publish),
             )
         )
-
-        task_manager = stack.enter_context(
-            patch("app.runtime.tool_gateway.TaskManager")
-        )
-        task_manager.create_task.return_value = SimpleNamespace(id="task-1")
 
         def use_skills(*skills: Any) -> SkillRegistry:
             registry = SkillRegistry()

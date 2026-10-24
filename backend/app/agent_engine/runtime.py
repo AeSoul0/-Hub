@@ -61,6 +61,7 @@ from app.agent_engine.models import (
 from app.agent_engine.resources import ResourceManager
 from app.agent_engine.routing import Role
 from app.agent_engine.state.manager import AgentStateManager
+from app.agent_engine.tool_selection import select_tools
 from app.agents.subagents.base import SubagentFactory
 from app.core.security import (
     ROLE_PERMISSIONS,
@@ -335,18 +336,23 @@ class AgentRuntime:
         cls,
         principal: Principal,
         capabilities: Optional[SubagentCapabilitySet] = None,
+        exposed_tools: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Build the function-tool definitions the Worker model may call.
 
         Only registered tools that the PolicyEngine does not deny for this
         Principal (and, for a subagent, its delegated capability set) are
-        exposed. Exposure is not authorization: every call still goes through
-        the ToolGateway pipeline.
+        exposed, and only those the skill index picked for the run when it
+        picked any. Exposure is not authorization: every call still goes
+        through the ToolGateway pipeline.
         """
         model_tools: List[Dict[str, Any]] = []
 
         for tool_name in skill_registry.get_registered_tool_names():
+            if exposed_tools is not None and tool_name not in exposed_tools:
+                continue
+
             try:
                 spec = cls._build_tool_spec(tool_name)
             except ValueError:
@@ -651,6 +657,13 @@ class AgentRuntime:
                 # (a web page, a document) is back in the prompt.
                 "untrusted_context": bool(inherit_untrusted)
                 or any(not item.get("trusted", False) for item in recalled),
+                # The tools this run may see and call, picked from the
+                # user's task alone (never from content read later); None
+                # means all of them (M15, ADR-021).
+                "exposed_tools": select_tools(
+                    skill_registry,
+                    validated_description,
+                ),
             }
 
             last_feedback: Optional[str] = None
@@ -792,6 +805,7 @@ class AgentRuntime:
         model_tools = self._build_model_tools(
             principal,
             capability_set,
+            worker_context.get("exposed_tools"),
         )
 
         limits = self._run_limits(worker_context)
@@ -1131,6 +1145,8 @@ class AgentRuntime:
                                         )
                                     ),
                                     capabilities=capability_set,
+                                    input_channel=self._input_channel(worker_context),
+                                    exposed_tools=worker_context.get("exposed_tools"),
                                 ),
                                 cancellation_token,
                             ),
@@ -1413,6 +1429,7 @@ class AgentRuntime:
                         "untrusted_context"
                     )
                 ),
+                "exposed_tools": worker_context.get("exposed_tools"),
             }
 
             self._save(
@@ -1441,6 +1458,15 @@ class AgentRuntime:
     # TOOL PROPOSAL EXECUTION
     # ==========================================================================
 
+    @staticmethod
+    def _input_channel(worker_context: Dict[str, Any]) -> str:
+        """
+        How the run's task arrived: "voice" for a transcript, else "text".
+        """
+        task = worker_context.get("task")
+        channel = task.get("input_channel") if isinstance(task, dict) else None
+        return "voice" if channel == "voice" else "text"
+
     async def _execute_proposal(
         self,
         proposal: ToolProposal,
@@ -1450,6 +1476,8 @@ class AgentRuntime:
         run_id: str,
         untrusted_context: bool = False,
         capabilities: Optional[SubagentCapabilitySet] = None,
+        input_channel: str = "text",
+        exposed_tools: Optional[List[str]] = None,
     ) -> Observation:
         """
         Run one proposal through the ToolGateway and return its Observation.
@@ -1512,6 +1540,8 @@ class AgentRuntime:
                     untrusted_context=untrusted_context,
                     is_subagent=capabilities is not None,
                     subagent_capabilities=capabilities,
+                    input_channel=input_channel,
+                    exposed_tools=exposed_tools,
                 ),
             )
 
@@ -1888,6 +1918,8 @@ class AgentRuntime:
                         )
                     ),
                     capabilities=capability_set,
+                    input_channel=self._input_channel(worker_context),
+                    exposed_tools=worker_context.get("exposed_tools"),
                 )
 
             except ApprovalRequiredError as exc:
@@ -2352,6 +2384,9 @@ class AgentRuntime:
                     "untrusted_context"
                 )
             ),
+            "exposed_tools": worker_context.get(
+                "exposed_tools"
+            ),
             "preferences": worker_context.get(
                 "preferences"
             ) or [],
@@ -2473,6 +2508,11 @@ class AgentRuntime:
             inherit_untrusted = bool(
                 parent_context.get("untrusted_context")
             )
+
+            # A subagent of a spoken task is a spoken task too: its HIGH
+            # actions also wait for a human (ADR-021).
+            if self._input_channel(parent_context) == "voice":
+                task = {**task, "input_channel": "voice"}
 
             parent_remaining = self._run_limits(
                 parent_context

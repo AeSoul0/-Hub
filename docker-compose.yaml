@@ -19,19 +19,25 @@ services:
       # survives container restarts. `python scripts/aehub.py setup` can point
       # it at another folder (AEHUB_WORKSPACE_DIR in .env).
       - ${AEHUB_WORKSPACE_DIR:-./workspace}:/app/workspace
+      # Local voice models (M15): downloaded once, kept across rebuilds.
+      - ./data/voice:/app/voice-models
+      # Home device file (M15), read-only and outside the agent's working
+      # folder: set AEHUB_HOME_DEVICES=/app/config/home.json in backend/.env.
+      - ./config:/app/config:ro
     env_file:
       - path: ./backend/.env
         required: false
     environment:
       - POSTGRES_URL=postgresql://${POSTGRES_USER:-aehub_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-aehub_db}
       - REDIS_URL=redis://redis:6379/0
+      - AEHUB_VOICE_MODELS_DIR=/app/voice-models
       # SECRETS (M12): read from the OS keyring by `python scripts/aehub.py up`
       # and passed through this process environment, never from a file. They
       # override backend/.env, which keeps only non-secret settings.
       - AEHUB_SECRET_KEY=${AEHUB_SECRET_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
-      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - AEHUB_MQTT_PASSWORD=${AEHUB_MQTT_PASSWORD:-}
       - AEHUB_LOCAL_API_KEY=${AEHUB_LOCAL_API_KEY:-}
     depends_on:
       - postgres

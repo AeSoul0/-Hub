@@ -373,7 +373,7 @@ The repository is organized as a frontend/backend monorepo.
 │   │   │   └── runs.py
 │   │   │
 │   │   ├── core/
-│   │   │   ├── database.py
+│   │   │   ├── db.py
 │   │   │   ├── event_bus.py
 │   │   │   └── security.py
 │   │   │
@@ -564,7 +564,8 @@ http://localhost:2003
 
 The desktop app needs no Docker: one installer holds the engine, its own PostgreSQL with pgvector and the frontend (roadmap M14, `docs/adr/ADR-020-Runtime-desktop.md`).
 
-- **Install:** run the `AEHub_*-setup.exe` from the `aehub-windows-installer` artifact of the CI (`desktop-windows` job). It installs for the current user, without administrator rights. It is not code-signed yet, so Windows SmartScreen asks for confirmation.
+- **Install:** run the `AEHub_*-setup.exe` from the GitHub Release of a version tag, or from the `aehub-windows-installer` artifact of the CI (`desktop-windows` job). It installs for the current user, without administrator rights. Without an Authenticode certificate in the CI secrets it is not code-signed, so Windows SmartScreen asks for confirmation.
+- **Updates:** on start the app looks for a newer release, signed with the updater's key, and installs it only if you say yes. Releases are published by the CI when `TAURI_SIGNING_PRIVATE_KEY` is among its secrets.
 - **First start:** the app creates its database in `%LOCALAPPDATA%\AEHub` and its working folder in `Documents\AEHub`, then opens the Control Plane already logged in. Add a provider key on the setup page: it goes to the Windows Credential Manager, never to a file. Then pick models, prices and budget as with Docker.
 - **How it runs:** the window starts `backend/desktop.py`, which runs Postgres and the API on `127.0.0.1` on ports chosen at every start, with live events in-process instead of Redis. The window logs in with a one-time token. Closing the window stops everything.
 - **Memory:** the desktop app uses the `hash` embedder, which needs no model download and has weaker recall, until the local embedder is decided (ADR-020).
@@ -602,7 +603,7 @@ POSTGRES_URL=postgresql://aehub_user:replace_password@localhost:5432/aehub_db
 REDIS_URL=redis://localhost:6379/0
 ```
 
-Outside Docker, put the keys in your shell environment (for example `AEHUB_SECRET_KEY`, `OPENAI_API_KEY`) rather than in this file. `GROQ_API_KEY` is optional: without it the API starts and voice input is off.
+Outside Docker, put the keys in your shell environment (for example `AEHUB_SECRET_KEY`, `OPENAI_API_KEY`) rather than in this file. Voice needs no key: it runs on this machine (see Voice).
 
 ## Frontend `.env.local`
 
@@ -622,7 +623,7 @@ Do not expose private backend secrets through `NEXT_PUBLIC_*` variables.
 | --------------------- | ----------------------------------------------------------- |
 | `AEHUB_SECRET_KEY`    | Control Plane login key (keyring; required, the API exits without it) |
 | `OPENAI_API_KEY` / `OPENROUTER_API_KEY` | Provider keys (keyring)                   |
-| `GROQ_API_KEY`        | Voice transcription (keyring; optional)                     |
+| `AEHUB_MQTT_PASSWORD` | Password of the home MQTT broker (keyring; optional)       |
 | `POSTGRES_URL`        | PostgreSQL connection string used by the agent runtime      |
 | `REDIS_URL`           | Redis connection information                                |
 | `NEXT_PUBLIC_API_URL` | Public frontend endpoint for backend communication          |
@@ -659,6 +660,13 @@ The model, price and limit variables below (`OPENAI_MODEL`, `AEHUB_CHECKER_MODEL
 | `AEHUB_EVENT_BUS` | `memory` keeps live events and the cache inside the process, without Redis (the desktop app; also `REDIS_URL=memory://`) | Redis |
 | `AEHUB_FRONTEND_DIR` | Static frontend export the API serves from its own origin (the desktop app) | none |
 | `AEHUB_DATA_DIR` / `AEHUB_PG_BIN` | Desktop app: folder of the database cluster and logs; folder with `initdb` and `pg_ctl` | `%LOCALAPPDATA%\AEHub` / bundled |
+| `AEHUB_VOICE` | `local` (faster-whisper + Piper on this machine) or `off` | `local` |
+| `AEHUB_STT_MODEL` / `AEHUB_STT_LANGUAGE` / `AEHUB_TTS_VOICE` | Whisper model, spoken language, Piper voice | `base` / `it` / `it_IT-paola-medium` |
+| `AEHUB_VOICE_MODELS_DIR` | Where the speech models are downloaded on first use | `~/.cache/aehub/voice` |
+| `AEHUB_HOME_DEVICES` | JSON file of the home devices, outside the working folder (see Home devices) | none (no home tools) |
+| `AEHUB_MQTT_URL` / `AEHUB_MQTT_USERNAME` | Home MQTT broker (`mqtt://host:1883`, `mqtts://host:8883`) and user | none |
+| `AEHUB_TOOL_SELECTION` / `AEHUB_TOOL_TOP_K` | Skill index: show each run only the tools its task names | `on` / `6` |
+| `AEHUB_SKILL_INDEX_PATH` | The skill index's own SQLite file | `~/.cache/aehub/skill_index.sqlite3` |
 
 ### Security notes
 
@@ -735,29 +743,32 @@ response.raise_for_status()
 print(response.json())
 ```
 
+## Voice
+
+Voice runs on this machine: faster-whisper turns speech into text and Piper speaks the reply, both on the CPU. No audio leaves the computer, and voice works offline once the models are downloaded (about 150 MB and 60 MB, on first use).
+
+- The microphone button of the home page records and sends the audio to `/api/orchestrator/listen`; the WebSocket accepts the same audio.
+- The transcript is your instruction, checked like a typed one.
+- **A HIGH-risk action asked by voice always waits for your approval on screen**, also in a clean run: the microphone also hears a TV or another person.
+- `AEHUB_VOICE=off` turns voice off. Without the speech engine the written reply still arrives.
+
+## Home devices
+
+The agent controls lights and locks through an MQTT broker on your network (Mosquitto, Zigbee2MQTT, Tasmota).
+
+1. Copy `config/home.example.json` to `config/home.json` and list your devices: id, name, type (`light` or `lock`), MQTT topic and format (`zigbee2mqtt`, the default, or `tasmota` for lights).
+2. In `backend/.env` set `AEHUB_HOME_DEVICES=/app/config/home.json` and `AEHUB_MQTT_URL`, plus `AEHUB_MQTT_USERNAME` when the broker needs a user. The password goes in the keyring (`python scripts/aehub.py setup`). In the desktop app, `home.json` goes next to the database in `%LOCALAPPDATA%\AEHub`.
+3. Restart. The configuration check reports an invalid file or a missing broker.
+
+Each action is its own tool with its own risk: listing devices, a light, and locking a door are LOW; **unlocking a door is HIGH and always waits for approval**. The agent names a device you declared, never a topic or a host. The device file must stay outside the agent's working folder: there the agent's file tools could change it.
+
+## Which tools a run sees
+
+At the start of every run the skill index, a SQLite database of its own, picks from your task alone the tools it names (at most `AEHUB_TOOL_TOP_K`). The model is shown only those, and a call to any other tool is refused, so an instruction hidden in a web page or a document cannot reach a tool your task never asked for. When no word of the task matches a tool, every tool is shown, as before. On the evaluation suite this cut the mean cost per case by about a third.
+
 ## Slash commands
 
-The orchestrator also supports a small set of session commands:
-
-```text
-/stop
-/clear
-/precise
-/creative
-/deep
-/fast
-```
-
-For example:
-
-```bash
-curl -X POST "http://localhost:3002/api/orchestrator/ask" \
-  -H "X-AeHub-Key: replace_with_your_secret" \
-  -H "X-Session-Id: demo-session" \
-  -F "text=/deep"
-```
-
-These commands change session-level behavior or clear conversation state.
+`/stop` is the only command (`/clear`, `/precise`, `/creative`, `/deep` and `/fast` never had an effect and were removed in M15). To stop a running agent, use **Stop** on the Runs page.
 
 ---
 
@@ -1149,7 +1160,7 @@ Agentic systems require stronger controls than ordinary CRUD applications becaus
 
 Never hard-code:
 
-* `GROQ_API_KEY`;
+* `OPENAI_API_KEY` / `OPENROUTER_API_KEY`;
 * `AEHUB_SECRET_KEY`;
 * database passwords;
 * external service credentials.

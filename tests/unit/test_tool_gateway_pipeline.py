@@ -103,7 +103,6 @@ def test_execute_success():
     async def executor(**kwargs):
         return "success_output"
 
-    fake_task = MagicMock(id="task-1")
 
     with (
         patch(
@@ -119,13 +118,6 @@ def test_execute_success():
             side_effect=lambda name, value: value,
         ) as post_guard,
         patch(
-            "app.runtime.tool_gateway.TaskManager.create_task",
-            return_value=fake_task,
-        ) as create_task,
-        patch(
-            "app.runtime.tool_gateway.TaskManager.update_state",
-        ) as update_state,
-        patch(
             "app.runtime.tool_gateway.ToolGateway._log_audit",
             return_value="audit-1",
         ),
@@ -138,8 +130,6 @@ def test_execute_success():
 
     pre_guard.assert_called_once()
     post_guard.assert_called_once()
-    create_task.assert_called_once()
-    update_state.assert_called()
 
 
 def test_execute_guardrail_denies_dangerous_input():
@@ -422,7 +412,6 @@ def test_execute_budget_is_consumed_only_after_approval():
     async def executor(**kwargs):
         return "executed"
 
-    fake_task = MagicMock(id="task-budget-approved")
 
     with (
         patch(
@@ -445,13 +434,6 @@ def test_execute_budget_is_consumed_only_after_approval():
             "app.runtime.tool_gateway.BudgetManager.consume",
             return_value=True,
         ) as consume_budget,
-        patch(
-            "app.runtime.tool_gateway.TaskManager.create_task",
-            return_value=fake_task,
-        ),
-        patch(
-            "app.runtime.tool_gateway.TaskManager.update_state",
-        ),
         patch(
             "app.runtime.tool_gateway.ToolGuardrail.validate_post_execution",
             side_effect=lambda name, value: value,

@@ -116,8 +116,9 @@ export default function CoreOrchestratorWidget() {
         setInputText("");
 
         if (data.audio_base64) {
+            // Local speech (M15) answers in WAV; the type comes with the audio.
             const audio = new Audio(
-                `data:audio/mp3;base64,${data.audio_base64}`,
+                `data:${data.audio_mime || "audio/wav"};base64,${data.audio_base64}`,
             );
             await audio.play();
         }

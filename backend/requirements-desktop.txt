@@ -12,10 +12,12 @@ pydantic>=2.4.2
 pydantic-settings>=2.0.3
 
 openai>=1.68.0
-groq>=0.4.1
 httpx>=0.25.0
 
-edge-tts>=6.1.9
+faster-whisper>=1.2.0
+piper-tts>=1.8.0
+
+paho-mqtt>=2.1.0
 
 duckduckgo-search>=3.9.3
 playwright==1.64.1

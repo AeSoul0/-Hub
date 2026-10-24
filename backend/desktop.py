@@ -103,6 +103,7 @@ def desktop_environment(
     api_port: int,
     frontend_dir: Optional[Path],
     base: Optional[Dict[str, str]] = None,
+    data_dir: Optional[Path] = None,
 ) -> Dict[str, str]:
     """
     The API's environment. The user's own environment wins for the folder
@@ -118,6 +119,16 @@ def desktop_environment(
     env.setdefault("AEHUB_ALLOWED_DIRS", str(default_workspace()))
     # ADR-020, point 9: no torch in the desktop app until the embedder is decided.
     env.setdefault("AEHUB_EMBEDDER", "hash")
+
+    if data_dir is not None:
+        # Speech models are downloaded once, next to the database.
+        env.setdefault("AEHUB_VOICE_MODELS_DIR", str(data_dir / "voice"))
+        env.setdefault("AEHUB_SKILL_INDEX_PATH", str(data_dir / "skill_index.sqlite3"))
+
+        # Home devices: home.json next to the database, outside the
+        # agent's working folder.
+        if (data_dir / "home.json").is_file():
+            env.setdefault("AEHUB_HOME_DEVICES", str(data_dir / "home.json"))
 
     origin = f"http://127.0.0.1:{api_port}"
     env.update(
@@ -222,6 +233,7 @@ def run(args: argparse.Namespace) -> int:
                 postgres.url(),
                 api_port,
                 frontend_dir if frontend_ready else None,
+                data_dir=data_dir,
             )
         )
         Path(os.environ["AEHUB_ALLOWED_DIRS"].split(os.pathsep)[0]).mkdir(parents=True, exist_ok=True)

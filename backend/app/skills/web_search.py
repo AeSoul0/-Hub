@@ -97,6 +97,7 @@ class WebSearchSkill(BaseSkill):
         return {
             "perform_web_search": ToolMetadata(
                 name="perform_web_search",
+                examples=["cerca su internet", "cerca online", "notizie", "ultime", "search the web", "look up online", "news", "latest"],
                 description=(
                     "Search the public internet using DuckDuckGo."
                 ),
