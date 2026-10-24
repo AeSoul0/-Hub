@@ -125,3 +125,6 @@ ROADMAP_100_100.md
 TESTING_ROADMAP.md
 M17-ROADMAP.md
 roadmap_v2_adjustment.md
+
+# Home device file (M15): config/home.example.json is the template.
+config/home.json

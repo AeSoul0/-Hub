@@ -90,6 +90,14 @@ jobs:
           sudo apt-get install -y -q "postgresql-${major}-pgvector"
           echo "AEHUB_TEST_PG_BIN=${bin_dir}" >> "$GITHUB_ENV"
 
+      # M15: the home node test publishes to a real broker. The image's
+      # no-auth config listens on every interface (the default is local only).
+      - name: MQTT Broker (home node test)
+        run: |
+          docker run -d --name mqtt -p 1883:1883 eclipse-mosquitto:2 mosquitto -c /mosquitto-no-auth.conf
+          for i in $(seq 1 20); do nc -z localhost 1883 && exit 0; sleep 1; done
+          docker logs mqtt; exit 1
+
       # =========================================================================
       # BACKEND SECURITY GATES (M7)
       # =========================================================================
@@ -130,6 +138,7 @@ jobs:
           GROQ_API_KEY: ci-test-groq-key
           AEHUB_TELEMETRY_CONSOLE: "0"
           AEHUB_REQUIRE_DESKTOP_TEST: "1"
+          AEHUB_TEST_MQTT_URL: mqtt://localhost:1883
           PYTHONPATH: .
         run: |
           pytest ../tests/ -v -rs --import-mode=importlib

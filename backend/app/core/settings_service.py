@@ -400,6 +400,21 @@ def check_configuration() -> List[ConfigIssue]:
             )
         )
 
+    from app.home.devices import DeviceConfigError, load_devices
+    from app.home.mqtt import MqttNotConfigured, broker
+
+    try:
+        devices = load_devices()
+    except DeviceConfigError as exc:
+        issues.append(ConfigIssue("home_devices_invalid", "error", f"Home devices are off: {exc}"))
+        devices = {}
+
+    if devices:
+        try:
+            broker()
+        except MqttNotConfigured as exc:
+            issues.append(ConfigIssue("home_broker_missing", "error", f"{len(devices)} home devices declared, but: {exc}"))
+
     return issues
 
 

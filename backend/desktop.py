@@ -124,6 +124,11 @@ def desktop_environment(
         # Speech models are downloaded once, next to the database.
         env.setdefault("AEHUB_VOICE_MODELS_DIR", str(data_dir / "voice"))
 
+        # Home devices: home.json next to the database, outside the
+        # agent's working folder.
+        if (data_dir / "home.json").is_file():
+            env.setdefault("AEHUB_HOME_DEVICES", str(data_dir / "home.json"))
+
     origin = f"http://127.0.0.1:{api_port}"
     env.update(
         {

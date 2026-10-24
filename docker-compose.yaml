@@ -21,6 +21,9 @@ services:
       - ${AEHUB_WORKSPACE_DIR:-./workspace}:/app/workspace
       # Local voice models (M15): downloaded once, kept across rebuilds.
       - ./data/voice:/app/voice-models
+      # Home device file (M15), read-only and outside the agent's working
+      # folder: set AEHUB_HOME_DEVICES=/app/config/home.json in backend/.env.
+      - ./config:/app/config:ro
     env_file:
       - path: ./backend/.env
         required: false
