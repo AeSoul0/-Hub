@@ -227,6 +227,7 @@ class MemorySkill(BaseSkill):
         return {
             "save_semantic_memory": ToolMetadata(
                 name="save_semantic_memory",
+                examples=["ricorda", "ricordati", "memorizza", "fatto", "remember", "memorize", "fact", "note that"],
                 description="Stores an authenticated semantic memory.",
                 risk_level=RiskLevel.LOW,
                 permissions_required=[
@@ -254,6 +255,7 @@ class MemorySkill(BaseSkill):
             ),
             "save_procedural_memory": ToolMetadata(
                 name="save_procedural_memory",
+                examples=["ricorda come si fa", "procedura", "passaggi", "remember how to", "procedure", "steps", "workflow"],
                 description="Stores an authenticated procedural memory.",
                 risk_level=RiskLevel.LOW,
                 permissions_required=[
@@ -281,6 +283,7 @@ class MemorySkill(BaseSkill):
             ),
             "save_user_preference": ToolMetadata(
                 name="save_user_preference",
+                examples=["d'ora in poi", "preferisco", "preferenza", "rispondimi in", "from now on", "prefer", "preference", "answer me in", "always"],
                 description="Stores a durable preference of the user.",
                 risk_level=RiskLevel.LOW,
                 permissions_required=[

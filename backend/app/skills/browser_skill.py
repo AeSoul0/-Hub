@@ -141,6 +141,7 @@ class BrowserSkill(BaseSkill):
         return {
             "browse_and_extract": ToolMetadata(
                 name="browse_and_extract",
+                examples=["apri il sito", "leggi la pagina web", "pagina", "sito", "link", "url", "open the website", "read the web page", "page", "site"],
                 description=(
                     "Navigate to a validated URL and extract visible "
                     "text from the rendered page."

@@ -33,6 +33,10 @@ M15 chiude V1. ADR-019 aveva rinviato qui la voce: *"un solo percorso local-firs
    - **Cosa fa il Gateway:** rifiuta, senza eseguirla, una chiamata a un tool non esposto nella run. Così un'injection non può usare un tool che il compito non ha richiamato.
    - **Fallback:** se il catalogo non supera *k*, o l'indice è vuoto o in errore, si espone tutto come prima.
    - **Aggiornamento:** l'indice si ricostruisce quando cambia la firma del registry (nomi e descrizioni dei tool).
+   - **Cosa conta per la scelta:** nome, descrizione e un campo nuovo `examples` di `ToolMetadata` (parole in italiano e inglese), che solo l'indice legge e che non arriva mai al modello. I termini del compito sono troncati in modo grezzo, quindi "documenti" e "documento" coincidono.
+   - **Trovato durante M15:** le istruzioni delle skill (`system_prompt_extension`) non arrivavano al modello già da prima, perché `get_system_prompt_extensions` non la chiama nessuno. Restano fuori anche ora: le indicazioni necessarie stanno nelle descrizioni dei tool e nel loro output (ad esempio le citazioni di `search_documents`).
+   - **Test ed eval:** la selezione è un livello di difesa a sé, quindi nei test parte spenta (`AEHUB_TOOL_SELECTION=off`) e ogni altro livello si prova da solo; la accendono i suoi test e il gate delle eval. I due casi storici di injection girano con la selezione spenta, per provare la sola provenienza, e due casi nuovi provano lo stesso attacco a selezione accesa.
+   - **Risultato:** sul gate delle eval il costo medio per caso passa da $0.00888 a $0.00573 (−35%).
 6. **Modulo legacy `app/core/database.py` eliminato** (richiesta dell'utente). Le sue tabelle erano scritte e mai lette:
    - `tasks` (`TaskManager`, una riga per chiamata di tool, già registrata nell'audit);
    - `chats`;

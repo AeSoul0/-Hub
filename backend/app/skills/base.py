@@ -76,6 +76,13 @@ class ToolMetadata(BaseModel):
     sandbox_profile: str = "default"
     audit_policy: str = "standard"
 
+    # Words a user may use to ask for this tool, in Italian and English. Only
+    # the skill index reads them (M15): they pick the tools a run is shown,
+    # they never reach the model.
+    examples: List[str] = Field(
+        default_factory=list,
+    )
+
 
 class SkillMetadata(BaseModel):
     """

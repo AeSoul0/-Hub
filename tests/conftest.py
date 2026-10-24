@@ -27,6 +27,12 @@ _TEST_ENV_DEFAULTS = {
     "AEHUB_ALLOWED_HOSTS": "testserver",
     # No test downloads speech models; voice tests install fake engines.
     "AEHUB_VOICE": "off",
+    # The skill index lives in memory: no test writes ~/.cache. Tool
+    # selection is a defense layer of its own: off here, so every other layer
+    # (provenance, approvals, delegation) is tested alone; its own tests and
+    # the eval gate turn it on.
+    "AEHUB_SKILL_INDEX_PATH": ":memory:",
+    "AEHUB_TOOL_SELECTION": "off",
 }
 
 for _key, _value in _TEST_ENV_DEFAULTS.items():

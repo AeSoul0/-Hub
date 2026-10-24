@@ -123,6 +123,7 @@ def desktop_environment(
     if data_dir is not None:
         # Speech models are downloaded once, next to the database.
         env.setdefault("AEHUB_VOICE_MODELS_DIR", str(data_dir / "voice"))
+        env.setdefault("AEHUB_SKILL_INDEX_PATH", str(data_dir / "skill_index.sqlite3"))
 
         # Home devices: home.json next to the database, outside the
         # agent's working folder.

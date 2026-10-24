@@ -27,6 +27,7 @@ committed baseline.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import os
 import statistics
@@ -52,8 +53,10 @@ from app.core.security import Permission, Principal, RoleEnum
 from app.documents.index import DocumentIndex, find_citations, missing_citations
 from app.evaluation.scripted import ScriptedModel
 from app.evaluation.tools import EvalSkill
+from app.home import mqtt as home_mqtt
 from app.skills import documents_skill
 from app.skills.documents_skill import DocumentsSkill
+from app.skills.home_skill import HomeSkill
 
 
 DATASET_PATH = Path(__file__).with_name("dataset.json")
@@ -70,6 +73,9 @@ EVAL_PRICES = {
 EVAL_ENV = {
     "AEHUB_MEMORY_ENABLED": "1",
     "AEHUB_EMBEDDER": "hash",
+    "AEHUB_SKILL_INDEX_PATH": ":memory:",
+    # The product's tool selection, whatever the caller's environment says.
+    "AEHUB_TOOL_SELECTION": "on",
     "AEHUB_MODEL_PRICES": json.dumps(EVAL_PRICES),
     "AEHUB_RUN_MAX_COST": "2",
     "AEHUB_MONTHLY_BUDGET": "1000",
@@ -114,6 +120,42 @@ class RecordedDocumentsSkill(DocumentsSkill):
             return documents_skill.search_documents(query)
 
         return [search_documents]
+
+
+# The home of every case (M15): one light and one lock, declared outside the
+# working folder as the product requires.
+EVAL_HOME_DEVICES = {
+    "devices": [
+        {"id": "living_light", "name": "Living room light", "type": "light", "topic": "eval/living_light/set"},
+        {"id": "front_door", "name": "Front door", "type": "lock", "topic": "eval/front_door/set"},
+    ]
+}
+
+
+class RecordedHomeSkill(HomeSkill):
+    """
+    The real home tools, with their calls recorded among the evaluation
+    tools; messages go to a list instead of a broker.
+    """
+
+    def __init__(self, recorder: EvalSkill) -> None:
+        self._recorder = recorder
+
+    @property
+    def tools(self) -> List[Any]:
+        if not self.configured():
+            return []
+
+        def recorded(tool: Any) -> Any:
+            async def call(**arguments: Any) -> str:
+                self._recorder._record(tool.__name__, **arguments)
+                return await tool(**arguments)
+
+            call.__name__ = tool.__name__
+            call.__signature__ = inspect.signature(tool)  # type: ignore[attr-defined]
+            return call
+
+        return [recorded(tool) for tool in super().tools]
 
 
 def write_documents(workspace: Path, documents: Dict[str, str]) -> None:
@@ -171,20 +213,35 @@ def eval_environment(
     async def publish(session_id: str, event_type: str, data: Any, workspace_id: str = "") -> None:
         published.append((session_id, event_type, data))
 
-    registry = SkillRegistry()
-    registry.register_skill(skill)
-    registry.register_skill(MemorySkill())
-    registry.register_skill(RecordedDocumentsSkill(skill))
-
     with ExitStack() as stack, tempfile.TemporaryDirectory() as tmp:
         workspace = Path(tmp) / "workspace"
         write_documents(workspace, documents or {})
+        home_file = Path(tmp) / "config" / "home.json"
+        home_file.parent.mkdir()
+        home_file.write_text(json.dumps(EVAL_HOME_DEVICES), encoding="utf-8")
         stack.enter_context(
             patch.dict(
                 os.environ,
-                {**EVAL_ENV, "AEHUB_ALLOWED_DIRS": str(workspace), **(extra_env or {})},
+                {
+                    **EVAL_ENV,
+                    "AEHUB_ALLOWED_DIRS": str(workspace),
+                    "AEHUB_HOME_DEVICES": str(home_file),
+                    **(extra_env or {}),
+                },
             )
         )
+
+        mqtt_messages: List[Any] = []
+        home_mqtt.set_publisher(lambda topic, payload: mqtt_messages.append((topic, payload)))
+        stack.callback(home_mqtt.set_publisher, None)
+
+        # Registered once the environment is in place: the home skill reads
+        # its device file when it is registered.
+        registry = SkillRegistry()
+        registry.register_skill(skill)
+        registry.register_skill(MemorySkill())
+        registry.register_skill(RecordedDocumentsSkill(skill))
+        registry.register_skill(RecordedHomeSkill(skill))
 
         for target in (
             "app.core.db.SessionLocal",
@@ -216,6 +273,7 @@ def eval_environment(
             published=published,
             session_factory=session_factory,
             workspace=workspace,
+            mqtt_messages=mqtt_messages,
         )
 
     engine.dispose()
@@ -347,7 +405,7 @@ async def _run_step(
             spawned = await engine.runtime.spawn_agent(
                 parent_run_id=None,
                 child_run_id=run_id,
-                task={"description": step["task"]},
+                task={"description": step["task"], "input_channel": step.get("input_channel", "text")},
                 role=str(subagent.get("role", "research")),
                 budget=float(subagent.get("budget", 1.0)),
                 permissions=[permission.value for permission in Permission],
@@ -363,7 +421,7 @@ async def _run_step(
             result = spawned["result"]
         else:
             result = await engine.runtime.execute_task(
-                task={"description": step["task"]},
+                task={"description": step["task"], "input_channel": step.get("input_channel", "text")},
                 orchestrator=None,
                 worker=engine.worker_for(step["task"]),
                 checker=engine.checker,
@@ -581,6 +639,12 @@ async def run_case(case: Dict[str, Any], live: bool = False) -> CaseResult:
         largest = max((estimate_tokens(request) for request in requests), default=0)
         if largest > max_tokens:
             failures.append(f"largest request {largest} tokens > {max_tokens}")
+
+    if "exposed_tools" in expect:
+        # The tools the skill index picked for the run; null = all of them.
+        exposed = (getattr(run, "current_state", None) or {}).get("worker_context", {}).get("exposed_tools")
+        if exposed != expect["exposed_tools"]:
+            failures.append(f"exposed tools {exposed} != {expect['exposed_tools']}")
 
     if "attempts" in expect and run is not None and run.task_attempts != expect["attempts"]:
         failures.append(f"attempts {run.task_attempts} != {expect['attempts']}")

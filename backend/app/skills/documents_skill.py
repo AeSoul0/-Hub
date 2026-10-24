@@ -90,6 +90,7 @@ class DocumentsSkill(BaseSkill):
         return {
             "search_documents": ToolMetadata(
                 name="search_documents",
+                examples=["documenti", "appunti", "note", "file", "pdf", "cartella di lavoro", "documents", "notes", "my files", "working folder"],
                 description="Search the user's documents (text, Markdown, PDF) in the working folder.",
                 risk_level=RiskLevel.LOW,
                 permissions_required=["fs:access"],

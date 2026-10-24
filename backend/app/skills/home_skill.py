@@ -36,6 +36,14 @@ logger = logging.getLogger(__name__)
 
 _DEVICE_ID = {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"}
 
+# Words that pick these tools in the skill index (M15), Italian and English.
+EXAMPLES = {
+    "home_list_devices": ["dispositivi", "casa", "quali luci", "devices", "home", "which lights"],
+    "home_set_light": ["accendi", "spegni", "luce", "luci", "lampada", "turn on", "turn off", "light", "lights", "lamp", "brightness"],
+    "home_lock": ["chiudi a chiave", "blocca la porta", "serratura", "lock the door", "lock"],
+    "home_unlock": ["apri la porta", "sblocca", "serratura", "unlock", "open the door"],
+}
+
 
 async def _send(topic: str, payload: str) -> None:
     await asyncio.wait_for(
@@ -121,6 +129,7 @@ class HomeSkill(BaseSkill):
         def meta(name: str, description: str, risk: RiskLevel, properties: Dict[str, Any], required: List[str], **extra: Any) -> ToolMetadata:
             return ToolMetadata(
                 name=name,
+                examples=EXAMPLES[name],
                 description=description,
                 risk_level=risk,
                 permissions_required=["network:access"],
