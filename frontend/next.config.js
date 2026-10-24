@@ -7,9 +7,21 @@
  * Testability and dependency separation are enforced.
  */
 
+// AEHUB_STATIC_EXPORT=1: static files in out/ for the desktop app (M14,
+// ADR-020), served by the backend from its own origin. Trailing slashes give
+// every page its own folder with an index.html.
+const staticExport = process.env.AEHUB_STATIC_EXPORT === "1";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+
+  ...(staticExport && {
+    output: "export",
+    trailingSlash: true,
+    images: { unoptimized: true },
+    env: { NEXT_PUBLIC_AEHUB_SAME_ORIGIN: "1" },
+  }),
 
   // Allows mobile / external devices to access dev server
   allowedDevOrigins: [

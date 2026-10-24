@@ -6,6 +6,8 @@
 import Link from "next/link";
 import React from "react";
 
+import { runHref } from "@/lib/routes";
+
 export interface ApprovalRequest {
     id: string;
     run_id: string | null;
@@ -51,7 +53,7 @@ export default function ApprovalCard({
                 </span>
                 {item.run_id && (
                     <Link
-                        href={`/control-plane/runs/${encodeURIComponent(item.run_id)}`}
+                        href={runHref(item.run_id)}
                         className="text-cyan-400 hover:underline text-sm font-mono"
                     >
                         run {item.run_id}

@@ -80,6 +80,16 @@ jobs:
           pip install ruff pytest httpx pip-audit bandit
           pip install -r requirements.txt
 
+      # M14 exit test: the desktop sidecar runs its own cluster, so it needs
+      # server binaries with pgvector, not the service container.
+      - name: PostgreSQL Binaries with pgvector (desktop sidecar test)
+        run: |
+          bin_dir=$(ls -d /usr/lib/postgresql/*/bin | sort -V | tail -1)
+          major=$(basename "$(dirname "$bin_dir")")
+          sudo apt-get update -q
+          sudo apt-get install -y -q "postgresql-${major}-pgvector"
+          echo "AEHUB_TEST_PG_BIN=${bin_dir}" >> "$GITHUB_ENV"
+
       # =========================================================================
       # BACKEND SECURITY GATES (M7)
       # =========================================================================
@@ -119,6 +129,7 @@ jobs:
           AEHUB_SECRET_KEY: ci-test-secret-key
           GROQ_API_KEY: ci-test-groq-key
           AEHUB_TELEMETRY_CONSOLE: "0"
+          AEHUB_REQUIRE_DESKTOP_TEST: "1"
           PYTHONPATH: .
         run: |
           pytest ../tests/ -v -rs --import-mode=importlib
@@ -185,6 +196,15 @@ jobs:
         working-directory: frontend
         run: |
           npm run build
+
+      # The desktop app serves the frontend as static files (M14, ADR-020).
+      - name: Build Frontend (static export for the desktop app)
+        working-directory: frontend
+        env:
+          AEHUB_STATIC_EXPORT: "1"
+        run: |
+          npm run build
+          test -f out/index.html && test -f out/control-plane/runs/view/index.html
 
       # =========================================================================
       # SECURITY SCANNING
@@ -271,3 +291,77 @@ jobs:
       - name: Build Frontend Image
         run: |
           docker build --file frontend/dockerfile --tag aehub-frontend:ci frontend
+
+  # M14 (ADR-020): the Windows installer. The bundle is the runner's
+  # PostgreSQL with pgvector built from its tag, this job's CPython with the
+  # desktop requirements, the backend and the static frontend.
+  desktop-windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: |
+            frontend/package-lock.json
+            desktop/package-lock.json
+
+      - name: Build Frontend (static export)
+        working-directory: frontend
+        shell: bash
+        env:
+          AEHUB_STATIC_EXPORT: "1"
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build pgvector for the bundled PostgreSQL
+        shell: pwsh
+        env:
+          PGVECTOR_TAG: v0.8.1
+        run: |
+          if (-not $env:PGROOT) { throw "PGROOT is not set on this runner" }
+          & "$env:PGROOT\bin\postgres.exe" --version
+          git clone --depth 1 --branch $env:PGVECTOR_TAG https://github.com/pgvector/pgvector.git "$env:RUNNER_TEMP\pgvector"
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          cmd /c "`"$vs\VC\Auxiliary\Build\vcvars64.bat`" && cd /d `"$env:RUNNER_TEMP\pgvector`" && nmake /F Makefile.win && nmake /F Makefile.win install"
+          if ($LASTEXITCODE -ne 0) { throw "pgvector build failed" }
+
+      - name: Assemble the App Bundle
+        shell: pwsh
+        run: |
+          python desktop/scripts/bundle.py --pg-root "$env:PGROOT"
+
+      # The engine as the installed app starts it: bundled Python, bundled
+      # Postgres (pgvector loads at startup), static frontend, launch token.
+      - name: Smoke Test the Bundled Engine
+        shell: pwsh
+        run: |
+          python desktop/scripts/smoke_sidecar.py
+
+      - name: Build the Installer (Tauri)
+        working-directory: desktop
+        shell: pwsh
+        run: |
+          npm ci
+          npx tauri build
+
+      - name: Upload Installer
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: aehub-windows-installer
+          path: |
+            desktop/src-tauri/target/release/bundle/nsis/*.exe
+            desktop/src-tauri/Cargo.lock
+          if-no-files-found: error

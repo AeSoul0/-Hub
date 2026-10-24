@@ -31,6 +31,7 @@ from app.api import (
     approvals,
     audit,
     auth,
+    desktop,
     documents,
     memory,
     realtime,
@@ -321,6 +322,47 @@ async def add_security_headers(
     return response
 
 
+@app.middleware("http")
+async def check_host_and_origin(
+    request: Request,
+    call_next,
+):
+    """
+    Loopback hardening (spec 5.3, ADR-020), outermost: answer only to our
+    host names (DNS rebinding) and refuse state-changing requests from pages
+    of other origins, which would carry the owner's cookie.
+    """
+    from app.core.security import is_cross_origin_write, is_host_allowed
+
+    if not is_host_allowed(
+        request.headers.get("host")
+    ):
+        return JSONResponse(
+            status_code=400,
+            content={
+                "detail": (
+                    "Host not allowed. Add it to AEHUB_ALLOWED_HOSTS "
+                    "to serve the API under that name."
+                )
+            },
+        )
+
+    if is_cross_origin_write(
+        request.method,
+        request.headers.get("origin"),
+    ):
+        return JSONResponse(
+            status_code=403,
+            content={
+                "detail": "Cross-origin request refused."
+            },
+        )
+
+    return await call_next(
+        request
+    )
+
+
 # ==============================================================================
 # HEALTH CHECK
 # ==============================================================================
@@ -376,6 +418,35 @@ app.include_router(
 app.include_router(
     settings_api.router
 )
+
+app.include_router(
+    desktop.router
+)
+
+
+# ==============================================================================
+# STATIC FRONTEND (desktop app, ADR-020)
+# ==============================================================================
+
+
+# The exported frontend, served from the API's own origin: no CORS, and the
+# session cookie reaches every request. Mounted last, so API routes win.
+_frontend_dir = os.getenv(
+    "AEHUB_FRONTEND_DIR",
+    "",
+)
+
+if _frontend_dir and os.path.isdir(_frontend_dir):
+    from fastapi.staticfiles import StaticFiles
+
+    app.mount(
+        "/",
+        StaticFiles(
+            directory=_frontend_dir,
+            html=True,
+        ),
+        name="frontend",
+    )
 
 
 # ==============================================================================

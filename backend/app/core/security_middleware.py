@@ -11,6 +11,19 @@ from starlette.responses import JSONResponse
 from app.agent_engine.guardrails import contains_secret
 import urllib.parse
 
+API_CSP = "default-src 'self'; frame-ancestors 'none';"
+
+# Pages of the static frontend the desktop app serves (ADR-020). Next.js
+# boots them with inline scripts; everything else still comes only from
+# this origin.
+PAGE_CSP = (
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+    "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
+    "font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; "
+    "base-uri 'none'; form-action 'self'; object-src 'none';"
+)
+
+
 class AdvancedSecurityMiddleware(BaseHTTPMiddleware):
     """
     Represents the AdvancedSecurityMiddleware entity and its core operations.
@@ -45,7 +58,8 @@ class AdvancedSecurityMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         
         # 4. Strict Security Headers
-        response.headers["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none';"
+        is_page = response.headers.get("content-type", "").startswith("text/html")
+        response.headers["Content-Security-Policy"] = PAGE_CSP if is_page else API_CSP
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-Content-Type-Options"] = "nosniff"

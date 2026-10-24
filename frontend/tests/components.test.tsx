@@ -73,7 +73,7 @@ describe("ApprovalCard", () => {
         expect(screen.getByText("expires in 300s")).toBeInTheDocument();
         expect(screen.getByRole("link", { name: "run run-1" })).toHaveAttribute(
             "href",
-            "/control-plane/runs/run-1",
+            "/control-plane/runs/view?id=run-1",
         );
 
         fireEvent.click(screen.getByRole("button", { name: "Deny" }));

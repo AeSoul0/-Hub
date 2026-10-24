@@ -560,6 +560,24 @@ The frontend development server runs on:
 http://localhost:2003
 ```
 
+## Option C — Desktop app (Windows)
+
+The desktop app needs no Docker: one installer holds the engine, its own PostgreSQL with pgvector and the frontend (roadmap M14, `docs/adr/ADR-020-Runtime-desktop.md`).
+
+- **Install:** run the `AEHub_*-setup.exe` from the `aehub-windows-installer` artifact of the CI (`desktop-windows` job). It installs for the current user, without administrator rights. It is not code-signed yet, so Windows SmartScreen asks for confirmation.
+- **First start:** the app creates its database in `%LOCALAPPDATA%\AEHub` and its working folder in `Documents\AEHub`, then opens the Control Plane already logged in. Add a provider key on the setup page: it goes to the Windows Credential Manager, never to a file. Then pick models, prices and budget as with Docker.
+- **How it runs:** the window starts `backend/desktop.py`, which runs Postgres and the API on `127.0.0.1` on ports chosen at every start, with live events in-process instead of Redis. The window logs in with a one-time token. Closing the window stops everything.
+- **Memory:** the desktop app uses the `hash` embedder, which needs no model download and has weaker recall, until the local embedder is decided (ADR-020).
+
+Building the installer locally needs Rust, Node.js 20, Python 3.12, Visual Studio Build Tools and a PostgreSQL install with pgvector:
+
+```bash
+cd frontend && AEHUB_STATIC_EXPORT=1 npm run build && cd ..
+python desktop/scripts/bundle.py --pg-root "C:/Program Files/PostgreSQL/17"
+python desktop/scripts/smoke_sidecar.py
+cd desktop && npm ci && npx tauri build
+```
+
 ---
 
 # Configuration
@@ -635,14 +653,22 @@ The model, price and limit variables below (`OPENAI_MODEL`, `AEHUB_CHECKER_MODEL
 | `AEHUB_ALLOWED_DIRS` | Folders that filesystem tools may touch (`os.pathsep`-separated); the first one is the working folder searched by `search_documents` | `./workspace` |
 | `AEHUB_DOCUMENTS_MAX_FILE_MB` | Files larger than this are listed in the document index with an error and are not searched | `5` |
 | `AEHUB_MCP_ALLOWED_SERVERS` | Comma-separated MCP server URLs the bridge may connect to | none (no MCP server) |
-| `FRONTEND_URL` / `AEHUB_ALLOWED_ORIGINS` | Browser origins allowed by CORS and the WebSocket | `http://localhost:3000` |
+| `FRONTEND_URL` / `AEHUB_ALLOWED_ORIGINS` | Browser origins allowed by CORS and the WebSocket; any other origin cannot send POST, PUT, PATCH or DELETE | `http://localhost:3000` |
+| `AEHUB_ALLOWED_HOSTS` | Extra host names the API answers to (comma-separated), besides `localhost`, `127.0.0.1` and `[::1]`; needed when the API is served under another name, e.g. on the LAN | none |
 | `AEHUB_HOST` | Bind address of `python main.py` | `127.0.0.1` |
+| `AEHUB_EVENT_BUS` | `memory` keeps live events and the cache inside the process, without Redis (the desktop app; also `REDIS_URL=memory://`) | Redis |
+| `AEHUB_FRONTEND_DIR` | Static frontend export the API serves from its own origin (the desktop app) | none |
+| `AEHUB_DATA_DIR` / `AEHUB_PG_BIN` | Desktop app: folder of the database cluster and logs; folder with `initdb` and `pg_ctl` | `%LOCALAPPDATA%\AEHub` / bundled |
 
 ### Security notes
 
 The backend refuses to start without `AEHUB_SECRET_KEY` (or with the old placeholder value). The launcher creates a random one in the keyring.
 
 The PostgreSQL password is the one secret kept in a file (the root `.env`, ignored by Git), because the database container reads it too. All ports are bound to `127.0.0.1`.
+
+The API answers only to loopback host names (DNS rebinding) and refuses state-changing requests from pages of other origins. For cookies every `localhost` port is the same site, so a page on another local port would otherwise send requests with the owner's session.
+
+In the desktop app the database password is generated on first start and kept in the OS keyring, and Postgres listens only on `127.0.0.1` without a Unix socket.
 
 ---
 

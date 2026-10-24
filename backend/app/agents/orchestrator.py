@@ -15,6 +15,7 @@ No LangChain message classes are required by this application boundary.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import os
 import re
@@ -57,6 +58,9 @@ GROQ_API_KEY = os.getenv(
     "GROQ_API_KEY",
     "",
 ).strip()
+
+# The spoken reply must not hold the written one back for long.
+TTS_TIMEOUT_SECONDS = 15.0
 
 
 # ==============================================================================
@@ -344,8 +348,6 @@ async def generate_ai_response(
     }
 
     try:
-        import asyncio
-
         app_instance = await get_aurora_app()
 
         final_state = await asyncio.wait_for(
@@ -402,9 +404,20 @@ async def generate_ai_response(
         ai_response_text
     )
 
-    base64_audio = await generate_voice_base64(
-        clean_response
-    )
+    # Speech is a network service (edge-tts): offline, or when it fails, the
+    # answer still arrives, without audio.
+    try:
+        base64_audio = await asyncio.wait_for(
+            generate_voice_base64(
+                clean_response
+            ),
+            timeout=TTS_TIMEOUT_SECONDS,
+        )
+    except Exception as exc:
+        print(
+            f"Speech synthesis unavailable: {exc}"
+        )
+        base64_audio = ""
 
     database.save_chat(
         session_id,

@@ -16,10 +16,16 @@
 // API CONFIGURATION
 // ============================================================================
 
+// The desktop app serves this frontend from the API's own origin (M14), on
+// a port chosen at every start: there the base is wherever the page is.
+const SAME_ORIGIN = process.env.NEXT_PUBLIC_AEHUB_SAME_ORIGIN === "1";
+
 export const API_BASE_URL =
-    process.env.NEXT_PUBLIC_API_URL ||
-    process.env.API_URL ||
-    "http://127.0.0.1:3002";
+    SAME_ORIGIN && typeof window !== "undefined"
+        ? window.location.origin
+        : process.env.NEXT_PUBLIC_API_URL ||
+          process.env.API_URL ||
+          "http://127.0.0.1:3002";
 
 // ============================================================================
 // REQUEST TYPES

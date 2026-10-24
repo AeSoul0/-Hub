@@ -20,6 +20,44 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 from app.core.cache import CacheService
 
+
+def open_admin_session(db: Session) -> str:
+    """
+    Session token of the local owner (ADMIN of the default workspace),
+    creating both on first use (LAN-first bootstrapping).
+    """
+    user = db.query(User).filter(User.username == "admin").first()
+    workspace = db.query(Workspace).filter(Workspace.name == "default").first()
+
+    if not workspace:
+        workspace = Workspace(id="default-workspace", name="default")
+        db.add(workspace)
+
+    if not user:
+        import hashlib
+        hashed_pw = hashlib.sha256(settings.AEHUB_SECRET_KEY.encode()).hexdigest()
+        user = User(username="admin", hashed_password=hashed_pw)
+        db.add(user)
+        db.flush()
+        member = WorkspaceMembership(user_id=user.id, workspace_id=workspace.id, role=RoleEnum.ADMIN)
+        db.add(member)
+    db.commit()
+
+    return IdentityService.create_session(
+        db=db,
+        user_id=user.id,
+        workspace_id=workspace.id,
+        role=RoleEnum.ADMIN
+    )
+
+
+def set_session_cookie(response: Response, session_token: str) -> None:
+    # The token travels only in the HttpOnly cookie, never in the body
+    # where page scripts could read it.
+    is_prod = os.getenv("ENVIRONMENT", "development") == "production"
+    response.set_cookie(key="aehub_session_token", value=session_token, httponly=True, samesite="lax", secure=is_prod)
+
+
 @router.post("/login")
 async def login(request: Request, response: Response, db: Session = Depends(get_db)):
 
@@ -39,36 +77,8 @@ async def login(request: Request, response: Response, db: Session = Depends(get_
     if isinstance(key, str) and hmac.compare_digest(
         key.encode(), settings.AEHUB_SECRET_KEY.encode()
     ):
-        # Check if admin user exists, if not create it (LAN-first bootstrapping)
-        user = db.query(User).filter(User.username == "admin").first()
-        workspace = db.query(Workspace).filter(Workspace.name == "default").first()
-        
-        if not workspace:
-            workspace = Workspace(id="default-workspace", name="default")
-            db.add(workspace)
-            
-        if not user:
-            import hashlib
-            hashed_pw = hashlib.sha256(settings.AEHUB_SECRET_KEY.encode()).hexdigest()
-            user = User(username="admin", hashed_password=hashed_pw)
-            db.add(user)
-            db.flush()
-            member = WorkspaceMembership(user_id=user.id, workspace_id=workspace.id, role=RoleEnum.ADMIN)
-            db.add(member)
-        db.commit()
-        
-        session_token = IdentityService.create_session(
-            db=db, 
-            user_id=user.id, 
-            workspace_id=workspace.id, 
-            role=RoleEnum.ADMIN
-        )
-        
-        # The token travels only in the HttpOnly cookie, never in the body
-        # where page scripts could read it.
         response_obj = JSONResponse(content={"status": "ok"})
-        is_prod = os.getenv("ENVIRONMENT", "development") == "production"
-        response_obj.set_cookie(key="aehub_session_token", value=session_token, httponly=True, samesite="lax", secure=is_prod)
+        set_session_cookie(response_obj, open_admin_session(db))
         return response_obj
     return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
 
