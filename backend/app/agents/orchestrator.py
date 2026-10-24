@@ -35,7 +35,6 @@ from fastapi import (
     UploadFile,
 )
 
-from app.core import database
 from app.core.event_bus import event_bus
 from app.runtime.aurora import get_aurora_app
 
@@ -178,8 +177,12 @@ async def execute_slash_command(
     session_id: str,
 ) -> dict[str, str]:
     """
-    Execute a supported slash command against the authenticated session state.
+    Execute a slash command. Only /stop exists: /clear, /precise, /creative,
+    /deep and /fast wrote session settings nobody read, so they never had an
+    effect and were removed with the legacy database module (M15). To stop a
+    running agent, use Stop on the Runs page (the kill switch).
     """
+    del session_id
     cmd = cmd.lower().strip()
 
     if cmd == "/stop":
@@ -191,71 +194,9 @@ async def execute_slash_command(
             "audio_base64": "",
         }
 
-    if cmd == "/clear":
-        database.clear_chat(
-            session_id
-        )
-        reply_text = (
-            "Memoria di sistema inizializzata. "
-            "Cronologia cancellata."
-        )
-
-    elif cmd == "/precise":
-        database.update_settings(
-            session_id,
-            temperature=0.1,
-        )
-        reply_text = (
-            "Modalità precisione attivata. "
-            "Varianza logica ridotta al minimo."
-        )
-
-    elif cmd == "/creative":
-        database.update_settings(
-            session_id,
-            temperature=0.9,
-        )
-        reply_text = (
-            "Modalità creativa ingaggiata. "
-            "Reti neurali espanse."
-        )
-
-    elif cmd == "/deep":
-        database.update_settings(
-            session_id,
-            max_tokens=1024,
-            deep_mode=True,
-        )
-        reply_text = (
-            "Analisi profonda abilitata. "
-            "Parametri di sintesi disattivati."
-        )
-
-    elif cmd == "/fast":
-        database.update_settings(
-            session_id,
-            temperature=0.75,
-            max_tokens=300,
-            deep_mode=False,
-        )
-        reply_text = (
-            "Operatività rapida ingaggiata. "
-            "Parametri standard ripristinati."
-        )
-
-    else:
-        reply_text = (
-            "Comando sconosciuto. Direttive accettate: "
-            "stop, clear, precise, creative, deep, fast."
-        )
-
-    base64_audio = await generate_voice_base64(
-        reply_text
-    )
-
     return {
-        "transcription": reply_text,
-        "audio_base64": base64_audio,
+        "transcription": "Comando sconosciuto. Direttive accettate: stop.",
+        "audio_base64": "",
     }
 
 
@@ -317,11 +258,6 @@ async def generate_ai_response(
             "Missing principal. Execution denied."
         )
 
-    session_settings = database.get_settings(
-        session_id
-    )
-
-    del session_settings
     del ui_context
 
     await event_bus.publish(
@@ -418,12 +354,6 @@ async def generate_ai_response(
             f"Speech synthesis unavailable: {exc}"
         )
         base64_audio = ""
-
-    database.save_chat(
-        session_id,
-        intent_str,
-        clean_response,
-    )
 
     return {
         "transcription": clean_response,

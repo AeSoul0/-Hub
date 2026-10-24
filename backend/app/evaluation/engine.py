@@ -202,7 +202,6 @@ def eval_environment(
         stack.enter_context(
             patch("app.core.event_bus.event_bus.publish", AsyncMock(side_effect=publish))
         )
-        task_manager = stack.enter_context(patch("app.runtime.tool_gateway.TaskManager"))
         # Subagents are sized by the free RAM of the host; the suite must not
         # depend on the machine it runs on.
         stack.enter_context(
@@ -211,7 +210,6 @@ def eval_environment(
                 return_value=PROFILES[TaskClass.STANDARD],
             )
         )
-        task_manager.create_task.return_value = SimpleNamespace(id="eval-task")
         stack.enter_context(patch("app.agent_engine.runtime.skill_registry", registry))
 
         yield SimpleNamespace(

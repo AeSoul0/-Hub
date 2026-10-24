@@ -373,7 +373,7 @@ The repository is organized as a frontend/backend monorepo.
 │   │   │   └── runs.py
 │   │   │
 │   │   ├── core/
-│   │   │   ├── database.py
+│   │   │   ├── db.py
 │   │   │   ├── event_bus.py
 │   │   │   └── security.py
 │   │   │

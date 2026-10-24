@@ -4,8 +4,8 @@
 
 All executable tools cross this boundary before any external side effect:
 identity -> policy -> guardrail (arguments, SSRF, paths) -> schema ->
-idempotency -> budget -> approval -> audit (fail-closed) -> task tracking ->
-executor -> post-guardrail (secret redaction) -> audit.
+idempotency -> budget -> approval -> audit (fail-closed) -> executor ->
+post-guardrail (secret redaction) -> audit.
 
 The gateway is intentionally framework-agnostic and receives an executor
 callback from the native AgentRuntime.
@@ -36,7 +36,6 @@ from app.core.security import (
     WorkspacePolicy,
 )
 from app.runtime.audit_chain import append_audit_record
-from app.runtime.task_manager import TaskManager, TaskState
 
 
 logger = logging.getLogger(__name__)
@@ -422,25 +421,8 @@ class ToolGateway:
                 )
 
         # ----------------------------------------------------------------------
-        # 9. Durable task tracking
+        # 9. Execution (the audit chain is the durable record of every call)
         # ----------------------------------------------------------------------
-        task_record = TaskManager.create_task(
-            session_id=invocation.session_id,
-            payload={
-                "tool": invocation.tool_name,
-                "arguments": invocation.arguments,
-                "run_id": invocation.run_id,
-                "tool_call_id": invocation.tool_call_id,
-            },
-            priority=1,
-            idempotency_key=idem_key,
-        )
-
-        TaskManager.update_state(
-            task_record.id,
-            TaskState.RUNNING,
-        )
-
         start_time = time.monotonic()
 
         try:
@@ -483,11 +465,6 @@ class ToolGateway:
                 (time.monotonic() - start_time) * 1000
             )
 
-            TaskManager.update_state(
-                task_record.id,
-                TaskState.COMPLETED,
-            )
-
             audit_id = ToolGateway._log_audit(
                 invocation=invocation,
                 success=True,
@@ -509,15 +486,6 @@ class ToolGateway:
                 (time.monotonic() - start_time) * 1000
             )
 
-            try:
-                TaskManager.update_state(
-                    task_record.id,
-                    TaskState.CANCELLED,
-                    error_message="Cancelled by the kill switch.",
-                )
-            except Exception:
-                pass
-
             ToolGateway._log_audit(
                 invocation=invocation,
                 success=False,
@@ -534,15 +502,6 @@ class ToolGateway:
             )
 
             error_message = redact_secrets(str(exc))[0]
-
-            try:
-                TaskManager.update_state(
-                    task_record.id,
-                    TaskState.FAILED,
-                    error_message=error_message,
-                )
-            except Exception:
-                pass
 
             audit_id = ToolGateway._log_audit(
                 invocation=invocation,

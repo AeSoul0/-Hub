@@ -38,7 +38,6 @@ from app.api import (
     runs,
     settings as settings_api,
 )
-from app.core import database
 from app.core.telemetry import (
     setup_telemetry,
     shutdown_telemetry,
@@ -83,11 +82,8 @@ if (
 
 def startup_db():
     """
-    Initialize shared persistence and telemetry instrumentation.
-
-    This function remains in the composition root for compatibility with the
-    current test suite. Database-layer consolidation will move the remaining
-    compatibility initialization out of this entrypoint in a later phase.
+    Initialize shared persistence and telemetry instrumentation: pgvector
+    and every SQLAlchemy table (the only persistence layer since M15).
     """
     from sqlalchemy import text
 
@@ -109,8 +105,6 @@ def startup_db():
     Base.metadata.create_all(
         bind=engine
     )
-
-    database.init_db()
 
     print(
         "[OK] Centralized PostgreSQL database schema initialized."

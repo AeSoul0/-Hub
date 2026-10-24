@@ -146,14 +146,12 @@ async def test_gateway_blocks_tool_when_audit_is_unavailable():
 
     with (
         patch("app.core.db.SessionLocal", broken_session),
-        patch("app.runtime.tool_gateway.TaskManager") as task_manager,
     ):
         result = await ToolGateway.execute(_invocation(), executor)
 
     assert calls == []
     assert result.success is False
     assert "Audit log unavailable" in result.error
-    task_manager.create_task.assert_not_called()
 
 
 async def test_gateway_records_intent_before_execution(db_session_factory):
@@ -167,9 +165,7 @@ async def test_gateway_records_intent_before_execution(db_session_factory):
 
     with (
         patch("app.core.db.SessionLocal", db_session_factory),
-        patch("app.runtime.tool_gateway.TaskManager") as task_manager,
     ):
-        task_manager.create_task.return_value.id = "task-1"
         result = await ToolGateway.execute(_invocation(), executor)
 
     assert result.success is True
@@ -187,9 +183,7 @@ async def test_gateway_redacts_secrets_from_output_and_audit(db_session_factory)
 
     with (
         patch("app.core.db.SessionLocal", db_session_factory),
-        patch("app.runtime.tool_gateway.TaskManager") as task_manager,
     ):
-        task_manager.create_task.return_value.id = "task-1"
         result = await ToolGateway.execute(_invocation(), executor)
 
     assert secret not in result.output

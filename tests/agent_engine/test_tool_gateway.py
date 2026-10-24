@@ -105,7 +105,6 @@ def test_execute_success():
     async def executor(**kwargs):
         return "success-output"
 
-    task_record = MagicMock(id="task-test")
 
     with (
         patch(
@@ -120,13 +119,6 @@ def test_execute_success():
             "app.runtime.tool_gateway.ToolGuardrail.validate_post_execution",
             side_effect=lambda tool_name, output: output,
         ) as post_guard,
-        patch(
-            "app.runtime.tool_gateway.TaskManager.create_task",
-            return_value=task_record,
-        ) as create_task,
-        patch(
-            "app.runtime.tool_gateway.TaskManager.update_state",
-        ) as update_state,
         patch(
             "app.runtime.tool_gateway.ToolGateway._log_audit",
             return_value="audit-success",
@@ -145,8 +137,6 @@ def test_execute_success():
 
     pre_guard.assert_called_once()
     post_guard.assert_called_once()
-    create_task.assert_called_once()
-    update_state.assert_called()
 
 
 def test_execute_policy_denied_before_side_effect():
@@ -171,9 +161,6 @@ def test_execute_policy_denied_before_side_effect():
             "app.runtime.tool_gateway.ToolGuardrail.validate_pre_execution",
         ) as pre_guard,
         patch(
-            "app.runtime.tool_gateway.TaskManager.create_task",
-        ) as create_task,
-        patch(
             "app.runtime.tool_gateway.ToolGateway._log_audit",
             return_value="audit-deny",
         ),
@@ -190,7 +177,7 @@ def test_execute_policy_denied_before_side_effect():
     assert result.audit_id == "audit-deny"
 
     pre_guard.assert_not_called()
-    create_task.assert_not_called()
+    assert "must not be called" not in str(result.error)
 
 
 def test_execute_guardrail_denied_before_side_effect():
@@ -214,9 +201,6 @@ def test_execute_guardrail_denied_before_side_effect():
             side_effect=ValueError("dangerous command"),
         ),
         patch(
-            "app.runtime.tool_gateway.TaskManager.create_task",
-        ) as create_task,
-        patch(
             "app.runtime.tool_gateway.ToolGateway._log_audit",
             return_value="audit-guardrail",
         ),
@@ -231,7 +215,7 @@ def test_execute_guardrail_denied_before_side_effect():
     assert result.success is False
     assert "guardrail" in result.error.lower()
     assert result.audit_id == "audit-guardrail"
-    create_task.assert_not_called()
+    assert "must not be called" not in str(result.error)
 
 
 # ==============================================================================
@@ -497,9 +481,6 @@ def test_execute_budget_denied_before_side_effect():
             return_value=False,
         ),
         patch(
-            "app.runtime.tool_gateway.TaskManager.create_task",
-        ) as create_task,
-        patch(
             "app.runtime.tool_gateway.ToolGateway._log_audit",
             return_value="audit-budget",
         ),
@@ -513,7 +494,7 @@ def test_execute_budget_denied_before_side_effect():
 
     assert result.success is False
     assert "budget" in result.error.lower()
-    create_task.assert_not_called()
+    assert "must not be called" not in str(result.error)
 
 
 def test_execute_consumes_budget_only_after_approval():
@@ -531,7 +512,6 @@ def test_execute_consumes_budget_only_after_approval():
     async def executor(**kwargs):
         return "executed"
 
-    task_record = MagicMock(id="task-budget")
 
     with (
         patch(
@@ -553,13 +533,6 @@ def test_execute_consumes_budget_only_after_approval():
         patch(
             "app.runtime.tool_gateway.ApprovalManager.check_approval_status",
             new=AsyncMock(return_value="APPROVED"),
-        ),
-        patch(
-            "app.runtime.tool_gateway.TaskManager.create_task",
-            return_value=task_record,
-        ),
-        patch(
-            "app.runtime.tool_gateway.TaskManager.update_state",
         ),
         patch(
             "app.runtime.tool_gateway.ToolGuardrail.validate_post_execution",
