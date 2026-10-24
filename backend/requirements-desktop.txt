@@ -6,7 +6,7 @@
 # embedder is decided, ADR-020 point 9) and without test and lint tools.
 # Keep the shared lines in step with requirements.txt.
 
-fastapi>=0.104.0
+fastapi>=0.157.0
 uvicorn>=0.23.2
 pydantic>=2.4.2
 pydantic-settings>=2.0.3
