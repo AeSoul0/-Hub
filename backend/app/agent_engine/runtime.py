@@ -1131,6 +1131,7 @@ class AgentRuntime:
                                         )
                                     ),
                                     capabilities=capability_set,
+                                    input_channel=self._input_channel(worker_context),
                                 ),
                                 cancellation_token,
                             ),
@@ -1441,6 +1442,15 @@ class AgentRuntime:
     # TOOL PROPOSAL EXECUTION
     # ==========================================================================
 
+    @staticmethod
+    def _input_channel(worker_context: Dict[str, Any]) -> str:
+        """
+        How the run's task arrived: "voice" for a transcript, else "text".
+        """
+        task = worker_context.get("task")
+        channel = task.get("input_channel") if isinstance(task, dict) else None
+        return "voice" if channel == "voice" else "text"
+
     async def _execute_proposal(
         self,
         proposal: ToolProposal,
@@ -1450,6 +1460,7 @@ class AgentRuntime:
         run_id: str,
         untrusted_context: bool = False,
         capabilities: Optional[SubagentCapabilitySet] = None,
+        input_channel: str = "text",
     ) -> Observation:
         """
         Run one proposal through the ToolGateway and return its Observation.
@@ -1512,6 +1523,7 @@ class AgentRuntime:
                     untrusted_context=untrusted_context,
                     is_subagent=capabilities is not None,
                     subagent_capabilities=capabilities,
+                    input_channel=input_channel,
                 ),
             )
 
@@ -1888,6 +1900,7 @@ class AgentRuntime:
                         )
                     ),
                     capabilities=capability_set,
+                    input_channel=self._input_channel(worker_context),
                 )
 
             except ApprovalRequiredError as exc:
@@ -2473,6 +2486,11 @@ class AgentRuntime:
             inherit_untrusted = bool(
                 parent_context.get("untrusted_context")
             )
+
+            # A subagent of a spoken task is a spoken task too: its HIGH
+            # actions also wait for a human (ADR-021).
+            if self._input_channel(parent_context) == "voice":
+                task = {**task, "input_channel": "voice"}
 
             parent_remaining = self._run_limits(
                 parent_context

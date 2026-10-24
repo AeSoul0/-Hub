@@ -318,10 +318,19 @@ class AgentEngine:
             )
         )
 
+        # "voice" only for a transcript from app.voice (ADR-021); anything
+        # else is a typed task.
+        input_channel = (
+            "voice"
+            if input_state.get("input_channel") == "voice"
+            else "text"
+        )
+
         task = {
             "description": str(
                 intent
             ),
+            "input_channel": input_channel,
         }
 
         result = await self.runtime.execute_task(
@@ -368,6 +377,7 @@ class AgentEngine:
         session_id: str,
         task: str,
         principal: Principal,
+        input_channel: str = "text",
     ) -> Dict[str, Any]:
         """
         Execute one new agent interaction with an explicit run identifier.
@@ -410,6 +420,7 @@ class AgentEngine:
                 "current_intent": task,
                 "principal": principal,
                 "run_id": run_id,
+                "input_channel": input_channel,
             },
             config={
                 "configurable": {

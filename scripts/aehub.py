@@ -47,9 +47,13 @@ SECRETS: Dict[str, str] = {
     "AEHUB_SECRET_KEY": "Control Plane login key",
     "OPENAI_API_KEY": "OpenAI models",
     "OPENROUTER_API_KEY": "OpenRouter models",
-    "GROQ_API_KEY": "voice transcription (optional)",
+    "AEHUB_MQTT_PASSWORD": "MQTT broker of the home devices (optional)",
     "AEHUB_LOCAL_API_KEY": "local OpenAI-compatible server (optional)",
 }
+
+# Keys the stack no longer reads (Groq voice, replaced by local speech in
+# M15): their lines are removed from the env file, never moved.
+RETIRED = ("GROQ_API_KEY",)
 
 # Values older `make demo` runs wrote as placeholders: not real keys.
 PLACEHOLDERS = {"", "not-configured", "changeme", "your-key-here"}
@@ -297,7 +301,7 @@ def migrate_env_secrets(store: SecretStore, path: Path = BACKEND_ENV) -> List[st
     """
     found = read_env(path)
     moved: List[str] = []
-    removable: List[str] = []
+    removable: List[str] = [key for key in RETIRED if key in found]
 
     for key in SECRETS:
         if key not in found:
@@ -394,11 +398,11 @@ def setup(
                 print(f"  saved {key} in the keyring")
                 break
 
-    if not store.get("GROQ_API_KEY"):
-        value = ask("  GROQ_API_KEY for voice input (hidden, Enter to skip): ", True)
+    if not store.get("AEHUB_MQTT_PASSWORD"):
+        value = ask("  AEHUB_MQTT_PASSWORD of the home MQTT broker (hidden, Enter to skip): ", True)
         if value:
-            store.set("GROQ_API_KEY", value)
-            print("  saved GROQ_API_KEY in the keyring")
+            store.set("AEHUB_MQTT_PASSWORD", value)
+            print("  saved AEHUB_MQTT_PASSWORD in the keyring")
 
     current = read_env(root_env).get("AEHUB_WORKSPACE_DIR", "./workspace")
     answer = ask(f"  Working folder for the agent's files [{current}]: ", False) or current

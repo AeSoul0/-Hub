@@ -183,6 +183,9 @@ class TaskExecutionContext(BaseModel):
     workspace_id: Optional[str] = None
     # Set once the run has read untrusted content (web, files, MCP).
     untrusted_context: bool = False
+    # "voice" when the task was spoken (ADR-021): the microphone also hears
+    # a TV or another person, so HIGH-risk actions always wait for a human.
+    input_channel: str = "text"
 
 
 class SubagentCapabilitySet(BaseModel):
@@ -776,6 +779,18 @@ class PolicyEngine:
                 reason=(
                     "HIGH-risk action proposed after untrusted "
                     "content requires explicit approval."
+                ),
+            )
+
+        if (
+            task_context.input_channel == "voice"
+            and tool_spec.risk_level.upper() == "HIGH"
+        ):
+            return PolicyDecision(
+                decision=PolicyDecisionEnum.REQUIRE_APPROVAL,
+                reason=(
+                    "HIGH-risk action asked by voice requires "
+                    "approval on screen."
                 ),
             )
 

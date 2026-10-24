@@ -15,7 +15,7 @@ import { ApiError, getJson, putJson } from "@/lib/api/client";
 const KEYS = [
     { name: "OPENAI_API_KEY", label: "OpenAI" },
     { name: "OPENROUTER_API_KEY", label: "OpenRouter" },
-    { name: "GROQ_API_KEY", label: "Groq (voice, optional)" },
+    { name: "AEHUB_MQTT_PASSWORD", label: "MQTT broker (home, optional)" },
 ] as const;
 
 /** Whether this frontend runs inside the desktop app. */

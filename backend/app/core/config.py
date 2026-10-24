@@ -18,8 +18,6 @@ class Settings(BaseSettings):
     
     # Secrets
     AEHUB_SECRET_KEY: str
-    # Optional: only voice transcription uses it (M12: the API starts without).
-    GROQ_API_KEY: str = ""
     OPENROUTER_API_KEY: str = ""
     
     # Connections

@@ -25,6 +25,8 @@ _TEST_ENV_DEFAULTS = {
     # TestClient sends Host: testserver; the API answers only to the host
     # names it knows (ADR-020).
     "AEHUB_ALLOWED_HOSTS": "testserver",
+    # No test downloads speech models; voice tests install fake engines.
+    "AEHUB_VOICE": "off",
 }
 
 for _key, _value in _TEST_ENV_DEFAULTS.items():

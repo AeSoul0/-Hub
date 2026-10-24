@@ -1,11 +1,11 @@
 """
 @file backend/app/api/realtime.py
-@description Realtime transport boundary for SSE, WebSocket, and speech helpers.
+@description Realtime transport boundary for SSE and WebSocket.
 
 This module isolates transport-specific concerns from the FastAPI application
-composition root. It owns authenticated realtime endpoints and audio conversion
-helpers while delegating conversational execution to the existing orchestration
-service.
+composition root. It owns authenticated realtime endpoints while delegating
+speech to app.voice (local engines, ADR-021) and conversational execution to
+the existing orchestration service.
 
 Architectural boundary:
 - HTTP/SSE/WebSocket transport is handled here.
@@ -18,18 +18,16 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import binascii
 import json
-import os
-import tempfile
-from datetime import datetime
 from typing import Literal
 
-import edge_tts
-import httpx
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.core.event_bus import event_bus
+from app.voice.engines import VoiceUnavailable
+from app.voice.pipeline import AudioTooLarge, transcribe_audio
 
 
 router = APIRouter(tags=["realtime"])
@@ -40,106 +38,14 @@ router = APIRouter(tags=["realtime"])
 # ==============================================================================
 
 
-async def process_audio_to_text(base64_audio: str) -> str:
+def decode_audio_payload(data: str) -> bytes:
     """
-    Decode Base64 audio and submit it to the configured Groq transcription API.
-
-    The helper owns only temporary-file handling and the external HTTP request.
-    Agent execution and authentication remain outside this function.
+    The bytes of a base64 recording, with or without a data: URL prefix.
     """
-    if not (os.getenv("GROQ_API_KEY") or "").strip():
-        return "Voice input is off: GROQ_API_KEY is not set."
+    if "," in data:
+        data = data.split(",", 1)[1]
 
-    temp_path = None
-
-    try:
-        if "," in base64_audio:
-            base64_audio = base64_audio.split(",", 1)[1]
-
-        audio_bytes = base64.b64decode(base64_audio)
-
-        with tempfile.NamedTemporaryFile(
-            delete=False,
-            suffix=".webm",
-        ) as temp:
-            temp.write(audio_bytes)
-            temp_path = temp.name
-
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            with open(temp_path, "rb") as file_handle:
-                response = await client.post(
-                    "https://api.groq.com/openai/v1/audio/transcriptions",
-                    files={
-                        "file": (
-                            os.path.basename(temp_path),
-                            file_handle,
-                            "audio/webm",
-                        )
-                    },
-                    data={
-                        "model": "whisper-large-v3",
-                    },
-                    headers={
-                        "Authorization": (
-                            "Bearer "
-                            f"{os.getenv('GROQ_API_KEY')}"
-                        )
-                    },
-                )
-
-        if response.status_code == 200:
-            return response.json().get("text", "")
-
-        return "Transcription error."
-
-    except Exception as exc:
-        print(f"STT Error: {exc}")
-        return "Audio processing failed."
-
-    finally:
-        if temp_path and os.path.exists(temp_path):
-            os.remove(temp_path)
-
-
-async def process_text_to_audio(text: str) -> str:
-    """
-    Generate speech audio, encode it as Base64, and remove the temporary file.
-
-    This helper is intentionally retained during the first structural refactor
-    because it previously lived in the application entrypoint. A later audio
-    service extraction can move provider-specific TTS behavior out of transport.
-    """
-    try:
-        os.makedirs(
-            "workspace/audio_cache",
-            exist_ok=True,
-        )
-
-        file_path = os.path.join(
-            "workspace/audio_cache",
-            f"response_{int(datetime.now().timestamp())}.mp3",
-        )
-
-        communicate = edge_tts.Communicate(
-            text,
-            "it-IT-ElsaNeural",
-        )
-
-        await communicate.save(file_path)
-
-        with open(file_path, "rb") as file_handle:
-            base64_data = base64.b64encode(
-                file_handle.read()
-            ).decode("utf-8")
-
-        if os.path.exists(file_path):
-            os.remove(file_path)
-
-        return base64_data
-
-    except Exception as exc:
-        print(f"TTS Error: {exc}")
-        return ""
+    return base64.b64decode(data, validate=True)
 
 
 # ==============================================================================
@@ -403,13 +309,31 @@ async def websocket_endpoint(
             # Never accept a session identifier from the browser payload.
             session_id = authenticated_session_id
 
+            input_channel = "text"
+
             if input_type == "audio_input":
-                user_text = await process_audio_to_text(
-                    payload.get(
-                        "data",
-                        "",
+                # A failed transcription is reported to the client; its
+                # message must never become the agent's task.
+                try:
+                    user_text = await transcribe_audio(
+                        decode_audio_payload(
+                            str(payload.get("data", ""))
+                        )
                     )
-                )
+                except (VoiceUnavailable, AudioTooLarge) as exc:
+                    await safe_send({"type": "error", "data": str(exc)})
+                    continue
+                except (binascii.Error, ValueError):
+                    await safe_send({"type": "error", "data": "Invalid audio payload."})
+                    continue
+                except Exception as exc:
+                    await safe_send({"type": "error", "data": f"Transcription failed: {exc}"})
+                    continue
+
+                input_channel = "voice"
+
+                if user_text:
+                    await safe_send({"type": "heard", "data": user_text})
             else:
                 user_text = payload.get(
                     "data",
@@ -438,6 +362,7 @@ async def websocket_endpoint(
                     str(user_context),
                     session_id,
                     principal=ws_principal,
+                    input_channel=input_channel,
                 )
             )
 
@@ -462,6 +387,10 @@ async def websocket_endpoint(
                         "data": response_payload[
                             "audio_base64"
                         ],
+                        "mime": response_payload.get(
+                            "audio_mime",
+                            "",
+                        ),
                     }
                 )
 
@@ -485,9 +414,8 @@ async def websocket_endpoint(
 
 
 __all__ = [
+    "decode_audio_payload",
     "get_events_stream",
-    "process_audio_to_text",
-    "process_text_to_audio",
     "router",
     "sse_event_generator",
     "websocket_endpoint",
