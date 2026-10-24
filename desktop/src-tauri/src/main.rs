@@ -89,9 +89,11 @@ fn stop_engine(app: &AppHandle) {
     };
 
     // EOF on stdin is the engine's signal to shut down.
-    drop(engine.stdin.lock().unwrap().take());
+    let stdin = engine.stdin.lock().unwrap().take();
+    drop(stdin);
+    let child = engine.child.lock().unwrap().take();
 
-    if let Some(mut child) = engine.child.lock().unwrap().take() {
+    if let Some(mut child) = child {
         let deadline = Instant::now() + STOP_TIMEOUT;
 
         while Instant::now() < deadline {
