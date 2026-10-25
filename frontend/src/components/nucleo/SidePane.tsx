@@ -35,12 +35,15 @@ export default function SidePane({
     count,
     hidden = false,
     ceiling,
+    header,
     children,
 }: {
     id: string;
     side: "left" | "right";
     title: string;
     count: number;
+    /** Replaces the title line, e.g. with tabs; `title` still names the pane. */
+    header?: React.ReactNode;
     /** Hidden panes keep their height for when they come back. */
     hidden?: boolean;
     /** The element whose bottom edge the pane may not pass. */
@@ -118,9 +121,11 @@ export default function SidePane({
                 onKeyDown={onKeyDown}
                 onDoubleClick={() => setHeight(null)}
             />
-            <h2 className={styles.paneTitle}>
-                {title.toUpperCase()} <span>{count || ""}</span>
-            </h2>
+            {header ?? (
+                <h2 className={styles.paneTitle}>
+                    {title.toUpperCase()} <span>{count || ""}</span>
+                </h2>
+            )}
             {children}
         </aside>
     );

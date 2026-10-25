@@ -12,7 +12,7 @@ All the tests below run in the `build-and-test` CI job. The two security tests m
 | 4 | **Minimal RAG.** | `tests/agent_engine/test_context_rag.py`, `tests/agent_engine/test_memory_isolation.py`, `tests/agent_engine/test_documents.py`. Eval cases `memory-*`, `documents-*` (citations checked: an invented one counts as a hallucination). |
 | 5 | **Agent budget with enforcement.** | `tests/agent_engine/test_budget.py`, `tests/agent_engine/test_budget_killswitch.py`, `tests/agent_engine/test_engine_limits.py`. Eval cases `budget-run-cap-stops`, `limit-*`. |
 | 6 | **Security tests and a gate in CI.** | `.github/workflows/ci.yml`: pip-audit, bandit, ruff, Trivy, TruffleHog, the prompt-injection gate, the eval gate against the baseline, `tests/security/test_api_surface.py` (the exact list of routes). |
-| 7 | **Cost and activity dashboard.** | `tests/agent_engine/test_budget_killswitch.py::test_stats_report_inferences_cost_and_failed_tools` (`/api/runs/stats`), `frontend/tests/components.test.tsx` (run view: cost, tokens, calls). Real browser: the Runs page in `test_browser_smoke`. |
+| 7 | **Cost and activity dashboard.** | `tests/agent_engine/test_budget_killswitch.py::test_stats_report_inferences_cost_and_failed_tools` (`/api/runs/stats`), `frontend/tests/components.test.tsx` (run view: cost, tokens, calls). Real browser: the Runs page in `test_browser_smoke`. Live totals, history and timeline (F2): `test_live_events_carry_the_run_totals`, `test_history_filters_by_status_and_text`, `test_timeline_lists_the_run_events_in_order`, `frontend/tests/runs.test.tsx`. |
 
 **First Milestone:** "install, set up in about ten minutes, give a real command; a dangerous one waits for approval; then see what happened and what it cost."
 

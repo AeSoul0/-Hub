@@ -438,7 +438,7 @@ def test_browser_smoke(tmp_path):
             # 1. The launch URL opens the Control Plane, logged in.
             page.goto(app.launch_url)
             page.wait_for_url(f"{app.origin}/control-plane**")
-            expect(page.get_by_text("Approvals").first).to_be_visible()
+            expect(page.get_by_text("APPROVAZIONI").first).to_be_visible()
 
             # 2. Models and budget, as the setup page saves them.
             configure_models(
@@ -468,7 +468,7 @@ def test_browser_smoke(tmp_path):
 
             # 5. The run completes.
             page.goto(f"{app.origin}/control-plane/runs/")
-            expect(page.get_by_role("cell", name="completed").first).to_be_visible(timeout=120_000)
+            expect(page.get_by_role("cell", name="completata").first).to_be_visible(timeout=120_000)
 
             blocked = [text for text in console_errors if "Content Security Policy" in text]
             assert blocked == [], blocked

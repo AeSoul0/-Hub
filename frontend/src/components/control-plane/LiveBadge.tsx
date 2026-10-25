@@ -6,17 +6,19 @@ import React from "react";
 
 import type { ConnectionState } from "@/lib/api/events";
 
-const LABELS: Record<ConnectionState, { text: string; className: string }> = {
-    connecting: { text: "connecting", className: "bg-gray-700 text-gray-300" },
-    live: { text: "live", className: "bg-green-800 text-green-200" },
-    offline: { text: "offline, reconnecting", className: "bg-red-900 text-red-200" },
+import styles from "./control.module.css";
+
+const LABELS: Record<ConnectionState, { text: string; tone: string }> = {
+    connecting: { text: "connessione…", tone: "" },
+    live: { text: "in linea", tone: "ok" },
+    offline: { text: "offline, riconnessione", tone: "bad" },
 };
 
 export default function LiveBadge({ state }: { state: ConnectionState }) {
     const label = LABELS[state];
 
     return (
-        <span className={`text-xs font-mono px-2 py-0.5 rounded ${label.className}`} role="status">
+        <span className={styles.badge} data-tone={label.tone || undefined} role="status">
             {label.text}
         </span>
     );

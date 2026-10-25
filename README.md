@@ -165,8 +165,9 @@ The frontend is a **Next.js application** using React, TypeScript and Tailwind C
 - **The Nucleo** (`/`, ADR-022) is the home:
   - a dotted sphere in the centre reacts to what the engine does: model calls, tool calls, subagents as small moons, approvals in amber, the microphone, the spoken reply;
   - the conversation sits on the left and the engine's live events on the right; both panes grow from their top edge and can be hidden;
-  - pending approvals are decided there.
-- **The Control Plane** (`/control-plane`) has runs, approvals, memory, security, settings and setup.
+  - pending approvals are decided there;
+  - the **RUN** tab of the right pane follows each run of the session (ADR-023): cost, active time, failed tool calls and written files against the per-run limits, live, with a stop button and the run's timeline; **FERMA TUTTO** in the top bar stops every run (a second click confirms) and **RIPRENDI** lifts the stop.
+- **The Control Plane** (`/control-plane`) has runs, approvals, memory, security, settings and setup. Runs, the single-run view (with its timeline) and approvals are in the Nucleo's style; the history of the runs filters by text, status, period and subagents.
 
 The look is a deep-blue space theme with squircle corners. The visual reference is `docs/design/hud-prototype.html`.
 

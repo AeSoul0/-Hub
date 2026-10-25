@@ -122,6 +122,9 @@ export function describe(event: EngineEvent): Omit<LogLine, "id"> {
         case "tool.approval_required":
             detail = event.tool ?? "";
             break;
+        case "tool.completed":
+            detail = [event.tool, event.details?.succeeded === false ? "fallito" : "ok"].filter(Boolean).join(" · ");
+            break;
         case "subagent.spawned":
             detail = `${event.role ?? "sub-agente"} · ${short(event.run_id)}`;
             break;
@@ -140,7 +143,7 @@ export function describe(event: EngineEvent): Omit<LogLine, "id"> {
         name,
         detail,
         risk: event.risk ? event.risk.toUpperCase() : undefined,
-        kind: kindOf(name),
+        kind: name === "tool.completed" && event.details?.succeeded === false ? "deny" : kindOf(name),
     };
 }
 
@@ -192,6 +195,8 @@ export function nucleoReducer(state: NucleoState, action: NucleoAction): NucleoS
                     return { ...next, activeRuns: including(next.activeRuns, event.run_id) };
                 case "run.completed":
                 case "run.cancelled":
+                case "run.limit_exceeded":
+                case "budget.exceeded":
                     return {
                         ...next,
                         activeRuns: without(next.activeRuns, event.run_id),

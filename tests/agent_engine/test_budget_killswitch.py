@@ -458,3 +458,131 @@ async def test_stats_report_inferences_cost_and_failed_tools(
     assert stats["budget"]["month_spent"] == 9
     assert stats["cost_estimated"] is False
     assert stats["failed_tool_calls"] == {"total": 1, "by_tool": {"ping": 1}}
+
+
+# ==============================================================================
+# RUN TOTALS, HISTORY AND TIMELINE (F2)
+# ==============================================================================
+
+
+async def _drain() -> None:
+    for _ in range(5):
+        await asyncio.sleep(0)
+
+
+def _engine_events(agent_infrastructure, event_type: str) -> List[Dict[str, Any]]:
+    return [
+        data
+        for _, kind, data in agent_infrastructure.published
+        if kind == "engine.event" and data["event_type"] == event_type
+    ]
+
+
+async def test_live_events_carry_the_run_totals(
+    ops, user, fake_model, agent_infrastructure
+):
+    engine = _engine(
+        fake_model,
+        [
+            fake_model.function_call("call_1", "ping", {"target": "a"}, usage=(2, 1)),
+            fake_model.function_call("call_2", "ping", {"target": 5}, usage=(1, 0)),
+            fake_model.text("Done.", usage=(1, 1)),
+        ],
+        [fake_model.accept(usage=(1, 0))],
+    )
+
+    await engine.run(session_id=SESSION_ID, task="Ping a.", principal=user)
+    await _drain()
+
+    tools = _engine_events(agent_infrastructure, "tool.completed")
+    assert [event["tool"] for event in tools] == ["ping", "ping"]
+    assert [event["details"]["succeeded"] for event in tools] == [True, False]
+    assert [event["details"]["usage"]["failed_tool_calls"] for event in tools] == [0, 1]
+
+    # Each model call reports the run total so far, next to its own cost.
+    models = _engine_events(agent_infrastructure, "model.called")
+    assert [event["cost"] for event in models] == [4, 1, 3, 1]
+    assert [event["details"]["usage"]["cost"] for event in models] == [4, 5, 8, 9]
+    assert models[-1]["details"]["usage"]["model_calls"] == 4
+
+
+async def test_live_view_shows_task_totals_and_limits(ops, user, fake_model):
+    engine = _engine(
+        fake_model,
+        [fake_model.function_call("call_1", "long_job", {"seconds": 600}, usage=(2, 1))],
+        [fake_model.accept()],
+    )
+    task, run_id = await _start_long_run(engine, user, ops)
+
+    try:
+        view = runs_api.live_view(user)
+    finally:
+        await runs_api.cancel_run(run_id, principal=user)
+        await asyncio.wait_for(task, timeout=KILL_SWITCH_DEADLINE_SECONDS)
+
+    [run] = view["runs"]
+    assert run["run_id"] == run_id
+    assert run["task"] == "Run the long job."
+    assert run["usage"]["cost"] == 4
+    assert run["usage"]["active_seconds"] >= 0
+    assert view["limits"]["max_run_cost"] == 100
+    assert view["limits"]["monthly_budget"] == 1000
+    assert view["halted"] is False
+
+
+async def test_history_filters_by_status_and_text(ops, user, fake_model):
+    for target in ("alpha", "beta"):
+        engine = _engine(
+            fake_model,
+            [
+                fake_model.function_call("call_1", "ping", {"target": target}),
+                fake_model.text("Done."),
+            ],
+            [fake_model.accept()],
+        )
+        await engine.run(session_id=SESSION_ID, task=f"Ping {target}.", principal=user)
+
+    everything = runs_api.run_history(user)
+    assert everything["total"] == 2
+    assert [run["task"] for run in everything["runs"]] == ["Ping beta.", "Ping alpha."]
+    assert {run["status"] for run in everything["runs"]} == {"completed"}
+    assert everything["runs"][0]["usage"]["tool_calls"] == 1
+
+    assert [run["task"] for run in runs_api.run_history(user, query="ALPHA")["runs"]] == ["Ping alpha."]
+    assert runs_api.run_history(user, status="failed,cancelled")["total"] == 0
+    assert runs_api.run_history(user, status="completed", subagents=False)["total"] == 2
+
+    page = runs_api.run_history(user, limit=1, offset=1)
+    assert page["total"] == 2
+    assert [run["task"] for run in page["runs"]] == ["Ping alpha."]
+
+    with pytest.raises(HTTPException) as unknown:
+        runs_api.run_history(user, status="exploded")
+    assert unknown.value.status_code == 422
+
+    stranger = Principal(id="stranger", role=RoleEnum.ADMIN, workspace_id="elsewhere")
+    assert runs_api.run_history(stranger)["total"] == 0
+
+
+async def test_timeline_lists_the_run_events_in_order(ops, user, fake_model):
+    engine = _engine(
+        fake_model,
+        [
+            fake_model.function_call("call_1", "ping", {"target": "a"}),
+            fake_model.text("Done."),
+        ],
+        [fake_model.accept()],
+    )
+    result = await engine.run(session_id=SESSION_ID, task="Ping a.", principal=user)
+
+    timeline = runs_api.run_timeline(result["run_id"], WORKSPACE_ID)
+
+    kinds = [event["event_type"] for event in timeline["events"]]
+    assert kinds[0] == "run.started"
+    assert kinds[-1] == "run.completed"
+    assert kinds.index("tool.proposed") < kinds.index("tool.completed")
+    assert timeline["truncated"] is False
+    assert timeline["limits"]["max_run_cost"] == 100
+
+    assert runs_api.run_timeline(result["run_id"], "elsewhere") is None
+    assert runs_api.run_timeline("does-not-exist", WORKSPACE_ID) is None
