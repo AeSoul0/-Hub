@@ -8,6 +8,10 @@
  * the user is doing here (talking, sending, listening to the reply).
  * Commands go to the orchestrator: text to /api/orchestrator/ask, voice to
  * /api/orchestrator/listen (transcribed locally, ADR-021).
+ *
+ * F2: the right pane also shows the runs of this session with their totals
+ * against the limits and their timeline; a run, or all of them, stops from
+ * here (POST /api/runs/{id}/cancel, /api/runs/stop-all, /api/runs/resume).
  */
 "use client";
 
@@ -27,9 +31,11 @@ import {
     resumedReply,
     toEngineEvent,
 } from "@/lib/nucleo/engine";
+import { initialRuns, liveCount, runsReducer, type LiveView } from "@/lib/nucleo/runs";
 
 import ApprovalPrompt from "./ApprovalPrompt";
 import Orb from "./Orb";
+import RunsPanel from "./RunsPanel";
 import SidePane from "./SidePane";
 import styles from "./nucleo.module.css";
 
@@ -54,6 +60,10 @@ interface Budget {
 
 const silence = () => 0;
 const CHAT_LIMIT = 100;
+// A burst of run events reads the live runs once.
+const LIVE_REFRESH_MS = 300;
+// The second click on "stop all" must come within this time.
+const CONFIRM_MS = 4000;
 
 async function detailOf(response: Response): Promise<string> {
     try {
@@ -92,6 +102,10 @@ export default function Nucleo() {
     const [deciding, setDeciding] = useState(false);
     const [budget, setBudget] = useState<Budget | null>(null);
     const [spark, setSpark] = useState({ count: 0, amber: false });
+    const [runs, runsDispatch] = useReducer(runsReducer, initialRuns);
+    const [rightTab, setRightTab] = useState<"events" | "runs">("events");
+    const [confirmStop, setConfirmStop] = useState(false);
+    const liveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const level = useRef<() => number>(silence);
     const recording = useRef<Recording | null>(null);
@@ -125,6 +139,34 @@ export default function Nucleo() {
         }
     }, []);
 
+    const refreshLive = useCallback(async () => {
+        try {
+            const view = await getJson<LiveView>("/api/runs/live");
+            runsDispatch({ type: "live", view, now: Date.now() });
+        } catch {
+            // The meters keep following the live events.
+        }
+    }, []);
+
+    const refreshLiveSoon = useCallback(() => {
+        if (liveTimer.current) {
+            clearTimeout(liveTimer.current);
+        }
+        liveTimer.current = setTimeout(() => {
+            liveTimer.current = null;
+            void refreshLive();
+        }, LIVE_REFRESH_MS);
+    }, [refreshLive]);
+
+    useEffect(
+        () => () => {
+            if (liveTimer.current) {
+                clearTimeout(liveTimer.current);
+            }
+        },
+        [],
+    );
+
     const connection = useWorkspaceEvents(
         ["engine.event", "run.state", "approval.requested", "approval.decided", "run.resumed"],
         (event) => {
@@ -132,6 +174,7 @@ export default function Nucleo() {
             if (engineEvent) {
                 const at = Date.now();
                 dispatch({ type: "engine", event: engineEvent, now: at });
+                runsDispatch({ type: "event", event: engineEvent, now: at });
                 setNow(at);
                 setSpark((current) => ({
                     count: current.count + 1,
@@ -140,11 +183,18 @@ export default function Nucleo() {
                 if (engineEvent.event_type === "run.completed" || engineEvent.event_type === "model.called") {
                     void refreshBudget();
                 }
+                if (engineEvent.event_type === "run.started" || engineEvent.event_type === "subagent.spawned") {
+                    refreshLiveSoon();
+                }
                 return;
             }
 
             if (event.type === "run.state") {
-                dispatch({ type: "runState", runId: String(event.data.run_id ?? ""), state: String(event.data.state ?? "") });
+                const runId = String(event.data.run_id ?? "");
+                const runState = String(event.data.state ?? "");
+                dispatch({ type: "runState", runId, state: runState });
+                runsDispatch({ type: "runState", runId, state: runState, now: Date.now() });
+                refreshLiveSoon();
                 return;
             }
 
@@ -175,8 +225,18 @@ export default function Nucleo() {
         () => {
             void refreshApprovals();
             void refreshBudget();
+            void refreshLive();
         },
     );
+
+    // "Stop all" asks for a second click, then forgets it.
+    useEffect(() => {
+        if (!confirmStop) {
+            return;
+        }
+        const timer = setTimeout(() => setConfirmStop(false), CONFIRM_MS);
+        return () => clearTimeout(timer);
+    }, [confirmStop]);
 
     // The scan of a tool call fades on its own.
     useEffect(() => {
@@ -287,6 +347,41 @@ export default function Nucleo() {
         }
     };
 
+    const stopRun = async (runId: string) => {
+        runsDispatch({ type: "cancelling", runId });
+        try {
+            await postJson(`/api/runs/${encodeURIComponent(runId)}/cancel`, {});
+        } catch (error) {
+            say("system", `La run non si è fermata: ${error instanceof Error ? error.message : String(error)}`);
+        } finally {
+            void refreshLive();
+        }
+    };
+
+    const stopAll = async () => {
+        setConfirmStop(false);
+        try {
+            await postJson("/api/runs/stop-all", {});
+            runsDispatch({ type: "halt", halted: true });
+            say("system", "Motore fermato: le run in corso si fermano e le nuove sono rifiutate finché non riprendi.");
+        } catch (error) {
+            say("system", `Stop non riuscito: ${error instanceof Error ? error.message : String(error)}`);
+        } finally {
+            void refreshLive();
+        }
+    };
+
+    const resumeAll = async () => {
+        try {
+            await postJson("/api/runs/resume", {});
+            runsDispatch({ type: "halt", halted: false });
+        } catch (error) {
+            say("system", `Il motore non riparte: ${error instanceof Error ? error.message : String(error)}`);
+        } finally {
+            void refreshLive();
+        }
+    };
+
     // Space toggles the microphone when no field has the focus.
     const toggleRef = useRef(toggleMic);
     useEffect(() => {
@@ -309,6 +404,7 @@ export default function Nucleo() {
     const busy = sending || listening;
     const appClass = [styles.app, showChat ? "" : styles.noLeft, showEvents ? "" : styles.noRight].join(" ");
     const spent = budget?.month_spent;
+    const running = Math.max(state.activeRuns.length, liveCount(runs));
 
     return (
         <div className={appClass}>
@@ -333,7 +429,7 @@ export default function Nucleo() {
                         aria-controls="nucleo-events"
                         onClick={() => setShowEvents((value) => !value)}
                     >
-                        EVENTI
+                        MOTORE
                     </button>
                 </div>
                 <div className={styles.chips}>
@@ -342,8 +438,23 @@ export default function Nucleo() {
                         motore <b>{connection === "live" ? "in linea" : connection === "offline" ? "offline" : "…"}</b>
                     </span>
                     <span className={styles.chip}>
-                        run attive <b>{state.activeRuns.length}</b>
+                        run attive <b>{running}</b>
                     </span>
+                    {runs.halted ? (
+                        <button type="button" className={`${styles.toggle} ${styles.halted}`} onClick={() => void resumeAll()}>
+                            MOTORE FERMO · RIPRENDI
+                        </button>
+                    ) : (
+                        running > 0 && (
+                            <button
+                                type="button"
+                                className={`${styles.toggle} ${styles.danger}`}
+                                onClick={() => (confirmStop ? void stopAll() : setConfirmStop(true))}
+                            >
+                                {confirmStop ? "CONFERMI? FERMA TUTTO" : "FERMA TUTTO"}
+                            </button>
+                        )
+                    )}
                     {budget && spent != null && (
                         <span className={styles.chip}>
                             mese <b>${spent.toFixed(2)}</b> / ${budget.monthly_budget.toFixed(2)}
@@ -389,25 +500,46 @@ export default function Nucleo() {
                 <ApprovalPrompt pending={approvals} busy={deciding} onDecide={decide} />
             </main>
 
-            <SidePane id="nucleo-events" side="right" title="Eventi del motore" count={state.log.length} hidden={!showEvents} ceiling={top}>
-                <ol className={styles.stream} ref={logList}>
-                    {state.log.length === 0 ? (
-                        <li className={styles.empty}>Gli eventi delle run compaiono qui mentre il motore lavora.</li>
-                    ) : (
-                        state.log.map((line) => (
-                            <li key={line.id} className={`${styles.ev} rise`} data-k={line.kind}>
-                                <time>{line.at}</time>
-                                <div className={styles.evBody}>
-                                    <span className={styles.evName}>{line.name}</span>
-                                    {line.risk && (
-                                        <span className={`${styles.risk} ${line.risk === "HIGH" ? styles.riskHigh : ""}`}>{line.risk}</span>
-                                    )}
-                                    {line.detail && <span className={styles.evDetail}>{line.detail}</span>}
-                                </div>
-                            </li>
-                        ))
-                    )}
-                </ol>
+            <SidePane
+                id="nucleo-events"
+                side="right"
+                title="Motore"
+                count={state.log.length}
+                hidden={!showEvents}
+                ceiling={top}
+                header={
+                    <div className={`${styles.paneTitle} ${styles.tabs}`} role="group" aria-label="Vista del motore">
+                        <button type="button" aria-pressed={rightTab === "events"} onClick={() => setRightTab("events")}>
+                            EVENTI <span>{state.log.length || ""}</span>
+                        </button>
+                        <button type="button" aria-pressed={rightTab === "runs"} onClick={() => setRightTab("runs")}>
+                            RUN <span>{liveCount(runs) || ""}</span>
+                        </button>
+                    </div>
+                }
+            >
+                {rightTab === "runs" ? (
+                    <RunsPanel state={runs} onStop={(runId) => void stopRun(runId)} />
+                ) : (
+                    <ol className={styles.stream} ref={logList}>
+                        {state.log.length === 0 ? (
+                            <li className={styles.empty}>Gli eventi delle run compaiono qui mentre il motore lavora.</li>
+                        ) : (
+                            state.log.map((line) => (
+                                <li key={line.id} className={`${styles.ev} rise`} data-k={line.kind}>
+                                    <time>{line.at}</time>
+                                    <div className={styles.evBody}>
+                                        <span className={styles.evName}>{line.name}</span>
+                                        {line.risk && (
+                                            <span className={`${styles.risk} ${line.risk === "HIGH" ? styles.riskHigh : ""}`}>{line.risk}</span>
+                                        )}
+                                        {line.detail && <span className={styles.evDetail}>{line.detail}</span>}
+                                    </div>
+                                </li>
+                            ))
+                        )}
+                    </ol>
+                )}
             </SidePane>
 
             <footer className={styles.dock}>

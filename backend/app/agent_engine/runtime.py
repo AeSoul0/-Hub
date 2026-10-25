@@ -38,6 +38,7 @@ from app.agent_engine.control import (
     SpendLedger,
     run_interruptible,
     run_registry,
+    usage_view,
 )
 from app.agent_engine.errors import (
     BudgetExceededError,
@@ -114,19 +115,51 @@ def _usd(amount: float) -> str:
 # executing, so the wait never counts toward AEHUB_RUN_TIMEOUT_SECONDS.
 _ACTIVE_SEGMENTS: Dict[str, Tuple[float, float]] = {}
 
+# The usage totals of the runs executing in this process, kept by reference:
+# the live view reads them between saves (F2).
+_LIVE_USAGE: Dict[str, Dict[str, Any]] = {}
 
-def _active_seconds(agent_run: AgentRun) -> float:
+
+def live_active_seconds(run_id: str, recorded: float = 0.0) -> float:
     """
-    Seconds the run has spent executing, across resumes.
+    Seconds a run has spent executing, across resumes; `recorded` when it
+    is not executing in this process.
     """
-    segment = _ACTIVE_SEGMENTS.get(agent_run.run_id)
+    segment = _ACTIVE_SEGMENTS.get(run_id)
 
     if segment is None:
-        return float(agent_run.usage.get("active_seconds", 0.0))
+        return recorded
 
     before, started = segment
 
     return before + (time.monotonic() - started)
+
+
+def live_usage(run_id: str, recorded: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    The current totals of a run executing in this process, else `recorded`
+    (its last saved totals).
+    """
+    usage = _LIVE_USAGE.get(run_id, recorded)
+
+    return usage_view(
+        usage,
+        live_active_seconds(run_id, float(usage.get("active_seconds") or 0.0)),
+    )
+
+
+def _active_seconds(agent_run: AgentRun) -> float:
+    return live_active_seconds(
+        agent_run.run_id,
+        float(agent_run.usage.get("active_seconds", 0.0)),
+    )
+
+
+def _usage_now(agent_run: AgentRun) -> Dict[str, Any]:
+    """
+    Run totals for the live events, so the interface follows the limits.
+    """
+    return usage_view(agent_run.usage, _active_seconds(agent_run))
 
 
 # ==============================================================================
@@ -507,6 +540,7 @@ class AgentRuntime:
         finally:
             run_registry.unregister(run_id)
             _ACTIVE_SEGMENTS.pop(run_id, None)
+            _LIVE_USAGE.pop(run_id, None)
 
             waiting = (
                 isinstance(result, dict)
@@ -696,6 +730,7 @@ class AgentRuntime:
             )
 
             _ACTIVE_SEGMENTS[run_id] = (0.0, time.monotonic())
+            _LIVE_USAGE[run_id] = agent_run.usage
 
         else:
             if agent_run.session_id != session_id:
@@ -783,6 +818,7 @@ class AgentRuntime:
                 float(agent_run.usage.get("active_seconds", 0.0)),
                 time.monotonic(),
             )
+            _LIVE_USAGE[run_id] = agent_run.usage
 
             if agent_run.status == AgentRunStatus.WAITING_APPROVAL:
                 outcome = await self._resume_pending_tool_call(
@@ -1686,19 +1722,31 @@ class AgentRuntime:
 
             agent_run.usage["files_modified"] = modified
 
-        if observation.succeeded:
-            return None
+        stop: Optional[RunLimitExceededError] = None
 
-        failed = int(agent_run.usage.get("failed_tool_calls", 0)) + 1
-        agent_run.usage["failed_tool_calls"] = failed
+        if not observation.succeeded:
+            failed = int(agent_run.usage.get("failed_tool_calls", 0)) + 1
+            agent_run.usage["failed_tool_calls"] = failed
 
-        if 0 < limits.max_failed_tool_calls <= failed:
-            return RunLimitExceededError(
-                f"Failed tool calls limit reached: {failed} of "
-                f"{limits.max_failed_tool_calls}."
-            )
+            if 0 < limits.max_failed_tool_calls <= failed:
+                stop = RunLimitExceededError(
+                    f"Failed tool calls limit reached: {failed} of "
+                    f"{limits.max_failed_tool_calls}."
+                )
 
-        return None
+        EventDispatcher().dispatch(
+            "tool.completed",
+            run_id=agent_run.run_id,
+            session_id=agent_run.session_id,
+            workspace_id=agent_run.workspace_id,
+            tool=observation.tool_name,
+            details={
+                "succeeded": bool(observation.succeeded),
+                "usage": _usage_now(agent_run),
+            },
+        )
+
+        return stop
 
     async def _park(
         self,
@@ -2072,6 +2120,7 @@ class AgentRuntime:
             cost=cost,
             model=model,
             role=role,
+            details={"usage": _usage_now(agent_run)},
         )
 
         try:

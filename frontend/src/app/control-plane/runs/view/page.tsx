@@ -1,13 +1,14 @@
 /**
  * @file frontend/src/app/control-plane/runs/view/page.tsx
- * @description One agent run: task, state, cost, the call waiting for
- * approval, what each tool returned and the audit trail (M11).
+ * @description One agent run: task, state, totals against the limits, the
+ * call waiting for approval, its timeline, what each tool returned and the
+ * audit trail (M11, F2).
  *
  * /control-plane/runs/view?id=<run id>: the id is in the query string so the
  * page also works as a static file in the desktop app (M14).
- * Reads GET /api/runs/{id} and re-reads it when this run changes state.
- * Untrusted observations (web pages, files, MCP output) are marked: they
- * were data for the model, never instructions.
+ * Reads GET /api/runs/{id} and GET /api/runs/{id}/events, again when this
+ * run changes state. Untrusted observations (web pages, files, MCP output)
+ * are marked: they were data for the model, never instructions.
  */
 "use client";
 
@@ -17,6 +18,8 @@ import React, { Suspense, useCallback, useEffect, useState } from "react";
 
 import LiveBadge from "@/components/control-plane/LiveBadge";
 import RunDetailView, { type RunDetail } from "@/components/control-plane/RunDetailView";
+import RunTimeline, { type Timeline } from "@/components/control-plane/RunTimeline";
+import styles from "@/components/control-plane/control.module.css";
 import { ApiError, getJson, postJson } from "@/lib/api/client";
 import { useLiveRefresh } from "@/lib/api/events";
 
@@ -34,6 +37,7 @@ function RunView() {
     const runId = useSearchParams()?.get("id") ?? "";
 
     const [run, setRun] = useState<RunDetail | null>(null);
+    const [timeline, setTimeline] = useState<Timeline | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [missing, setMissing] = useState(false);
 
@@ -41,8 +45,11 @@ function RunView() {
         if (!runId) {
             return;
         }
+        const path = `/api/runs/${encodeURIComponent(runId)}`;
         try {
-            setRun(await getJson<RunDetail>(`/api/runs/${encodeURIComponent(runId)}`));
+            const [detail, events] = await Promise.all([getJson<RunDetail>(path), getJson<Timeline>(`${path}/events`)]);
+            setRun(detail);
+            setTimeline(events);
             setMissing(false);
             setError(null);
         } catch (err) {
@@ -56,8 +63,8 @@ function RunView() {
 
     const live = useLiveRefresh(
         refresh,
-        ["run.state", "run.resumed", "approval.decided", "approval.requested"],
-        (event) => event.data.run_id === runId,
+        ["run.state", "run.resumed", "approval.decided", "approval.requested", "engine.event"],
+        (event) => event.data.run_id === runId || event.data.parent_run_id === runId,
     );
 
     useEffect(() => {
@@ -75,19 +82,37 @@ function RunView() {
     };
 
     return (
-        <div className="p-8">
-            <Link href="/control-plane/runs" className="text-cyan-400 hover:underline text-sm">
-                ← All runs
+        <div className={styles.page}>
+            <Link href="/control-plane/runs" className={styles.back}>
+                ← TUTTE LE RUN
             </Link>
-            <div className="flex flex-wrap items-center gap-4 mt-2 mb-6">
-                <h1 className="text-2xl font-bold text-orange-500 font-mono break-all">{runId}</h1>
+            <div className={styles.head}>
+                <h1 className={`${styles.title} ${styles.runTitle}`}>
+                    {runId || "RUN"}
+                </h1>
                 <LiveBadge state={live} />
             </div>
 
-            {error && <p className="mb-4 text-red-400">{error}</p>}
-            {!runId && <p className="text-gray-400">No run selected.</p>}
-            {missing && <p className="text-gray-400">No run with this id in your workspace.</p>}
-            {run && <RunDetailView run={run} onCancel={cancel} />}
+            {error && <p className={styles.error}>{error}</p>}
+            {!runId && <p className={styles.muted}>Nessuna run selezionata.</p>}
+            {missing && <p className={styles.muted}>Nessuna run con questo id nel tuo workspace.</p>}
+            {run && (
+                <RunDetailView
+                    run={run}
+                    limits={timeline?.limits ?? null}
+                    onCancel={cancel}
+                    timeline={
+                        timeline && (
+                            <section className={styles.section} aria-labelledby="timeline-title">
+                                <h2 id="timeline-title" className={styles.h2}>
+                                    TIMELINE <span>{timeline.events.length}</span>
+                                </h2>
+                                <RunTimeline timeline={timeline} />
+                            </section>
+                        )
+                    }
+                />
+            )}
         </div>
     );
 }

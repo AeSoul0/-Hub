@@ -122,15 +122,28 @@ class EventDispatcher:
 
         return event
 
-    def get_events_for_run(self, run_id: str) -> List[RunEvent]:
+    def get_events_for_run(
+        self,
+        run_id: str,
+        include_children: bool = False,
+    ) -> List[RunEvent]:
         """
-        Executes get_events_for_run logic.
+        Events of one run in order; with `include_children`, also the
+        announcements of its subagents (the run timeline, F2). A damaged
+        line is skipped.
         """
         events = []
         if os.path.exists(FLIGHT_RECORDER_FILE):
             with open(FLIGHT_RECORDER_FILE, "r", encoding="utf-8") as f:
                 for line in f:
-                    data = json.loads(line)
-                    if data.get("run_id") == run_id:
-                        events.append(RunEvent(**data))
+                    try:
+                        data = json.loads(line)
+                        if not isinstance(data, dict):
+                            continue
+                        if data.get("run_id") == run_id or (
+                            include_children and data.get("parent_run_id") == run_id
+                        ):
+                            events.append(RunEvent(**data))
+                    except ValueError:
+                        continue
         return events

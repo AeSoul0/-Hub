@@ -83,6 +83,62 @@
 .risk { display: inline-block; font-size: 10px; letter-spacing: 0.1em; padding: 0 6px; margin-left: 6px; border: 1px solid var(--faint); border-radius: 6px; color: var(--dim); }
 .riskHigh { border-color: var(--amber); color: var(--amber); }
 
+/* stop controls in the top bar */
+.danger { color: var(--danger); border-color: rgba(255, 125, 110, 0.45); }
+.danger::before { border-color: var(--danger); background: var(--danger); }
+.danger:hover { border-color: var(--danger); background: rgba(255, 125, 110, 0.08); }
+.halted { color: var(--amber); border-color: var(--amber); }
+.halted::before { border-color: var(--amber); background: var(--amber); }
+
+/* tabs of the engine pane */
+.tabs { justify-content: flex-start; gap: 16px; }
+.tabs button {
+    background: none; border: 0; padding: 0 0 4px; cursor: pointer; color: var(--faint);
+    font: inherit; letter-spacing: inherit; border-bottom: 1px solid transparent;
+}
+.tabs button:hover { color: var(--dim); }
+.tabs button[aria-pressed="true"] { color: var(--ink); border-bottom-color: var(--ice); }
+.tabs button span { font-family: var(--font-code); letter-spacing: 0; color: var(--faint); margin-left: 4px; }
+
+/* runs of the session */
+.run {
+    display: grid; gap: 9px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 18px;
+    background: rgba(7, 16, 42, 0.55);
+}
+.run[data-sub] { margin-left: 14px; }
+.run[data-status="waiting"] { border-color: rgba(242, 181, 76, 0.45); }
+.runHead { display: flex; align-items: center; gap: 8px; font-family: var(--font-code); font-size: 11px; letter-spacing: 0.08em; }
+.runHead b { color: var(--ink); font-weight: 500; }
+.runDot { width: 6px; height: 6px; border-radius: 50%; corner-shape: round; background: var(--ice); box-shadow: 0 0 8px var(--ice); }
+.run[data-status="waiting"] .runDot { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+.run[data-status="cancelling"] .runDot, .run[data-status="failed"] .runDot, .run[data-status="cancelled"] .runDot { background: var(--danger); box-shadow: none; }
+.run[data-status="completed"] .runDot, .run[data-status="finished"] .runDot { background: var(--ok); box-shadow: none; }
+.runStatus { color: var(--dim); margin-left: auto; }
+.runTask { margin: 0; font-size: 13px; line-height: 1.45; color: #b3c1e2; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.meters { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; font-family: var(--font-code); font-size: 10.5px; color: var(--dim); }
+.meters li { display: grid; grid-template-columns: 92px minmax(30px, 1fr) auto; align-items: center; gap: 8px; }
+.bar2 { height: 2px; background: var(--line); position: relative; border-radius: 1px; }
+.bar2 i { position: absolute; inset: 0 auto 0 0; background: var(--ice); border-radius: 1px; transition: width 0.4s ease; }
+.meters li[data-level="warn"] .bar2 i { background: var(--amber); }
+.meters li[data-level="over"] .bar2 i { background: var(--danger); }
+.meters li[data-level="over"] .meterText { color: var(--danger); }
+.meterText { color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.run .btn { padding: 4px 10px; font-size: 11px; border-radius: 10px; }
+.stop { border-color: rgba(255, 125, 110, 0.5); color: var(--danger); }
+.stop:hover { border-color: var(--danger); background: rgba(255, 125, 110, 0.08); }
+.timeline {
+    list-style: none; margin: 0; padding: 8px 0 0; border-top: 1px solid var(--line);
+    display: grid; gap: 6px; font-family: var(--font-code); font-size: 11.5px; line-height: 1.4;
+}
+.timeline li { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; column-gap: 8px; }
+.timeline time { color: var(--faint); font-variant-numeric: tabular-nums; }
+.timeline .evDetail { grid-column: 2 / -1; padding-left: 13px; }
+.timeline li[data-k="model"], .timeline li[data-k="tool"], .timeline li[data-k="subagent"] { --k: var(--ice); }
+.timeline li[data-k="approval"] { --k: var(--amber); }
+.timeline li[data-k="run"] { --k: var(--ink); }
+.timeline li[data-k="deny"] { --k: var(--danger); }
+.total { color: var(--dim); font-variant-numeric: tabular-nums; }
+
 /* core */
 .core { grid-area: core; position: relative; min-height: 0; }
 .tick { position: absolute; width: 14px; height: 14px; border-color: var(--faint); border-style: solid; border-width: 0; corner-shape: round; }

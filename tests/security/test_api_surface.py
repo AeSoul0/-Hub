@@ -37,6 +37,9 @@ MANAGEMENT = {
     ("POST", "/api/runs/stop-all"),
     ("POST", "/api/runs/{run_id}/cancel"),
     ("GET", "/api/runs/{run_id}"),
+    # F2: run history and timeline, read only.
+    ("GET", "/api/runs"),
+    ("GET", "/api/runs/{run_id}/events"),
     ("GET", "/api/audit"),
     # M12: settings change routing, prices and limits, never tools or secrets.
     ("GET", "/api/settings"),

@@ -250,6 +250,22 @@ class RunLimits:
         )
 
 
+def usage_view(usage: Dict[str, Any], active_seconds: float = 0.0) -> Dict[str, Any]:
+    """
+    The run totals that the per-run limits apply to, as the interface shows
+    them next to those limits (F2).
+    """
+    return {
+        "cost": round(float(usage.get("cost") or 0.0), 6),
+        "total_tokens": int(usage.get("total_tokens") or 0),
+        "model_calls": int(usage.get("model_calls") or 0),
+        "tool_calls": int(usage.get("tool_calls") or 0),
+        "failed_tool_calls": int(usage.get("failed_tool_calls") or 0),
+        "files_modified": len(usage.get("files_modified") or []),
+        "active_seconds": round(float(active_seconds), 1),
+    }
+
+
 def current_period(now: Optional[datetime] = None) -> str:
     return (now or datetime.utcnow()).strftime("%Y-%m")
 

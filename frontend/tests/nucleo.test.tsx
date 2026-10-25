@@ -20,6 +20,24 @@ import { installEventSource, stubFetch } from "./helpers";
 
 const quiet = { listening: false, speaking: false, sending: false };
 
+const LIMITS = { max_run_cost: 2, max_run_seconds: 900, max_failed_tool_calls: 10, max_files_modified: 20, monthly_budget: 30 };
+
+function liveRun(usage: Partial<Record<string, number>> = {}) {
+    return {
+        run_id: "run-1",
+        session_id: "s",
+        principal_id: "u",
+        task: "Accendi la luce",
+        started_at: "2026-10-24T10:00:00",
+        cancelling: false,
+        usage: { cost: 0, total_tokens: 0, model_calls: 0, tool_calls: 0, failed_tool_calls: 0, files_modified: 0, active_seconds: 0, ...usage },
+    };
+}
+
+function liveView(extra: Record<string, unknown> = {}) {
+    return { halted: false, halt_reason: null, limits: LIMITS, runs: [], ...extra };
+}
+
 function engine(event_type: string, extra: Partial<EngineEvent> = {}): EngineEvent {
     return { event_type, run_id: "run-1234", timestamp: "2026-10-24T10:00:00", ...extra };
 }
@@ -135,6 +153,7 @@ describe("Nucleo", () => {
                 status: 200,
                 body: { budget: { month_spent: 0.21, monthly_budget: 2 } },
             }),
+            "GET /api/runs/live": () => ({ status: 200, body: liveView() }),
             "POST /api/approvals/ap-1": () => ({ status: 200, body: { id: "ap-1", decision: "allow" } }),
         });
 
@@ -186,6 +205,7 @@ describe("Nucleo", () => {
         const fetch = stubFetch({
             "GET /api/approvals": () => ({ status: 200, body: [] }),
             "GET /api/runs/stats": () => ({ status: 200, body: { budget: { month_spent: null, monthly_budget: 2 } } }),
+            "GET /api/runs/live": () => ({ status: 200, body: liveView() }),
             "POST /api/orchestrator/ask": () => ({ status: 200, body: { transcription: "Luce accesa.", audio_base64: "" } }),
         });
 
@@ -205,10 +225,11 @@ describe("Nucleo", () => {
         stubFetch({
             "GET /api/approvals": () => ({ status: 200, body: [] }),
             "GET /api/runs/stats": () => ({ status: 200, body: { budget: { month_spent: 0, monthly_budget: 2 } } }),
+            "GET /api/runs/live": () => ({ status: 200, body: liveView() }),
         });
 
         render(<Nucleo />);
-        const toggle = screen.getByRole("button", { name: "EVENTI" });
+        const toggle = screen.getByRole("button", { name: "MOTORE" });
         const pane = document.getElementById("nucleo-events");
 
         expect(pane).toBeVisible();
@@ -217,5 +238,54 @@ describe("Nucleo", () => {
         expect(pane).not.toBeVisible();
         fireEvent.click(toggle);
         expect(pane).toBeVisible();
+    });
+
+    it("follows a run against its limits and stops it, then everything", async () => {
+        const Source = installEventSource();
+        let halted = false;
+        const fetch = stubFetch({
+            "GET /api/approvals": () => ({ status: 200, body: [] }),
+            "GET /api/runs/stats": () => ({ status: 200, body: { budget: { month_spent: 0, monthly_budget: 30 } } }),
+            "GET /api/runs/live": () => ({
+                status: 200,
+                body: liveView({ halted, runs: halted ? [] : [liveRun({ cost: 0.5 })] }),
+            }),
+            "POST /api/runs/run-1/cancel": () => ({ status: 200, body: { run_id: "run-1", status: "cancelling" } }),
+            "POST /api/runs/stop-all": () => {
+                halted = true;
+                return { status: 200, body: { halted: true, cancelled_runs: 1 } };
+            },
+        });
+
+        render(<Nucleo />);
+        act(() => Source.instances[0].open());
+
+        fireEvent.click(screen.getByRole("button", { name: /^RUN/ }));
+        expect(await screen.findByText("Accendi la luce")).toBeInTheDocument();
+        const limits = screen.getByRole("list", { name: /^Limiti della run/ });
+        expect(limits).toHaveTextContent("$0.5000 / $2.00");
+
+        // The totals move with the live events, without asking again.
+        act(() =>
+            Source.instances[0].emit("engine.event", {
+                event_type: "model.called",
+                run_id: "run-1",
+                cost: 1.3,
+                details: { usage: { cost: 1.8, failed_tool_calls: 0, files_modified: 0, active_seconds: 4 } },
+            }),
+        );
+        expect(limits).toHaveTextContent("$1.80 / $2.00");
+        expect(screen.getByText("Σ $1.80")).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole("button", { name: "Ferma la run" }));
+        await waitFor(() => expect(fetch.mock.calls.some(([url]) => String(url).endsWith("/api/runs/run-1/cancel"))).toBe(true));
+
+        const stopAll = screen.getByRole("button", { name: "FERMA TUTTO" });
+        fireEvent.click(stopAll);
+        expect(fetch.mock.calls.some(([url]) => String(url).endsWith("/api/runs/stop-all"))).toBe(false);
+        fireEvent.click(screen.getByRole("button", { name: "CONFERMI? FERMA TUTTO" }));
+
+        expect(await screen.findByRole("button", { name: "MOTORE FERMO · RIPRENDI" })).toBeInTheDocument();
+        expect(screen.getByText(/Motore fermato/)).toBeInTheDocument();
     });
 });
