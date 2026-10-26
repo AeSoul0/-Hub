@@ -38,7 +38,7 @@ class SettingSpec:
     """
 
     name: str
-    group: Literal["models", "prices", "limits", "voice"]
+    group: Literal["models", "prices", "limits", "engine", "voice"]
     label: str
     kind: Literal["text", "roles", "prices", "price_pair", "number", "integer", "ratio", "choice"]
     default: str
@@ -47,6 +47,10 @@ class SettingSpec:
     # value must match (names that end up in a path or a URL).
     options: Tuple[str, ...] = ()
     pattern: str = ""
+    # "number" and "integer": the accepted range, when it is narrower than
+    # "0 or more".
+    minimum: Optional[float] = None
+    maximum: Optional[float] = None
 
 
 SPECS: Tuple[SettingSpec, ...] = (
@@ -76,6 +80,24 @@ SPECS: Tuple[SettingSpec, ...] = (
             'JSON: role -> list of "provider:model", tried in order. Roles: architect, '
             "research, critic, fast_worker, triage. Providers: openai, openrouter, local."
         ),
+    ),
+    SettingSpec(
+        name="AEHUB_FORCE_ROLE",
+        group="models",
+        label="Forced role",
+        kind="choice",
+        default="",
+        help="Run every task with this role instead of choosing it from the task text (empty: by rules).",
+        options=("architect", "research", "fast_worker", "triage"),
+    ),
+    SettingSpec(
+        name="AEHUB_LOCAL_BASE_URL",
+        group="models",
+        label="Local server",
+        kind="text",
+        default="http://localhost:11434/v1",
+        help="OpenAI-compatible server of the local provider (Ollama, LM Studio, vLLM).",
+        pattern=r"https?://[A-Za-z0-9.\-\[\]:]+(/[A-Za-z0-9._~\-/]*)?",
     ),
     SettingSpec(
         name="AEHUB_MODEL_PRICES",
@@ -140,6 +162,57 @@ SPECS: Tuple[SettingSpec, ...] = (
         kind="integer",
         default="20",
         help="The run stops after modifying this many files. 0 disables the limit.",
+    ),
+    SettingSpec(
+        name="AEHUB_APPROVAL_TTL_SECONDS",
+        group="limits",
+        label="Approval window (seconds)",
+        kind="integer",
+        default="300",
+        help="An approval left undecided this long is denied. Applies to new approvals.",
+        minimum=30,
+        maximum=86_400,
+    ),
+    # Engine (F4): applied to the next run.
+    SettingSpec(
+        name="AEHUB_BREAKER_THRESHOLD",
+        group="engine",
+        label="Failures before a model is skipped",
+        kind="integer",
+        default="3",
+        help="Consecutive errors after which a model of a role chain is skipped for the cooldown.",
+        minimum=1,
+        maximum=100,
+    ),
+    SettingSpec(
+        name="AEHUB_BREAKER_COOLDOWN_SECONDS",
+        group="engine",
+        label="Skip time (seconds)",
+        kind="number",
+        default="60",
+        help="How long a failing model is skipped before it is tried again.",
+        minimum=1,
+        maximum=86_400,
+    ),
+    SettingSpec(
+        name="AEHUB_CONTEXT_BUDGET",
+        group="engine",
+        label="Context budget (tokens)",
+        kind="integer",
+        default="88000",
+        help="Tokens of one model request, split across the context levels L0-L5.",
+        minimum=2_000,
+        maximum=2_000_000,
+    ),
+    SettingSpec(
+        name="AEHUB_SNAPSHOT_EVERY",
+        group="engine",
+        label="Tool calls between snapshots",
+        kind="integer",
+        default="15",
+        help="Older calls leave the recent window and are summarized (10-20).",
+        minimum=10,
+        maximum=20,
     ),
     # Voice (F3, ADR-021, ADR-024): read on every use, so a change applies
     # to the next sentence without a restart.

@@ -44,6 +44,18 @@ function settingsView(values: Record<string, string> = {}, issues: SettingsView[
         secrets: [],
         issues,
         models: [],
+        roles: {
+            architect: { chain: ["openai:gpt-5.5"], custom: false },
+            research: { chain: ["openai:gpt-5.5"], custom: false },
+            critic: { chain: ["openai:critic"], custom: false },
+            fast_worker: { chain: ["openai:gpt-5.5"], custom: false },
+            triage: { chain: ["openai:gpt-5.5"], custom: false },
+        },
+        providers: {
+            openai: { key: true, needs_key: true },
+            openrouter: { key: false, needs_key: true },
+            local: { key: false, needs_key: false },
+        },
         workspace: { path: "/w", exists: true },
         ready: true,
         onboarding: { completed: true, completed_at: "2026-10-26T10:00:00Z" },

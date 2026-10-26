@@ -52,6 +52,7 @@ SECRETS = (
     ("OPENAI_API_KEY", "OpenAI API key", "models with the openai provider"),
     ("OPENROUTER_API_KEY", "OpenRouter API key", "models with the openrouter provider"),
     ("AEHUB_MQTT_PASSWORD", "MQTT broker password", "home devices (optional)"),
+    ("AEHUB_LOCAL_API_KEY", "Local server key", "models with the local provider (optional)"),
     ("ELEVENLABS_API_KEY", "ElevenLabs API key", "the cloud voice (optional)"),
 )
 
@@ -123,6 +124,12 @@ def _check_value(name: str, value: str) -> Optional[str]:
 
             if spec.kind == "ratio" and not 0 < number <= 1:
                 return "Enter a number between 0 and 1."
+
+            if spec.minimum is not None and number < spec.minimum:
+                return f"Enter at least {spec.minimum:g}."
+
+            if spec.maximum is not None and number > spec.maximum:
+                return f"Enter at most {spec.maximum:g}."
 
     except ValueError as exc:
         if spec.kind in {"number", "ratio"}:
@@ -497,6 +504,52 @@ def routed_models() -> List[Dict[str, object]]:
     return sorted(models.values(), key=lambda entry: str(entry["model"]))
 
 
+def role_view() -> Dict[str, Dict[str, object]]:
+    """
+    Each role's chain as the engine would use it now, and whether it is set
+    in AEHUB_MODEL_ROLES ("custom") or falls back to the default model. Empty
+    chains when the routing is invalid (the issue says why).
+    """
+    from app.agent_engine.routing import Role, RoutingConfig, RoutingConfigError
+
+    try:
+        routing: Optional[RoutingConfig] = RoutingConfig.from_env()
+    except RoutingConfigError:
+        routing = None
+
+    try:
+        configured = json.loads(config_value("AEHUB_MODEL_ROLES") or "{}")
+    except ValueError:
+        configured = {}
+
+    if not isinstance(configured, dict):
+        configured = {}
+
+    return {
+        role.value: {
+            "chain": [target.label for target in routing.chain(role)] if routing else [],
+            "custom": role.value in configured,
+        }
+        for role in Role
+    }
+
+
+def provider_view() -> Dict[str, Dict[str, object]]:
+    """
+    Whether each provider can be called: its key (never the value) and, for
+    the local one, the server address.
+    """
+    return {
+        "openai": {"key": _env_set("OPENAI_API_KEY"), "needs_key": True},
+        "openrouter": {"key": _env_set("OPENROUTER_API_KEY"), "needs_key": True},
+        "local": {
+            "key": _env_set("AEHUB_LOCAL_API_KEY"),
+            "needs_key": False,
+            "base_url": config_value("AEHUB_LOCAL_BASE_URL") or "http://localhost:11434/v1",
+        },
+    }
+
+
 def settings_view(db: DBSession) -> Dict[str, object]:
     """
     What the Settings page shows. Secrets appear only as configured or not.
@@ -509,6 +562,8 @@ def settings_view(db: DBSession) -> Dict[str, object]:
 
     return {
         "models": routed_models(),
+        "roles": role_view(),
+        "providers": provider_view(),
         "workspace": {"path": str(workspace), "exists": workspace.is_dir()},
         "settings": [
             {

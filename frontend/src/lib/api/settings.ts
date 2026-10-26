@@ -4,7 +4,8 @@
  * GET/PUT /api/settings and POST /api/settings/onboarding.
  *
  * Secrets never come through here: the API only says whether each one is
- * set. They live in the OS keyring, managed by `python scripts/aehub.py`.
+ * set. They live in the OS keyring, managed by `python scripts/aehub.py`
+ * (or typed once in the desktop app, PUT /api/desktop/secrets).
  */
 "use client";
 
@@ -12,7 +13,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { ApiError, getJson, postJson, putJson } from "@/lib/api/client";
 
-export type SettingGroup = "models" | "prices" | "limits" | "voice";
+export type SettingGroup = "models" | "prices" | "limits" | "engine" | "voice";
 export type SettingKind = "text" | "roles" | "prices" | "price_pair" | "number" | "integer" | "ratio" | "choice";
 export type SettingSource = "database" | "environment" | "default";
 export type Severity = "error" | "warning" | "info";
@@ -51,11 +52,37 @@ export interface RoutedModel {
     priced: boolean;
 }
 
+export type RoleName = "architect" | "research" | "critic" | "fast_worker" | "triage";
+export type ProviderName = "openai" | "openrouter" | "local";
+
+/** A role's chain as the engine uses it now; custom when set in AEHUB_MODEL_ROLES. */
+export interface RoleChain {
+    chain: string[];
+    custom: boolean;
+}
+
+export interface ProviderState {
+    key: boolean;
+    needs_key: boolean;
+    base_url?: string;
+}
+
+/** One model a provider offers (GET /api/settings/provider-models/{provider}). */
+export interface ProviderModel {
+    id: string;
+    name: string;
+    context: number | null;
+    /** USD per 1M tokens, when the provider publishes it (OpenRouter). */
+    price: { input: number; output: number } | null;
+}
+
 export interface SettingsView {
     settings: SettingField[];
     secrets: SecretStatus[];
     issues: ConfigIssue[];
     models: RoutedModel[];
+    roles: Record<RoleName, RoleChain>;
+    providers: Record<ProviderName, ProviderState>;
     workspace: { path: string; exists: boolean };
     ready: boolean;
     onboarding: { completed: boolean; completed_at: string | null };
@@ -140,4 +167,35 @@ export function mergePrices(
     }
 
     return JSON.stringify(table);
+}
+
+/**
+ * The models each provider offers (F4), loaded once per page: a list, or
+ * the reason it is missing (no key, server off). Suggestions only.
+ */
+export function useProviderModels(providers: ProviderName[]) {
+    const [models, setModels] = useState<Partial<Record<ProviderName, ProviderModel[]>>>({});
+    const [missing, setMissing] = useState<Partial<Record<ProviderName, string>>>({});
+    const wanted = providers.join(",");
+
+    useEffect(() => {
+        let active = true;
+        for (const provider of wanted.split(",").filter(Boolean) as ProviderName[]) {
+            getJson<{ models: ProviderModel[] }>(`/api/settings/provider-models/${provider}`)
+                .then((result) => active && setModels((current) => ({ ...current, [provider]: result.models })))
+                .catch(
+                    (err: unknown) =>
+                        active &&
+                        setMissing((current) => ({
+                            ...current,
+                            [provider]: err instanceof Error ? err.message : String(err),
+                        })),
+                );
+        }
+        return () => {
+            active = false;
+        };
+    }, [wanted]);
+
+    return { models, missing };
 }

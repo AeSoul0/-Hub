@@ -10,13 +10,17 @@ PUT  /api/settings             change settings without a restart (admin).
                                Invalid values are refused as a whole (422).
 POST /api/settings/onboarding  mark the first-run setup done (admin). Refused
                                (409) while an error would stop every run.
+GET  /api/settings/provider-models/{provider}
+                               the models openai, openrouter or local offer,
+                               for the role editor (F4); OpenRouter with
+                               prices. Suggestions: nothing is saved.
 
 Secrets are not editable here: the launcher keeps them in the OS keyring.
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -83,6 +87,25 @@ async def update_settings(
             ) from exc
 
         return settings_view(db)
+
+
+@router.get("/provider-models/{provider}")
+async def list_provider_models(
+    provider: Literal["openai", "openrouter", "local"],
+    principal: Principal = Depends(resolve_principal),
+) -> Dict[str, Any]:
+    import asyncio
+
+    from app.agent_engine.catalog import CatalogUnavailable, provider_models
+
+    del principal
+
+    try:
+        models = await asyncio.to_thread(provider_models, provider)
+    except CatalogUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    return {"provider": provider, "models": models}
 
 
 @router.post("/onboarding")
