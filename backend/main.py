@@ -37,6 +37,8 @@ from app.api import (
     realtime,
     runs,
     settings as settings_api,
+    skills as skills_api,
+    tools as tools_api,
     voice as voice_api,
 )
 from app.core.telemetry import (
@@ -135,6 +137,11 @@ async def lifespan(
 
     with SessionLocal() as db:
         load_settings(db)
+
+        # Imported SKILL.md skills that are turned on (F5).
+        from app.skills.imported_skills import reload_imported_skills
+
+        reload_imported_skills(db)
 
     # One line per problem (Critic equal to a Worker, missing provider key,
     # missing prices, ...). The API still starts, so the Settings page can
@@ -420,6 +427,14 @@ app.include_router(
 
 app.include_router(
     voice_api.router
+)
+
+app.include_router(
+    tools_api.router
+)
+
+app.include_router(
+    skills_api.router
 )
 
 

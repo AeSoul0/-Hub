@@ -45,6 +45,7 @@ function run(overrides: Partial<RunDetail> = {}): RunDetail {
         errors: [],
         usage: { cost: 0.0123, model_calls: 2, tool_calls: 1, total_tokens: 900, active_seconds: 3.2 },
         untrusted_context: true,
+        exposed_tools: ["browse_and_extract", "search_documents"],
         pending_tool_call: null,
         queued_tool_calls: [],
         last_feedback: null,
@@ -160,6 +161,7 @@ describe("RunDetailView", () => {
         expect(screen.getByText("Summarise the page.")).toBeInTheDocument();
         expect(screen.getByText("non affidabile")).toBeInTheDocument();
         expect(screen.getByText("ha letto contenuti non affidabili")).toBeInTheDocument();
+        expect(screen.getByText("browse_and_extract, search_documents")).toBeInTheDocument();
         expect(screen.getByText("completata")).toBeInTheDocument();
         expect(screen.queryByRole("button", { name: "Ferma la run" })).not.toBeInTheDocument();
     });

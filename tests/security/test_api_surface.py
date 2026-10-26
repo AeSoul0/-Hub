@@ -61,6 +61,15 @@ MANAGEMENT = {
     ("GET", "/api/voice"),
     ("GET", "/api/voice/elevenlabs/voices"),
     ("POST", "/api/voice/speak"),
+    # F5: the tool catalog (read only; switching tools is a setting) and
+    # skills imported as SKILL.md text. A skill never runs from here: the
+    # agent reads an enabled one through the use_skill tool, untrusted.
+    ("GET", "/api/tools"),
+    ("GET", "/api/skills"),
+    ("GET", "/api/skills/{skill_id}"),
+    ("POST", "/api/skills/import"),
+    ("PUT", "/api/skills/{skill_id}"),
+    ("DELETE", "/api/skills/{skill_id}"),
     ("GET", "/api/events"),
     ("GET", "/health"),
     ("MOUNT", "/metrics"),

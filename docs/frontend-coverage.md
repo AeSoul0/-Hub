@@ -7,8 +7,8 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10, ROADMA
 - Un parametro di avvio (porte, URL del database, cartelle dei dati) conta come coperto quando la pagina Sistema lo mostra in sola lettura.
 - ◐ vuol dire parziale e conta mezzo: per esempio si vede ma non si cambia, o si cambia solo scrivendo JSON.
 
-**Ultimo aggiornamento:** F4, modelli, chiavi e limiti (2026-10-26).
-**Copertura:** 30 righe su 48, cioè **62,5%**.
+**Ultimo aggiornamento:** F5, strumenti, skill, policy e sicurezza (2026-10-26).
+**Copertura:** 35,5 righe su 48, cioè **74%**.
 
 ## Conversazione e voce
 
@@ -56,13 +56,13 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10, ROADMA
 
 | # | Funzione del backend | Nell'interfaccia | Stato | Milestone |
 |---|---|---|---|---|
-| 28 | Catalogo di tool e skill, con il rischio di ciascuno | — | — | F5 |
-| 29 | Attivare e disattivare i tool (policy del workspace) | — | — | F5 |
-| 30 | Skill `SKILL.md` scaricate da internet | — | — | F5 |
-| 31 | Server MCP consentiti | — | — | F5 |
-| 32 | Selezione dei tool (indice delle skill) | — | — | F5 |
-| 33 | Cartelle consentite ai tool | il Setup mostra la cartella di lavoro, che però si sceglie dal launcher | ◐ | F5 |
-| 34 | Registro di audit | Control Plane → SICUREZZA | ✓ | M11 |
+| 28 | Catalogo di tool e skill, con il rischio di ciascuno | Control Plane → STRUMENTI | ✓ | F5 |
+| 29 | Attivare e disattivare i tool (policy del workspace, `AEHUB_DISABLED_TOOLS`) | STRUMENTI, un interruttore per tool | ✓ | F5 |
+| 30 | Skill `SKILL.md` scaricate da internet | Control Plane → SKILL: import da link o file, testo e avvisi, accesa o spenta, eliminazione | ✓ | F5 |
+| 31 | Server MCP consentiti | STRUMENTI → Confini | ✓ | F5 |
+| 32 | Selezione dei tool (indice delle skill) | STRUMENTI → Indice delle skill; i tool scelti nella vista della run | ✓ | F5 |
+| 33 | Cartelle consentite ai tool | STRUMENTI → Confini, in sola lettura (parametro di avvio: si sceglie dal launcher) | ✓ | F5 |
+| 34 | Registro di audit, con la provenienza | Control Plane → SICUREZZA | ✓ | M11, F5 |
 
 ## Memoria e documenti
 
@@ -99,3 +99,4 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10, ROADMA
 |---|---|---|
 | F3 (prima versione della tabella) | 24,5 su 48 | 51% |
 | F4 | 30 su 48 | 62,5% |
+| F5 | 35,5 su 48 | 74% |

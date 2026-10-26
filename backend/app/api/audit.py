@@ -4,6 +4,9 @@
 
 GET /api/audit    recent tool calls of the caller's workspace, as recorded by
                   the Tool Gateway, plus a verification of the hash chain.
+                  Each entry says whether the tool returns untrusted
+                  content (F5): null for Control Plane changes and tools
+                  no longer registered.
 
 Nothing here writes: the audit log is append-only and only the Gateway adds
 to it.
@@ -59,6 +62,7 @@ def audit_entry(row: Any) -> Dict[str, Any]:
 async def recent_audit(
     limit: int = Query(default=100, ge=1, le=500),
     decision: Optional[str] = Query(default=None, max_length=32),
+    tool: Optional[str] = Query(default=None, max_length=128),
     principal: Principal = Depends(resolve_principal),
 ) -> Dict[str, Any]:
     """
@@ -66,7 +70,9 @@ async def recent_audit(
     """
     from app.core.db import SessionLocal
     from app.domain.models.audit import AuditLog
+    from app.api.tools import untrusted_output
     from app.runtime.audit_chain import verify_audit_chain
+    from app.skills.registry import skill_registry
 
     with SessionLocal() as db:
         query = db.query(AuditLog).filter(
@@ -76,8 +82,17 @@ async def recent_audit(
         if decision:
             query = query.filter(AuditLog.decision == decision.upper())
 
+        if tool:
+            query = query.filter(AuditLog.tool_name == tool)
+
         rows = query.order_by(AuditLog.timestamp.desc()).limit(limit).all()
-        entries = [audit_entry(row) for row in rows]
+        entries = []
+
+        for row in rows:
+            entry = audit_entry(row)
+            metadata = skill_registry.get_tool_metadata(row.tool_name or "")
+            entry["untrusted_output"] = untrusted_output(metadata) if metadata is not None else None
+            entries.append(entry)
 
         chain = verify_audit_chain(db)
 

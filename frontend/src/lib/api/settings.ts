@@ -13,7 +13,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { ApiError, getJson, postJson, putJson } from "@/lib/api/client";
 
-export type SettingGroup = "models" | "prices" | "limits" | "engine" | "voice";
+export type SettingGroup = "models" | "prices" | "limits" | "engine" | "voice" | "tools";
 export type SettingKind = "text" | "roles" | "prices" | "price_pair" | "number" | "integer" | "ratio" | "choice";
 export type SettingSource = "database" | "environment" | "default";
 export type Severity = "error" | "warning" | "info";

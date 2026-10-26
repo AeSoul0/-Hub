@@ -5,9 +5,10 @@
 This module manages the internal business logic for MCPSkillWrapper.
 It provides specialized functionality to handle: _initialize_mcp_tools, metadata, tools, get_tool_metadata, system_prompt_extension.
 """
-import os
 from typing import Callable, Dict, List, Optional, Set
 from urllib.parse import urlsplit
+
+from app.core.runtime_config import config_value
 
 from .base import BaseSkill, SkillMetadata, ToolMetadata
 
@@ -23,14 +24,21 @@ def _normalize_server_url(url: str) -> str:
 def allowed_mcp_servers() -> Set[str]:
     """
     MCP servers the bridge may connect to (AEHUB_MCP_ALLOWED_SERVERS,
-    comma-separated URLs). Empty means no MCP server is allowed.
+    comma-separated URLs, editable in the Control Plane since F5). Empty
+    means no MCP server is allowed.
     """
-    configured = os.getenv("AEHUB_MCP_ALLOWED_SERVERS", "")
     return {
         _normalize_server_url(entry)
-        for entry in configured.split(",")
-        if entry.strip()
+        for entry in configured_mcp_servers()
     }
+
+
+def configured_mcp_servers() -> List[str]:
+    """
+    The allowlist as written, for the Control Plane.
+    """
+    configured = config_value("AEHUB_MCP_ALLOWED_SERVERS", "") or ""
+    return [entry.strip() for entry in configured.split(",") if entry.strip()]
 
 
 def is_mcp_server_allowed(server_url: str) -> bool:

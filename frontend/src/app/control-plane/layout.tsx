@@ -2,7 +2,7 @@
  * @file frontend/src/app/control-plane/layout.tsx
  * @description Shell of the Control Plane: session gate and navigation (M11),
  * a reminder until the first-run setup is done (M12), in the Nucleo's style
- * (F2).
+ * (F2). Tools and skills since F5.
  */
 "use client";
 
@@ -19,6 +19,8 @@ const SECTIONS = [
     { href: "/control-plane/approvals", label: "APPROVAZIONI" },
     { href: "/control-plane/runs", label: "RUN" },
     { href: "/control-plane/memory", label: "MEMORIA" },
+    { href: "/control-plane/tools", label: "STRUMENTI" },
+    { href: "/control-plane/skills", label: "SKILL" },
     { href: "/control-plane/security", label: "SICUREZZA" },
     { href: "/control-plane/voice", label: "VOCE" },
     { href: "/control-plane/settings", label: "IMPOSTAZIONI" },

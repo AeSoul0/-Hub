@@ -167,8 +167,13 @@ The frontend is a **Next.js application** using React, TypeScript and Tailwind C
   - the conversation sits on the left and the engine's live events on the right; both panes grow from their top edge and can be hidden;
   - pending approvals are decided there;
   - the **RUN** tab of the right pane follows each run of the session (ADR-023): cost, active time, failed tool calls and written files against the per-run limits, live, with a stop button and the run's timeline; **FERMA TUTTO** in the top bar stops every run (a second click confirms) and **RIPRENDI** lifts the stop.
-- **The Control Plane** (`/control-plane`) has runs, approvals, memory, security, voice, settings and setup. Runs, the single-run view (with its timeline), approvals, voice, settings and setup are in the Nucleo's style; the history of the runs filters by text, status, period and subagents.
+- **The Control Plane** (`/control-plane`) has runs, approvals, memory, tools, skills, security, voice, settings and setup. All but memory are in the Nucleo's style; the history of the runs filters by text, status, period and subagents.
 - **Settings** (ADR-025) choose the LLM of each role (Architect, Research, Critic, Fast Worker, Triage) with its fallbacks, suggesting each provider's models (OpenRouter with prices), and refuse a Critic that shares a model with another role. They also hold keys, default models, the local server, prices, budget and limits, the approval window, the circuit breaker and the context budget, all applied without a restart.
+- **Tools and skills** (ADR-026):
+  - **STRUMENTI** lists every skill and tool with its risk, approval, network and file access, and whether it returns untrusted content. It switches tools off: a disabled tool is never shown to the agent and is refused if proposed. The page also sets the skill index and the allowed MCP servers, and shows the tools' folders, the API host names and the sandbox.
+  - **SKILL** imports skills in the open `SKILL.md` format (Claude Code, Codex, OpenClaw) from an https link (a GitHub page is turned into its raw file) or a file. Only the text is imported, and the skill starts off. The page shows the whole text and flags patterns to check before it can be turned on: download-and-run commands, encoded blobs, instruction overrides, secrets, bundled files and links. The agent reads an enabled skill through the `use_skill` tool as untrusted content, so after reading it every high-risk action waits for an approval.
+  - **SICUREZZA** shows the audit hash chain, the log (Control Plane changes included) filtered by decision and tool, and which entries returned untrusted content.
+  - **The run view** also lists the tools the skill index picked for the run.
 - **How much of the backend the interface controls** is tracked in `docs/frontend-coverage.md`; `v1.0.0` waits for 100%.
 
 The look is a deep-blue space theme with squircle corners. The visual reference is `docs/design/hud-prototype.html`.
@@ -589,7 +594,7 @@ cd desktop && npm ci && npx tauri build
 Configuration has three homes:
 
 * **Secrets** (provider API keys, the login key) — the OS keyring, through the launcher (see *First run*). The backend reads them from its environment.
-* **Settings** — model roles, prices, budget and run limits. Edited in the Control Plane (**Settings**, `GET`/`PUT /api/settings`), stored in the `app_settings` table, applied from the next run without a restart. A setting never edited falls back to the environment variable of the same name, then to its default, so `backend/.env`, CI and tests keep working. Every change is validated as a whole (a Critic equal to a Worker is refused before it is saved) and recorded in the audit log as `settings.update`.
+* **Settings** — model roles, prices, budget and run limits, voice, and the tool settings (disabled tools, skill index, MCP servers). Edited in the Control Plane (**Settings**, `GET`/`PUT /api/settings`), stored in the `app_settings` table, applied from the next run without a restart. A setting never edited falls back to the environment variable of the same name, then to its default, so `backend/.env`, CI and tests keep working. Every change is validated as a whole (a Critic equal to a Worker is refused before it is saved) and recorded in the audit log as `settings.update`.
 * **Infrastructure** — database, Redis, CORS, paths: environment only (`backend/.env`, root `.env` for Compose).
 
 At startup the backend logs one line per configuration problem (`[CONFIG ERROR]`, `[CONFIG WARNING]`, …): Critic equal to a Worker, a provider without its key, models without a price, a run limit above the monthly budget, a missing working folder. The Settings page shows the same list. The API starts anyway, so the page can fix what it can; runs are refused while an error remains.
@@ -658,7 +663,8 @@ The model, price and limit variables below (`OPENAI_MODEL`, `AEHUB_CHECKER_MODEL
 | `AEHUB_MEMORY_MIN_SIMILARITY` | Minimum cosine similarity for a vector match in hybrid retrieval | `0.25` |
 | `AEHUB_ALLOWED_DIRS` | Folders that filesystem tools may touch (`os.pathsep`-separated); the first one is the working folder searched by `search_documents` | `./workspace` |
 | `AEHUB_DOCUMENTS_MAX_FILE_MB` | Files larger than this are listed in the document index with an error and are not searched | `5` |
-| `AEHUB_MCP_ALLOWED_SERVERS` | Comma-separated MCP server URLs the bridge may connect to | none (no MCP server) |
+| `AEHUB_MCP_ALLOWED_SERVERS` | Comma-separated MCP server URLs the bridge may connect to; also editable on the STRUMENTI page | none (no MCP server) |
+| `AEHUB_DISABLED_TOOLS` | Comma-separated tools the agent can neither see nor call; set by the switches on the STRUMENTI page | none |
 | `FRONTEND_URL` / `AEHUB_ALLOWED_ORIGINS` | Browser origins allowed by CORS and the WebSocket; any other origin cannot send POST, PUT, PATCH or DELETE | `http://localhost:3000` |
 | `AEHUB_ALLOWED_HOSTS` | Extra host names the API answers to (comma-separated), besides `localhost`, `127.0.0.1` and `[::1]`; needed when the API is served under another name, e.g. on the LAN | none |
 | `AEHUB_HOST` | Bind address of `python main.py` | `127.0.0.1` |
@@ -672,7 +678,7 @@ The model, price and limit variables below (`OPENAI_MODEL`, `AEHUB_CHECKER_MODEL
 | `AEHUB_VOICE_MODELS_DIR` | Where the speech models are downloaded on first use | `~/.cache/aehub/voice` |
 | `AEHUB_HOME_DEVICES` | JSON file of the home devices, outside the working folder (see Home devices) | none (no home tools) |
 | `AEHUB_MQTT_URL` / `AEHUB_MQTT_USERNAME` | Home MQTT broker (`mqtt://host:1883`, `mqtts://host:8883`) and user | none |
-| `AEHUB_TOOL_SELECTION` / `AEHUB_TOOL_TOP_K` | Skill index: show each run only the tools its task names | `on` / `6` |
+| `AEHUB_TOOL_SELECTION` / `AEHUB_TOOL_TOP_K` | Skill index: show each run only the tools its task names (`AEHUB_TOOL_TOP_K` 1–50); also editable on the STRUMENTI page | `on` / `6` |
 | `AEHUB_SKILL_INDEX_PATH` | The skill index's own SQLite file | `~/.cache/aehub/skill_index.sqlite3` |
 
 ### Security notes
