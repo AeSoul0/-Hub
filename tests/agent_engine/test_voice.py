@@ -24,6 +24,7 @@ from fastapi.testclient import TestClient
 
 from app.agent_engine.application import AgentEngine
 from app.agent_engine.runtime import AgentRuntime
+from app.api import approvals as approvals_api
 from app.api.realtime import decode_audio_payload
 from app.core.security import (
     BudgetState,
@@ -247,7 +248,9 @@ def test_voice_rule(admin, risk, channel, expected):
 # ==============================================================================
 
 
-async def test_high_action_asked_by_voice_waits_for_approval(house, admin, fake_model, db_session_factory):
+async def test_high_action_asked_by_voice_waits_for_approval(
+    house, admin, fake_model, db_session_factory, agent_infrastructure
+):
     engine = _engine(
         fake_model,
         [
@@ -268,6 +271,23 @@ async def test_high_action_asked_by_voice_waits_for_approval(house, admin, fake_
     with db_session_factory() as db:
         approval = db.query(ApprovalRecord).filter(ApprovalRecord.tool == "open_garage").one()
         assert approval.decision is None
+        approval_id = approval.id
+
+    # F3: once allowed, the resumed run says it was asked by voice, so the
+    # Nucleo speaks its answer.
+    with patch.object(approvals_api, "_schedule_resume"):
+        decided = await approvals_api.decide_approval(
+            approval_id,
+            approvals_api.ApprovalDecision(decision="allow"),
+            principal=admin,
+        )
+
+    with patch.object(approvals_api, "get_agent_engine", return_value=engine):
+        await approvals_api.resume_after_decision(decided)
+
+    assert house.executed == ["open_garage"]
+    resumed = [data for _, kind, data in agent_infrastructure.published if kind == "run.resumed"]
+    assert len(resumed) == 1 and resumed[0]["input_channel"] == "voice"
 
 
 async def test_same_high_action_typed_goes_through(house, admin, fake_model):

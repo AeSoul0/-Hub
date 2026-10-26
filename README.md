@@ -167,7 +167,8 @@ The frontend is a **Next.js application** using React, TypeScript and Tailwind C
   - the conversation sits on the left and the engine's live events on the right; both panes grow from their top edge and can be hidden;
   - pending approvals are decided there;
   - the **RUN** tab of the right pane follows each run of the session (ADR-023): cost, active time, failed tool calls and written files against the per-run limits, live, with a stop button and the run's timeline; **FERMA TUTTO** in the top bar stops every run (a second click confirms) and **RIPRENDI** lifts the stop.
-- **The Control Plane** (`/control-plane`) has runs, approvals, memory, security, settings and setup. Runs, the single-run view (with its timeline) and approvals are in the Nucleo's style; the history of the runs filters by text, status, period and subagents.
+- **The Control Plane** (`/control-plane`) has runs, approvals, memory, security, voice, settings and setup. Runs, the single-run view (with its timeline), approvals and voice are in the Nucleo's style; the history of the runs filters by text, status, period and subagents.
+- **How much of the backend the interface controls** is tracked in `docs/frontend-coverage.md`; `v1.0.0` waits for 100%.
 
 The look is a deep-blue space theme with squircle corners. The visual reference is `docs/design/hud-prototype.html`.
 
@@ -625,6 +626,7 @@ Do not expose private backend secrets through `NEXT_PUBLIC_*` variables.
 | `AEHUB_SECRET_KEY`    | Control Plane login key (keyring; required, the API exits without it) |
 | `OPENAI_API_KEY` / `OPENROUTER_API_KEY` | Provider keys (keyring)                   |
 | `AEHUB_MQTT_PASSWORD` | Password of the home MQTT broker (keyring; optional)       |
+| `ELEVENLABS_API_KEY`  | Optional cloud voice (keyring; ADR-024)                    |
 | `POSTGRES_URL`        | PostgreSQL connection string used by the agent runtime      |
 | `REDIS_URL`           | Redis connection information                                |
 | `NEXT_PUBLIC_API_URL` | Public frontend endpoint for backend communication          |
@@ -662,7 +664,9 @@ The model, price and limit variables below (`OPENAI_MODEL`, `AEHUB_CHECKER_MODEL
 | `AEHUB_FRONTEND_DIR` | Static frontend export the API serves from its own origin (the desktop app) | none |
 | `AEHUB_DATA_DIR` / `AEHUB_PG_BIN` | Desktop app: folder of the database cluster and logs; folder with `initdb` and `pg_ctl` | `%LOCALAPPDATA%\AEHub` / bundled |
 | `AEHUB_VOICE` | `local` (faster-whisper + Piper on this machine) or `off` | `local` |
-| `AEHUB_STT_MODEL` / `AEHUB_STT_LANGUAGE` / `AEHUB_TTS_VOICE` | Whisper model, spoken language, Piper voice | `base` / `it` / `it_IT-paola-medium` |
+| `AEHUB_STT_MODEL` / `AEHUB_STT_LANGUAGE` / `AEHUB_TTS_VOICE` | Whisper model, spoken language (`auto` to detect), Piper voice; also editable on the VOCE page | `base` / `it` / `it_IT-paola-medium` |
+| `AEHUB_TTS_ENGINE` | `piper` (on this machine) or `elevenlabs` (the reply text goes to ElevenLabs, ADR-024); also editable on the VOCE page | `piper` |
+| `AEHUB_ELEVENLABS_VOICE` / `AEHUB_ELEVENLABS_MODEL` | ElevenLabs voice ID and model | none / `eleven_flash_v2_5` |
 | `AEHUB_VOICE_MODELS_DIR` | Where the speech models are downloaded on first use | `~/.cache/aehub/voice` |
 | `AEHUB_HOME_DEVICES` | JSON file of the home devices, outside the working folder (see Home devices) | none (no home tools) |
 | `AEHUB_MQTT_URL` / `AEHUB_MQTT_USERNAME` | Home MQTT broker (`mqtt://host:1883`, `mqtts://host:8883`) and user | none |
@@ -752,6 +756,9 @@ Voice runs on this machine: faster-whisper turns speech into text and Piper spea
 - The transcript is your instruction, checked like a typed one.
 - **A HIGH-risk action asked by voice always waits for your approval on screen**, also in a clean run: the microphone also hears a TV or another person.
 - `AEHUB_VOICE=off` turns voice off. Without the speech engine the written reply still arrives.
+- **The VOCE page** of the Control Plane (F3, ADR-024) changes the recognition model and language, the voice and its engine without a restart, plays a preview and lists the models already downloaded with their size.
+- **ElevenLabs (optional, off by default).** Choose it on the VOCE page and add `ELEVENLABS_API_KEY` (the desktop app saves it in the OS keyring; with Docker use `python scripts/aehub.py setup`). The text of the replies then goes to ElevenLabs; your voice never does. Piper speaks whenever ElevenLabs cannot: no key or voice, an error, or a reply over 2,500 characters.
+- A run asked by voice answers by voice also when it resumes after an approval.
 
 ## Home devices
 

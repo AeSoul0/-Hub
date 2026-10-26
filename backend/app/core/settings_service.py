@@ -18,6 +18,7 @@ import json
 import logging
 import math
 import os
+import re
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Dict, List, Literal, Mapping, Optional
@@ -51,6 +52,7 @@ SECRETS = (
     ("OPENAI_API_KEY", "OpenAI API key", "models with the openai provider"),
     ("OPENROUTER_API_KEY", "OpenRouter API key", "models with the openrouter provider"),
     ("AEHUB_MQTT_PASSWORD", "MQTT broker password", "home devices (optional)"),
+    ("ELEVENLABS_API_KEY", "ElevenLabs API key", "the cloud voice (optional)"),
 )
 
 SETUP_HINT = "Add it with: python scripts/aehub.py setup, then restart with: python scripts/aehub.py up."
@@ -90,6 +92,12 @@ def _check_value(name: str, value: str) -> Optional[str]:
 
     if len(value) > MAX_VALUE_LENGTH:
         return "The value is too long."
+
+    if spec.kind == "choice" and value not in spec.options:
+        return f"Choose one of: {', '.join(spec.options)}."
+
+    if spec.pattern and not re.fullmatch(spec.pattern, value):
+        return "The value does not have the expected form."
 
     try:
         if spec.kind == "roles":
@@ -400,6 +408,27 @@ def check_configuration() -> List[ConfigIssue]:
             )
         )
 
+    if voice_enabled() and config_value("AEHUB_TTS_ENGINE", "piper") == "elevenlabs":
+        if not _env_set("ELEVENLABS_API_KEY"):
+            issues.append(
+                ConfigIssue(
+                    "voice_cloud_key_missing",
+                    "warning",
+                    "The ElevenLabs voice is chosen but ELEVENLABS_API_KEY is not set: "
+                    "replies are spoken by Piper.",
+                    "AEHUB_TTS_ENGINE",
+                )
+            )
+        elif not config_value("AEHUB_ELEVENLABS_VOICE"):
+            issues.append(
+                ConfigIssue(
+                    "voice_cloud_voice_missing",
+                    "warning",
+                    "The ElevenLabs voice is chosen but no voice is selected: replies are spoken by Piper.",
+                    "AEHUB_ELEVENLABS_VOICE",
+                )
+            )
+
     from app.home.devices import DeviceConfigError, load_devices
     from app.home.mqtt import MqttNotConfigured, broker
 
@@ -491,6 +520,7 @@ def settings_view(db: DBSession) -> Dict[str, object]:
                 "default": spec.default,
                 "value": config_value(spec.name, spec.default) or "",
                 "source": source_of(spec.name),
+                "options": list(spec.options),
             }
             for spec in SPECS
         ],

@@ -12,8 +12,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import { ApiError, getJson, postJson, putJson } from "@/lib/api/client";
 
-export type SettingGroup = "models" | "prices" | "limits";
-export type SettingKind = "text" | "roles" | "prices" | "price_pair" | "number" | "integer" | "ratio";
+export type SettingGroup = "models" | "prices" | "limits" | "voice";
+export type SettingKind = "text" | "roles" | "prices" | "price_pair" | "number" | "integer" | "ratio" | "choice";
 export type SettingSource = "database" | "environment" | "default";
 export type Severity = "error" | "warning" | "info";
 
@@ -26,6 +26,8 @@ export interface SettingField {
     default: string;
     value: string;
     source: SettingSource;
+    /** The accepted values of a "choice" setting. */
+    options?: string[];
 }
 
 export interface SecretStatus {

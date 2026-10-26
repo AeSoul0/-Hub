@@ -29,6 +29,7 @@ from app.agent_engine.approval.manager import (
     ApprovalManager,
 )
 from app.agent_engine.application import get_agent_engine
+from app.agent_engine.runtime import AgentRuntime
 from app.agent_engine.state.manager import AgentStateManager
 from app.core.event_bus import event_bus
 from app.core.security import Principal, RoleEnum, resolve_principal
@@ -96,6 +97,10 @@ async def resume_after_decision(
         payload: Dict[str, Any] = {
             "run_id": run_id,
             "result": result,
+            # A run asked by voice answers by voice once resumed too (F3).
+            "input_channel": AgentRuntime._input_channel(
+                (run.current_state or {}).get("worker_context") or {}
+            ),
         }
 
     except Exception as exc:

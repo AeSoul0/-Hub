@@ -220,6 +220,31 @@ describe("Nucleo", () => {
         expect((ask?.[1]?.body as FormData).get("text")).toBe("Accendi la luce");
     });
 
+    it("speaks the answer of a voice run resumed after an approval", async () => {
+        const Source = installEventSource();
+        const fetch = stubFetch({
+            "GET /api/approvals": () => ({ status: 200, body: [] }),
+            "GET /api/runs/stats": () => ({ status: 200, body: { budget: { month_spent: 0, monthly_budget: 2 } } }),
+            "GET /api/runs/live": () => ({ status: 200, body: liveView() }),
+            "POST /api/voice/speak": () => ({ status: 200, body: { audio_base64: "", audio_mime: "" } }),
+        });
+
+        render(<Nucleo />);
+        act(() => Source.instances[0].open());
+
+        act(() => Source.instances[0].emit("run.resumed", { run_id: "run-1", result: "Garage chiuso.", input_channel: "text" }));
+        expect(await screen.findByText("Garage chiuso.")).toBeInTheDocument();
+
+        act(() => Source.instances[0].emit("run.resumed", { run_id: "run-2", result: "Garage aperto.", input_channel: "voice" }));
+        expect(await screen.findByText("Garage aperto.")).toBeInTheDocument();
+
+        await waitFor(() => {
+            const spoken = fetch.mock.calls.filter(([url]) => String(url).endsWith("/api/voice/speak"));
+            expect(spoken).toHaveLength(1);
+            expect(JSON.parse(String(spoken[0][1]?.body))).toEqual({ text: "Garage aperto." });
+        });
+    });
+
     it("hides a pane and brings it back", () => {
         installEventSource();
         stubFetch({

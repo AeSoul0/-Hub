@@ -307,6 +307,7 @@ async def test_approve_resumes_same_run_to_completion(
     payload = resumed_payload(agent_infrastructure.published)
     assert payload["run_id"] == parked["run_id"]
     assert payload["result"] == "Record r1 deleted."
+    assert payload["input_channel"] == "text"
 
     # The tool ran exactly once, with the approved arguments.
     assert records_skill.calls == [{"record_id": "r1"}]

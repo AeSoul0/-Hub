@@ -105,11 +105,13 @@ def test_setup_on_a_clean_machine(tmp_path, capsys):
     root_env = tmp_path / ".env"
     backend_env = tmp_path / "backend" / ".env"
     store = MemoryStore()
-    ask = scripted(["sk-typed", "", "my-files"])
+    # Model key, MQTT password (skipped), ElevenLabs key (skipped), folder.
+    ask = scripted(["sk-typed", "", "", "my-files"])
 
     aehub.setup(store, ask=ask, root_env=root_env, backend_env=backend_env, root=tmp_path)
 
     assert store.get("OPENAI_API_KEY") == "sk-typed"
+    assert store.get("ELEVENLABS_API_KEY") is None
     assert store.get("GROQ_API_KEY") is None
     assert len(store.get("AEHUB_SECRET_KEY")) >= 32
 
@@ -127,7 +129,8 @@ def test_setup_on_a_clean_machine(tmp_path, capsys):
 
     # A second run asks nothing it already has and keeps the login key.
     login_key = store.get("AEHUB_SECRET_KEY")
-    again = scripted(["", "other-files"])
+    # Optional keys still unset are offered again: MQTT, ElevenLabs, folder.
+    again = scripted(["", "", "other-files"])
     aehub.setup(store, ask=again, root_env=root_env, backend_env=backend_env, root=tmp_path)
 
     assert store.get("AEHUB_SECRET_KEY") == login_key

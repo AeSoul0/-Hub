@@ -55,6 +55,10 @@ MANAGEMENT = {
     ("GET", "/desktop/launch/{token}"),
     ("GET", "/api/desktop"),
     ("PUT", "/api/desktop/secrets"),
+    # F3: voice status, the ElevenLabs voice list and speaking a reply.
+    ("GET", "/api/voice"),
+    ("GET", "/api/voice/elevenlabs/voices"),
+    ("POST", "/api/voice/speak"),
     ("GET", "/api/events"),
     ("GET", "/health"),
     ("MOUNT", "/metrics"),
@@ -103,5 +107,8 @@ def test_api_surface_is_exactly_the_reviewed_one():
 def test_removed_capabilities_stay_removed():
     paths = {path for _, path in _surface()}
 
-    for prefix in ("/api/media", "/api/academic", "/api/voice"):
+    # ADR-019 removed the second audio input /api/voice/stream: speech still
+    # comes in only through /api/orchestrator/listen and the WebSocket. The
+    # F3 /api/voice routes take no audio and start no run (ADR-024).
+    for prefix in ("/api/media", "/api/academic", "/api/voice/stream"):
         assert not any(path.startswith(prefix) for path in paths), prefix

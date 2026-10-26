@@ -32,6 +32,7 @@ import {
     toEngineEvent,
 } from "@/lib/nucleo/engine";
 import { initialRuns, liveCount, runsReducer, type LiveView } from "@/lib/nucleo/runs";
+import { resumedByVoice } from "@/lib/nucleo/voice";
 
 import ApprovalPrompt from "./ApprovalPrompt";
 import Orb from "./Orb";
@@ -64,6 +65,8 @@ const CHAT_LIMIT = 100;
 const LIVE_REFRESH_MS = 300;
 // The second click on "stop all" must come within this time.
 const CONFIRM_MS = 4000;
+// The longest text POST /api/voice/speak accepts.
+const SPEAK_LIMIT = 5000;
 
 async function detailOf(response: Response): Promise<string> {
     try {
@@ -167,6 +170,35 @@ export default function Nucleo() {
         [],
     );
 
+    const playAudio = useCallback(async (audioBase64: string) => {
+        setSpeaking(true);
+        try {
+            await playReply(audioBase64, (meter) => {
+                level.current = meter;
+            });
+        } catch {
+            // The written reply is already there.
+        } finally {
+            setSpeaking(false);
+        }
+    }, []);
+
+    // A run asked by voice answers by voice also when it resumes after an
+    // approval (F3). Best effort: the written reply is already in the chat.
+    const speakResumed = useCallback(
+        async (reply: string) => {
+            try {
+                const spoken = await postJson<Reply>("/api/voice/speak", { text: reply.slice(0, SPEAK_LIMIT) });
+                if (spoken.audio_base64) {
+                    await playAudio(spoken.audio_base64);
+                }
+            } catch {
+                // Voice off or unavailable: nothing to play.
+            }
+        },
+        [playAudio],
+    );
+
     const connection = useWorkspaceEvents(
         ["engine.event", "run.state", "approval.requested", "approval.decided", "run.resumed"],
         (event) => {
@@ -215,6 +247,9 @@ export default function Nucleo() {
                 const reply = resumedReply(event.data);
                 if (reply) {
                     say("aehub", reply);
+                    if (resumedByVoice(event.data)) {
+                        void speakResumed(reply);
+                    }
                 } else if (typeof event.data.error === "string") {
                     say("system", event.data.error);
                 }
@@ -256,19 +291,10 @@ export default function Nucleo() {
                 say("aehub", reply.transcription);
             }
             if (reply.audio_base64) {
-                setSpeaking(true);
-                try {
-                    await playReply(reply.audio_base64, (meter) => {
-                        level.current = meter;
-                    });
-                } catch {
-                    // The written reply is already there.
-                } finally {
-                    setSpeaking(false);
-                }
+                await playAudio(reply.audio_base64);
             }
         },
-        [say],
+        [say, playAudio],
     );
 
     const send = async (command: string) => {

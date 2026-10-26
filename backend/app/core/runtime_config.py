@@ -2,7 +2,7 @@
 @file backend/app/core/runtime_config.py
 @description Settings that change without a restart (M12).
 
-Model roles, prices and run limits can be edited from the Control Plane. An
+Model roles, prices, run limits and voice can be edited from the Control Plane. An
 edited value is stored in the `app_settings` table and wins over the
 environment; a value never edited falls back to the environment variable of
 the same name, then to the built-in default. So CI, tests and an existing
@@ -38,11 +38,15 @@ class SettingSpec:
     """
 
     name: str
-    group: Literal["models", "prices", "limits"]
+    group: Literal["models", "prices", "limits", "voice"]
     label: str
-    kind: Literal["text", "roles", "prices", "price_pair", "number", "integer", "ratio"]
+    kind: Literal["text", "roles", "prices", "price_pair", "number", "integer", "ratio", "choice"]
     default: str
     help: str
+    # "choice": the accepted values. "text": a regular expression the whole
+    # value must match (names that end up in a path or a URL).
+    options: Tuple[str, ...] = ()
+    pattern: str = ""
 
 
 SPECS: Tuple[SettingSpec, ...] = (
@@ -136,6 +140,62 @@ SPECS: Tuple[SettingSpec, ...] = (
         kind="integer",
         default="20",
         help="The run stops after modifying this many files. 0 disables the limit.",
+    ),
+    # Voice (F3, ADR-021, ADR-024): read on every use, so a change applies
+    # to the next sentence without a restart.
+    SettingSpec(
+        name="AEHUB_STT_MODEL",
+        group="voice",
+        label="Speech recognition model",
+        kind="choice",
+        default="base",
+        help="faster-whisper model, int8 on CPU. Larger is more accurate, slower and uses more RAM.",
+        options=("tiny", "base", "small", "medium", "large-v3-turbo", "large-v3"),
+    ),
+    SettingSpec(
+        name="AEHUB_STT_LANGUAGE",
+        group="voice",
+        label="Spoken language",
+        kind="choice",
+        default="it",
+        help='Language of what you say; "auto" lets the model detect it.',
+        options=("it", "en", "es", "fr", "de", "pt", "auto"),
+    ),
+    SettingSpec(
+        name="AEHUB_TTS_ENGINE",
+        group="voice",
+        label="Voice engine",
+        kind="choice",
+        default="piper",
+        help="piper speaks on this computer; elevenlabs sends the reply text to ElevenLabs (ADR-024).",
+        options=("piper", "elevenlabs"),
+    ),
+    SettingSpec(
+        name="AEHUB_TTS_VOICE",
+        group="voice",
+        label="Piper voice",
+        kind="text",
+        default="it_IT-paola-medium",
+        help="A voice of the Piper catalogue, e.g. it_IT-paola-medium; downloaded on first use.",
+        pattern=r"[a-z]{2,3}_[A-Z]{2}-[A-Za-z0-9_]{1,40}-(x_low|low|medium|high)",
+    ),
+    SettingSpec(
+        name="AEHUB_ELEVENLABS_VOICE",
+        group="voice",
+        label="ElevenLabs voice",
+        kind="text",
+        default="",
+        help="Voice ID from your ElevenLabs voice list.",
+        pattern=r"[A-Za-z0-9]{8,64}",
+    ),
+    SettingSpec(
+        name="AEHUB_ELEVENLABS_MODEL",
+        group="voice",
+        label="ElevenLabs model",
+        kind="text",
+        default="eleven_flash_v2_5",
+        help="eleven_flash_v2_5 is the fastest and cheapest; eleven_multilingual_v2 sounds richer.",
+        pattern=r"[a-z0-9_]{3,64}",
     ),
 )
 

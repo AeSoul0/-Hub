@@ -74,4 +74,21 @@ async def speak(text: str) -> Tuple[str, str]:
     return base64.b64encode(audio).decode("ascii"), mime
 
 
-__all__ = ["AudioTooLarge", "MAX_AUDIO_BYTES", "speak", "transcribe_audio"]
+async def preview_voice(text: str) -> Tuple[str, str]:
+    """
+    The chosen voice saying `text`, for the Settings preview. Unlike speak()
+    errors are raised, and with the cloud voice chosen it is ElevenLabs
+    itself, never the Piper fallback: the preview shows what is wrong.
+    """
+    engine = text_to_speech()
+    synthesize = getattr(engine, "synthesize_cloud", engine.synthesize)
+
+    audio, mime = await asyncio.wait_for(
+        asyncio.to_thread(synthesize, text),
+        timeout=SPEAK_TIMEOUT_SECONDS,
+    )
+
+    return base64.b64encode(audio).decode("ascii"), mime
+
+
+__all__ = ["AudioTooLarge", "MAX_AUDIO_BYTES", "preview_voice", "speak", "transcribe_audio"]
