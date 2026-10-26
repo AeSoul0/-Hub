@@ -37,6 +37,7 @@ from app.api import (
     realtime,
     runs,
     settings as settings_api,
+    voice as voice_api,
 )
 from app.core.telemetry import (
     setup_telemetry,
@@ -415,6 +416,10 @@ app.include_router(
 
 app.include_router(
     desktop.router
+)
+
+app.include_router(
+    voice_api.router
 )
 
 

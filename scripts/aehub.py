@@ -49,6 +49,7 @@ SECRETS: Dict[str, str] = {
     "OPENROUTER_API_KEY": "OpenRouter models",
     "AEHUB_MQTT_PASSWORD": "MQTT broker of the home devices (optional)",
     "AEHUB_LOCAL_API_KEY": "local OpenAI-compatible server (optional)",
+    "ELEVENLABS_API_KEY": "ElevenLabs cloud voice (optional, ADR-024)",
 }
 
 # Keys the stack no longer reads (Groq voice, replaced by local speech in
@@ -403,6 +404,12 @@ def setup(
         if value:
             store.set("AEHUB_MQTT_PASSWORD", value)
             print("  saved AEHUB_MQTT_PASSWORD in the keyring")
+
+    if not store.get("ELEVENLABS_API_KEY"):
+        value = ask("  ELEVENLABS_API_KEY for the optional cloud voice (hidden, Enter to skip): ", True)
+        if value:
+            store.set("ELEVENLABS_API_KEY", value)
+            print("  saved ELEVENLABS_API_KEY in the keyring")
 
     current = read_env(root_env).get("AEHUB_WORKSPACE_DIR", "./workspace")
     answer = ask(f"  Working folder for the agent's files [{current}]: ", False) or current

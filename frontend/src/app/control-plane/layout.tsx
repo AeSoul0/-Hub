@@ -20,6 +20,7 @@ const SECTIONS = [
     { href: "/control-plane/runs", label: "RUN" },
     { href: "/control-plane/memory", label: "MEMORIA" },
     { href: "/control-plane/security", label: "SICUREZZA" },
+    { href: "/control-plane/voice", label: "VOCE" },
     { href: "/control-plane/settings", label: "IMPOSTAZIONI" },
 ] as const;
 
