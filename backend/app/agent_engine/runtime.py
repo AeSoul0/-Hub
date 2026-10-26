@@ -71,7 +71,7 @@ from app.core.security import (
     Principal,
     SubagentCapabilitySet,
     TaskExecutionContext,
-    WorkspacePolicy,
+    workspace_policy,
 )
 from app.memory.store import MemoryKind, MemoryStore, memory_enabled
 from app.runtime.tool_gateway import ToolGateway, ToolInvocation
@@ -375,7 +375,7 @@ class AgentRuntime:
         Build the function-tool definitions the Worker model may call.
 
         Only registered tools that the PolicyEngine does not deny for this
-        Principal (and, for a subagent, its delegated capability set) are
+        Principal (tools disabled in the Control Plane are denied) (and, for a subagent, its delegated capability set) are
         exposed, and only those the skill index picked for the run when it
         picked any. Exposure is not authorization: every call still goes
         through the ToolGateway pipeline.
@@ -400,7 +400,7 @@ class AgentRuntime:
                     arguments={},
                     run_id="exposure-check",
                 ),
-                workspace_policy=WorkspacePolicy(),
+                workspace_policy=workspace_policy(),
                 budget_state=BudgetState(),
                 task_context=TaskExecutionContext(
                     is_subagent=capabilities is not None,
@@ -2628,7 +2628,7 @@ class AgentRuntime:
                 workspace=workspace_id,
                 permissions=list(permissions),
             ),
-            policy=WorkspacePolicy(workspace_id=workspace_id),
+            policy=workspace_policy(workspace_id),
         )
 
         worker = SubagentFactory.create_subagent(

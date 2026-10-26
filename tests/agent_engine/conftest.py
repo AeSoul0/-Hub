@@ -29,6 +29,7 @@ from app.domain.models.memory import MemoryChunk
 from app.domain.models.runtime_state import AgentRun as DbAgentRun
 from app.domain.models.runtime_state import MonthlySpend
 from app.domain.models.settings import AppSetting
+from app.domain.models.skills import ImportedSkill
 from app.skills.registry import SkillRegistry
 
 
@@ -152,6 +153,7 @@ def db_session_factory():
             MemoryChunk.__table__,
             AppSetting.__table__,
             DocumentFile.__table__,
+            ImportedSkill.__table__,
         ],
     )
 

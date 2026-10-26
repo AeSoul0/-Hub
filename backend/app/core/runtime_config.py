@@ -2,7 +2,7 @@
 @file backend/app/core/runtime_config.py
 @description Settings that change without a restart (M12).
 
-Model roles, prices, run limits and voice can be edited from the Control Plane. An
+Model roles, prices, run limits, voice and tools can be edited from the Control Plane. An
 edited value is stored in the `app_settings` table and wins over the
 environment; a value never edited falls back to the environment variable of
 the same name, then to the built-in default. So CI, tests and an existing
@@ -38,7 +38,7 @@ class SettingSpec:
     """
 
     name: str
-    group: Literal["models", "prices", "limits", "engine", "voice"]
+    group: Literal["models", "prices", "limits", "engine", "voice", "tools"]
     label: str
     kind: Literal["text", "roles", "prices", "price_pair", "number", "integer", "ratio", "choice"]
     default: str
@@ -213,6 +213,44 @@ SPECS: Tuple[SettingSpec, ...] = (
         help="Older calls leave the recent window and are summarized (10-20).",
         minimum=10,
         maximum=20,
+    ),
+    # Tools (F5, ADR-026): read when a run starts and on every tool call.
+    SettingSpec(
+        name="AEHUB_DISABLED_TOOLS",
+        group="tools",
+        label="Disabled tools",
+        kind="text",
+        default="",
+        help="Comma-separated tool names the agent can neither see nor call.",
+        pattern=r"[A-Za-z0-9_.:-]{1,128}(,[A-Za-z0-9_.:-]{1,128})*",
+    ),
+    SettingSpec(
+        name="AEHUB_TOOL_SELECTION",
+        group="tools",
+        label="Skill index",
+        kind="choice",
+        default="on",
+        help="on: a run is shown only the tools its task asks for (ADR-021); off: every tool.",
+        options=("on", "off"),
+    ),
+    SettingSpec(
+        name="AEHUB_TOOL_TOP_K",
+        group="tools",
+        label="Tools per run",
+        kind="integer",
+        default="6",
+        help="How many tools the skill index shows a run.",
+        minimum=1,
+        maximum=50,
+    ),
+    SettingSpec(
+        name="AEHUB_MCP_ALLOWED_SERVERS",
+        group="tools",
+        label="Allowed MCP servers",
+        kind="text",
+        default="",
+        help="Comma-separated http(s) URLs of the MCP servers the bridge may connect to. Empty: none.",
+        pattern=r"https?://[^\s,@/]+(/[^\s,@]*)?(,https?://[^\s,@/]+(/[^\s,@]*)?)*",
     ),
     # Voice (F3, ADR-021, ADR-024): read on every use, so a change applies
     # to the next sentence without a restart.

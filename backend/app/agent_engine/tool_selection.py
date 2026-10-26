@@ -10,6 +10,10 @@ the AEHUB_TOOL_TOP_K best tools (BM25); the model is shown those, and the
 PolicyEngine refuses a call to any other tool in that run, so an injected
 instruction cannot reach a tool the task never called for.
 
+Tools disabled in the Control Plane (AEHUB_DISABLED_TOOLS, F5) are not
+indexed. AEHUB_TOOL_SELECTION and AEHUB_TOOL_TOP_K are runtime settings:
+a change applies to the next run.
+
 Everything is exposed, as before, when:
 - AEHUB_TOOL_SELECTION=off;
 - the catalog has no more than k tools;
@@ -32,6 +36,9 @@ import sqlite3
 import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+from app.core.runtime_config import config_value
+from app.core.security import disabled_tools
 
 
 logger = logging.getLogger(__name__)
@@ -69,8 +76,11 @@ def _terms(text: str) -> List[str]:
 
 def _documents(registry: Any) -> List[Tuple[str, str]]:
     documents: List[Tuple[str, str]] = []
+    disabled = disabled_tools()
 
     for name in registry.get_registered_tool_names():
+        if name in disabled:
+            continue
         metadata = registry.get_tool_metadata(name)
         if metadata is None:
             continue
@@ -168,16 +178,37 @@ def _index() -> SkillIndex:
 
 def top_k() -> int:
     try:
-        return max(1, int(os.getenv("AEHUB_TOOL_TOP_K", DEFAULT_TOP_K)))
+        return max(1, int(config_value("AEHUB_TOOL_TOP_K", str(DEFAULT_TOP_K)) or DEFAULT_TOP_K))
     except ValueError:
         return DEFAULT_TOP_K
+
+
+def selection_enabled() -> bool:
+    return (config_value("AEHUB_TOOL_SELECTION", "on") or "on").strip().lower() != "off"
+
+
+def selection_status(registry: Any) -> Dict[str, Any]:
+    """
+    What the Control Plane shows of the index: on or off, k, how many tools
+    it can pick from, and whether it narrows anything at all.
+    """
+    tools = len(_documents(registry))
+    enabled = selection_enabled()
+    limit = top_k()
+
+    return {
+        "enabled": enabled,
+        "top_k": limit,
+        "tools": tools,
+        "active": enabled and tools > limit,
+    }
 
 
 def select_tools(registry: Any, task: str) -> Optional[List[str]]:
     """
     The tools a run with this task is shown, or None for all of them.
     """
-    if os.getenv("AEHUB_TOOL_SELECTION", "on").strip().lower() == "off":
+    if not selection_enabled():
         return None
 
     documents = _documents(registry)
@@ -197,4 +228,12 @@ def select_tools(registry: Any, task: str) -> Optional[List[str]]:
     return sorted(selected) or None
 
 
-__all__ = ["DEFAULT_TOP_K", "SkillIndex", "index_path", "select_tools", "top_k"]
+__all__ = [
+    "DEFAULT_TOP_K",
+    "SkillIndex",
+    "index_path",
+    "select_tools",
+    "selection_enabled",
+    "selection_status",
+    "top_k",
+]

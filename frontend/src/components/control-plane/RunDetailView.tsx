@@ -62,6 +62,8 @@ export interface RunDetail {
     errors: string[];
     usage: Record<string, unknown>;
     untrusted_context: boolean;
+    /** The tools the skill index picked for the run; null: all of them (F5). */
+    exposed_tools?: string[] | null;
     pending_tool_call: ToolCall | null;
     queued_tool_calls: ToolCall[];
     last_feedback: string | null;
@@ -172,6 +174,12 @@ export default function RunDetailView({
                         </dd>
                         <dt>Contesto</dt>
                         <dd>{run.untrusted_context ? "ha letto contenuti non affidabili" : "solo contenuti affidabili"}</dd>
+                        <dt>Tool scelti</dt>
+                        <dd className={run.exposed_tools ? styles.mono : undefined}>
+                            {run.exposed_tools
+                                ? run.exposed_tools.join(", ") || "nessuno"
+                                : "tutti: l'indice delle skill non li ha ristretti"}
+                        </dd>
                     </dl>
                     <RunMeters items={meters(tracked, limits, 0)} label="Limiti della run" />
                 </div>

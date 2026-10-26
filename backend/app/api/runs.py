@@ -543,6 +543,8 @@ def run_detail(run_id: str, workspace_id: str) -> Dict[str, Any] | None:
             "errors": snapshot.get("errors") or [],
             "usage": snapshot.get("usage") or {},
             "untrusted_context": bool(context.get("untrusted_context")),
+            # The tools the skill index picked for the run; None: all (F5).
+            "exposed_tools": context.get("exposed_tools"),
             "pending_tool_call": context.get("pending_tool_call"),
             "queued_tool_calls": context.get("queued_tool_calls") or [],
             "last_feedback": state.get("last_feedback"),

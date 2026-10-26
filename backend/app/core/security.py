@@ -8,7 +8,7 @@ import os
 import secrets
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Dict, FrozenSet, List, Optional
 
 from fastapi import Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -21,6 +21,7 @@ from app.agent_engine.models import (
     ToolSpec,
 )
 from app.core.db import get_db
+from app.core.runtime_config import config_value
 from app.domain.models.identity import (
     RoleEnum,
     Session as SessionModel,
@@ -168,7 +169,35 @@ class WorkspacePolicy(BaseModel):
     allowed_tools: List[str] = Field(
         default_factory=lambda: ["*"]
     )
+    # Tools switched off from the Control Plane (F5): never shown to the
+    # model and refused if proposed anyway.
+    denied_tools: List[str] = Field(
+        default_factory=list
+    )
     workspace_id: Optional[str] = None
+
+
+def disabled_tools() -> FrozenSet[str]:
+    """
+    Tool names in AEHUB_DISABLED_TOOLS (Control Plane, then environment).
+    """
+    configured = config_value("AEHUB_DISABLED_TOOLS", "") or ""
+
+    return frozenset(
+        name.strip()
+        for name in configured.split(",")
+        if name.strip()
+    )
+
+
+def workspace_policy(workspace_id: Optional[str] = None) -> WorkspacePolicy:
+    """
+    The policy of the workspace as configured now.
+    """
+    return WorkspacePolicy(
+        denied_tools=sorted(disabled_tools()),
+        workspace_id=workspace_id,
+    )
 
 
 class BudgetState(BaseModel):
@@ -589,6 +618,15 @@ class PolicyEngine:
                 reason=(
                     f"Tool {tool_spec.name} is not among the tools "
                     "picked for this task."
+                ),
+            )
+
+        if tool_spec.name in workspace_policy.denied_tools:
+            return PolicyDecision(
+                decision=PolicyDecisionEnum.DENY,
+                reason=(
+                    f"Tool {tool_spec.name} is disabled "
+                    "in the Control Plane."
                 ),
             )
 

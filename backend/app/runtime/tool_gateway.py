@@ -3,7 +3,7 @@
 @description Secure side-effect gateway for A.U.R.O.R.A. tool execution.
 
 All executable tools cross this boundary before any external side effect:
-identity -> policy -> guardrail (arguments, SSRF, paths) -> schema ->
+identity -> policy (tools disabled in the Control Plane included) -> guardrail (arguments, SSRF, paths) -> schema ->
 idempotency -> budget -> approval -> audit (fail-closed) -> executor ->
 post-guardrail (secret redaction) -> audit.
 
@@ -33,7 +33,7 @@ from app.core.security import (
     PolicyEngine,
     Principal,
     TaskExecutionContext,
-    WorkspacePolicy,
+    workspace_policy,
 )
 from app.runtime.audit_chain import append_audit_record
 
@@ -228,7 +228,7 @@ class ToolGateway:
             principal=invocation.principal,
             tool_spec=invocation.spec,
             tool_proposal=proposal,
-            workspace_policy=WorkspacePolicy(),
+            workspace_policy=workspace_policy(),
             budget_state=BudgetState(),
             task_context=task_context,
         )
