@@ -45,6 +45,8 @@ MANAGEMENT = {
     ("GET", "/api/settings"),
     ("PUT", "/api/settings"),
     ("POST", "/api/settings/onboarding"),
+    # F4: the models a provider offers, for the role editor; read only.
+    ("GET", "/api/settings/provider-models/{provider}"),
     ("GET", "/api/memory"),
     ("POST", "/api/memory/preferences"),
     ("DELETE", "/api/memory/{memory_id}"),

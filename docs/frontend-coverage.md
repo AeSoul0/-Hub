@@ -7,8 +7,8 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10, ROADMA
 - Un parametro di avvio (porte, URL del database, cartelle dei dati) conta come coperto quando la pagina Sistema lo mostra in sola lettura.
 - ◐ vuol dire parziale e conta mezzo: per esempio si vede ma non si cambia, o si cambia solo scrivendo JSON.
 
-**Ultimo aggiornamento:** F3, voce (2026-10-26).
-**Copertura:** 24,5 righe su 48, cioè **51%**.
+**Ultimo aggiornamento:** F4, modelli, chiavi e limiti (2026-10-26).
+**Copertura:** 30 righe su 48, cioè **62,5%**.
 
 ## Conversazione e voce
 
@@ -36,21 +36,21 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10, ROADMA
 | 15 | Vista di una run e timeline | Control Plane → RUN → Dettagli | ✓ | F2 |
 | 16 | Spesa e statistiche | Nucleo (chip del budget); Control Plane → RUN | ✓ | F2 |
 | 17 | Albero dei sub-agenti e verdetti del Critic | — | — | F8 |
-| 18 | Ruolo forzato (`AEHUB_FORCE_ROLE`) | — | — | F4 |
+| 18 | Ruolo forzato (`AEHUB_FORCE_ROLE`) | IMPOSTAZIONI → Modelli predefiniti | ✓ | F4 |
 
 ## Modelli, chiavi e limiti
 
 | # | Funzione del backend | Nell'interfaccia | Stato | Milestone |
 |---|---|---|---|---|
-| 19 | Modelli per ruolo con failover (`AEHUB_MODEL_ROLES`) | IMPOSTAZIONI, ma solo come JSON | ◐ | F4 |
-| 20 | Modello del Critic | IMPOSTAZIONI (stile da rifare in F4) | ✓ | M12 |
-| 21 | Prezzi dei modelli | IMPOSTAZIONI | ✓ | M12 |
+| 19 | Modelli per ruolo con failover (`AEHUB_MODEL_ROLES`) | IMPOSTAZIONI → Modelli per ruolo (editor, con l'elenco dei modelli di ogni provider) | ✓ | F4 |
+| 20 | Modello del Critic | IMPOSTAZIONI → Modelli per ruolo e Modelli predefiniti | ✓ | M12, F4 |
+| 21 | Prezzi dei modelli | IMPOSTAZIONI → Prezzi, anche dal listino di OpenRouter | ✓ | M12, F4 |
 | 22 | Budget mensile, soglia di avviso, limiti per run | IMPOSTAZIONI | ✓ | M12 |
-| 23 | Chiavi dei provider nel portachiavi del sistema | Setup e IMPOSTAZIONI (app desktop) | ✓ | M14 |
-| 24 | Server locale compatibile OpenAI (`AEHUB_LOCAL_BASE_URL`, chiave) | — | — | F4 |
-| 25 | Circuit breaker dei provider | — | — | F4 |
-| 26 | Durata delle approvazioni | — | — | F4 |
-| 27 | Budget di contesto e snapshot | — | — | F4 |
+| 23 | Chiavi dei provider nel portachiavi del sistema | Primo avvio e IMPOSTAZIONI → Chiavi (app desktop) | ✓ | M14, F4 |
+| 24 | Server locale compatibile OpenAI (`AEHUB_LOCAL_BASE_URL`, chiave) | IMPOSTAZIONI → Modelli predefiniti; Chiavi | ✓ | F4 |
+| 25 | Circuit breaker dei provider | IMPOSTAZIONI → Motore | ✓ | F4 |
+| 26 | Durata delle approvazioni | IMPOSTAZIONI → Budget e limiti | ✓ | F4 |
+| 27 | Budget di contesto e snapshot | IMPOSTAZIONI → Motore | ✓ | F4 |
 
 ## Strumenti, skill e sicurezza
 
@@ -85,7 +85,7 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10, ROADMA
 | # | Funzione del backend | Nell'interfaccia | Stato | Milestone |
 |---|---|---|---|---|
 | 41 | Accesso e uscita | schermata di accesso; Esci | ✓ | M11 |
-| 42 | Primo avvio | Control Plane → Setup (stile da rifare in F4) | ✓ | M12 |
+| 42 | Primo avvio | Control Plane → Primo avvio | ✓ | M12, F4 |
 | 43 | Stato di database, sidecar, bus degli eventi e aggiornamenti | — | — | F9 |
 | 44 | Parametri di avvio in sola lettura (database, Redis, bus, host, origini, cartelle dei dati e dei modelli) | — | — | F9 |
 | 45 | Flight recorder: ricerca ed esportazione | — | — | F9 |
@@ -98,3 +98,4 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10, ROADMA
 | Milestone | Righe coperte | Copertura |
 |---|---|---|
 | F3 (prima versione della tabella) | 24,5 su 48 | 51% |
+| F4 | 30 su 48 | 62,5% |

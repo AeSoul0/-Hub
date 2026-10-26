@@ -232,7 +232,7 @@ def triage_role(task: str) -> Role:
     wins over repetitive work; short plain requests go to triage; anything
     long and unclassified goes to the architect.
     """
-    forced = os.getenv("AEHUB_FORCE_ROLE", "").strip().lower()
+    forced = (config_value("AEHUB_FORCE_ROLE") or "").strip().lower()
     if forced:
         try:
             return Role(forced)
@@ -318,8 +318,8 @@ def breaker_for(label: str) -> CircuitBreaker:
     with _breakers_lock:
         if label not in _breakers:
             _breakers[label] = CircuitBreaker(
-                threshold=int(os.getenv("AEHUB_BREAKER_THRESHOLD", "3")),
-                cooldown=float(os.getenv("AEHUB_BREAKER_COOLDOWN_SECONDS", "60")),
+                threshold=int(config_value("AEHUB_BREAKER_THRESHOLD") or "3"),
+                cooldown=float(config_value("AEHUB_BREAKER_COOLDOWN_SECONDS") or "60"),
             )
         return _breakers[label]
 

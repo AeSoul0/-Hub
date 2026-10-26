@@ -167,7 +167,8 @@ The frontend is a **Next.js application** using React, TypeScript and Tailwind C
   - the conversation sits on the left and the engine's live events on the right; both panes grow from their top edge and can be hidden;
   - pending approvals are decided there;
   - the **RUN** tab of the right pane follows each run of the session (ADR-023): cost, active time, failed tool calls and written files against the per-run limits, live, with a stop button and the run's timeline; **FERMA TUTTO** in the top bar stops every run (a second click confirms) and **RIPRENDI** lifts the stop.
-- **The Control Plane** (`/control-plane`) has runs, approvals, memory, security, voice, settings and setup. Runs, the single-run view (with its timeline), approvals and voice are in the Nucleo's style; the history of the runs filters by text, status, period and subagents.
+- **The Control Plane** (`/control-plane`) has runs, approvals, memory, security, voice, settings and setup. Runs, the single-run view (with its timeline), approvals, voice, settings and setup are in the Nucleo's style; the history of the runs filters by text, status, period and subagents.
+- **Settings** (ADR-025) choose the LLM of each role (Architect, Research, Critic, Fast Worker, Triage) with its fallbacks, suggesting each provider's models (OpenRouter with prices), and refuse a Critic that shares a model with another role. They also hold keys, default models, the local server, prices, budget and limits, the approval window, the circuit breaker and the context budget, all applied without a restart.
 - **How much of the backend the interface controls** is tracked in `docs/frontend-coverage.md`; `v1.0.0` waits for 100%.
 
 The look is a deep-blue space theme with squircle corners. The visual reference is `docs/design/hud-prototype.html`.
@@ -640,16 +641,17 @@ The model, price and limit variables below (`OPENAI_MODEL`, `AEHUB_CHECKER_MODEL
 | `AEHUB_MODEL_ROLES` | Models per role (spec 4.1) as JSON: `{"architect": ["openrouter:<model>", "openai:<model>"], "critic": ["local:<model>"], ...}`. Roles: `architect`, `research`, `critic`, `fast_worker`, `triage`. The first entry is the primary model, the others are fallbacks. Providers: `openai`, `openrouter`, `local`. | every role uses `OPENAI_MODEL` on `openai` |
 | `AEHUB_CHECKER_MODEL` | Critic model when `AEHUB_MODEL_ROLES` does not set `critic`. The Critic must differ from every Implementer model, otherwise agent runs are refused. | none |
 | `OPENROUTER_API_KEY` | Key for the `openrouter` provider | none |
-| `AEHUB_LOCAL_BASE_URL` | OpenAI-compatible local server for the `local` provider (Ollama, LM Studio) | `http://localhost:11434/v1` |
-| `AEHUB_FORCE_ROLE` | Skip triage and run every task with this role | none |
-| `AEHUB_BREAKER_THRESHOLD` / `AEHUB_BREAKER_COOLDOWN_SECONDS` | Consecutive failures before a provider is skipped, and how long it stays skipped | `3` / `60` |
+| `AEHUB_LOCAL_BASE_URL` | OpenAI-compatible local server for the `local` provider (Ollama, LM Studio); also in Settings, key `AEHUB_LOCAL_API_KEY` in the keyring | `http://localhost:11434/v1` |
+| `AEHUB_FORCE_ROLE` | Skip triage and run every task with this role (also in Settings) | none |
+| `AEHUB_BREAKER_THRESHOLD` / `AEHUB_BREAKER_COOLDOWN_SECONDS` | Consecutive failures before a provider is skipped, and how long it stays skipped (also in Settings) | `3` / `60` |
 | `AEHUB_MODEL_PRICES` | Prices as JSON, USD per 1M tokens: `{"<model>": {"input": 1.0, "output": 4.0}}`. Unpriced models use a deliberately high fallback price and are flagged as estimated. | none |
 | `AEHUB_DEFAULT_MODEL_PRICE` | Fallback price `input,output` | `15,60` |
 | `AEHUB_RUN_MAX_COST` / `AEHUB_MONTHLY_BUDGET` | Per-run hard stop and monthly cap, in USD (warning at `AEHUB_BUDGET_WARNING_RATIO`) | `2` / `30` (`0.8`) |
 | `AEHUB_RUN_TIMEOUT_SECONDS` | Limit on a run's active execution time; waiting for an approval does not count. `0` disables it | `900` |
 | `AEHUB_RUN_MAX_FAILED_TOOL_CALLS` | Failed tool calls after which a run stops (`LIMIT_EXCEEDED`), e.g. a loop on a failing tool or test. `0` disables it | `10` |
 | `AEHUB_RUN_MAX_FILES_MODIFIED` | Distinct files a run may change through tools flagged `modifies_files`; a call on one more file is refused. `0` disables it | `20` |
-| `AEHUB_CONTEXT_BUDGET` | Token budget of one model request, split across the Context Manager levels L0–L5 (spec 4.2) | `88000` |
+| `AEHUB_APPROVAL_TTL_SECONDS` | An approval left undecided this long is denied (30 s – 24 h; also in Settings) | `300` |
+| `AEHUB_CONTEXT_BUDGET` | Token budget of one model request, split across the Context Manager levels L0–L5 (spec 4.2; also in Settings) | `88000` |
 | `AEHUB_SNAPSHOT_EVERY` | Tool calls between State Snapshots; older calls leave the recent window and are summarized (clamped to 10–20) | `15` |
 | `AEHUB_MEMORY_ENABLED` | Cross-session long-term memory: recall at run start, indexing of accepted runs | `1` |
 | `AEHUB_EMBEDDER` / `AEHUB_EMBEDDING_MODEL` | Memory embedder: `sentence-transformers` (local model) or `hash` (no download, weaker recall) | `sentence-transformers` / `all-MiniLM-L6-v2` |

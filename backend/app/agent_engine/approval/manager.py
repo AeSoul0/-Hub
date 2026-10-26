@@ -26,12 +26,24 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from app.core.db import SessionLocal
+from app.core.runtime_config import config_value
 from app.domain.models.audit import ApprovalRecord
 
 
-DEFAULT_APPROVAL_TTL = timedelta(
-    seconds=int(os.getenv("AEHUB_APPROVAL_TTL_SECONDS", "300"))
-)
+DEFAULT_APPROVAL_TTL = timedelta(seconds=300)
+
+
+def approval_ttl() -> timedelta:
+    """
+    AEHUB_APPROVAL_TTL_SECONDS as set now (Control Plane, then environment),
+    so a change applies to the next approval without a restart (F4).
+    """
+    try:
+        seconds = int(config_value("AEHUB_APPROVAL_TTL_SECONDS") or 300)
+    except ValueError:
+        return DEFAULT_APPROVAL_TTL
+
+    return timedelta(seconds=seconds) if seconds > 0 else DEFAULT_APPROVAL_TTL
 TIMEOUT_DECIDER = "system:timeout"
 _ALLOWED_DECISIONS = {"ALLOW", "DENY"}
 
@@ -148,7 +160,7 @@ class ApprovalManager:
         tool_name: str,
         arguments: Dict[str, Any],
         risk: str = "low",
-        ttl: timedelta = DEFAULT_APPROVAL_TTL,
+        ttl: Optional[timedelta] = None,
     ) -> str:
         """
         Create a durable approval request for one exact execution context.
@@ -160,6 +172,9 @@ class ApprovalManager:
             run_id=run_id,
             tool_name=tool_name,
         )
+
+        if ttl is None:
+            ttl = approval_ttl()
 
         if ttl.total_seconds() <= 0:
             raise ValueError("ttl must be greater than zero")
@@ -247,7 +262,7 @@ class ApprovalManager:
 
             if normalized_decision == "ALLOW":
                 # Fresh window for the resumed run to execute the call.
-                record.expires_at = now + DEFAULT_APPROVAL_TTL
+                record.expires_at = now + approval_ttl()
 
             db.commit()
             db.refresh(record)
@@ -348,5 +363,6 @@ __all__ = [
     "ApprovalClosedError",
     "ApprovalManager",
     "DEFAULT_APPROVAL_TTL",
+    "approval_ttl",
     "TIMEOUT_DECIDER",
 ]

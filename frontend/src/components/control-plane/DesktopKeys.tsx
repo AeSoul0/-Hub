@@ -1,22 +1,20 @@
 /**
  * @file frontend/src/components/control-plane/DesktopKeys.tsx
- * @description Provider keys typed in the desktop app (M14, ADR-020).
+ * @description Keys typed in the desktop app (M14, ADR-020; every key the
+ * backend knows since F4).
  *
  * The desktop app has no terminal for the launcher, so keys are sent once
  * to PUT /api/desktop/secrets, which writes them to the OS keyring. They are
- * never read back: the list above only says whether each one is set.
+ * never read back: the list only says whether each one is set.
  */
 "use client";
 
 import React, { useEffect, useState } from "react";
 
+import styles from "@/components/control-plane/control.module.css";
 import { ApiError, getJson, putJson } from "@/lib/api/client";
-
-const KEYS = [
-    { name: "OPENAI_API_KEY", label: "OpenAI" },
-    { name: "OPENROUTER_API_KEY", label: "OpenRouter" },
-    { name: "AEHUB_MQTT_PASSWORD", label: "MQTT broker (home, optional)" },
-] as const;
+import type { SecretStatus } from "@/lib/api/settings";
+import { SECRET_TEXT } from "@/lib/nucleo/models";
 
 /** Whether this frontend runs inside the desktop app. */
 export function useDesktopMode(): boolean {
@@ -35,7 +33,7 @@ export function useDesktopMode(): boolean {
     return desktop;
 }
 
-export default function DesktopKeys({ onSaved }: { onSaved: () => void }) {
+export default function DesktopKeys({ secrets, onSaved }: { secrets: SecretStatus[]; onSaved: () => void }) {
     const [values, setValues] = useState<Record<string, string>>({});
     const [message, setMessage] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
@@ -43,7 +41,9 @@ export default function DesktopKeys({ onSaved }: { onSaved: () => void }) {
     const submit = async (event: React.FormEvent) => {
         event.preventDefault();
         const changes = Object.fromEntries(
-            Object.entries(values).filter(([, value]) => value.trim() !== ""),
+            Object.entries(values)
+                .map(([name, value]) => [name, value.trim()])
+                .filter(([, value]) => value !== ""),
         );
         if (Object.keys(changes).length === 0) {
             return;
@@ -52,7 +52,7 @@ export default function DesktopKeys({ onSaved }: { onSaved: () => void }) {
         try {
             await putJson("/api/desktop/secrets", changes);
             setValues({});
-            setMessage("Saved in the OS keyring.");
+            setMessage("Salvate nel portachiavi del sistema.");
             onSaved();
         } catch (err) {
             setMessage(err instanceof ApiError ? err.message : String(err));
@@ -62,24 +62,28 @@ export default function DesktopKeys({ onSaved }: { onSaved: () => void }) {
     };
 
     return (
-        <form onSubmit={submit} className="mt-4 space-y-2" aria-label="Add keys">
-            {KEYS.map((key) => (
-                <label key={key.name} className="flex flex-wrap items-center gap-2 text-sm">
-                    <span className="w-48">{key.label}</span>
+        <form onSubmit={submit} className={styles.filters} aria-label="Aggiungi chiavi">
+            {secrets.map((secret) => (
+                <label key={secret.name} className={styles.field}>
+                    {SECRET_TEXT[secret.name]?.label ?? secret.label}
                     <input
                         type="password"
                         autoComplete="off"
-                        name={key.name}
-                        value={values[key.name] ?? ""}
-                        onChange={(event) => setValues({ ...values, [key.name]: event.target.value })}
-                        className="bg-gray-900 border border-gray-700 rounded px-2 py-1 font-mono"
+                        name={secret.name}
+                        placeholder={secret.configured ? "sostituisci" : ""}
+                        value={values[secret.name] ?? ""}
+                        onChange={(event) => setValues({ ...values, [secret.name]: event.target.value })}
                     />
                 </label>
             ))}
-            <button type="submit" disabled={busy} className="bg-orange-600 hover:bg-orange-500 rounded px-4 py-1">
-                Save keys
+            <button type="submit" disabled={busy} className={`${styles.btn} ${styles.go}`}>
+                Salva le chiavi
             </button>
-            {message && <p className="text-sm text-gray-300">{message}</p>}
+            {message && (
+                <p className={styles.muted} role="status">
+                    {message}
+                </p>
+            )}
         </form>
     );
 }

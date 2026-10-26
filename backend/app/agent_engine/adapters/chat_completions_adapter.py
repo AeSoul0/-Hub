@@ -20,6 +20,7 @@ from openai import AsyncOpenAI
 from app.agent_engine.adapters.base import ModelProvider
 from app.agent_engine.adapters.openai_adapter import OpenAIAdapter
 from app.agent_engine.pricing import usage_from_response
+from app.core.runtime_config import config_value
 
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
@@ -63,7 +64,7 @@ class ChatCompletionsAdapter(ModelProvider):
         # Local servers usually ignore the key, but the SDK requires one.
         return cls(
             model_name=model_name,
-            base_url=os.getenv("AEHUB_LOCAL_BASE_URL", LOCAL_BASE_URL),
+            base_url=config_value("AEHUB_LOCAL_BASE_URL") or LOCAL_BASE_URL,
             api_key=os.getenv("AEHUB_LOCAL_API_KEY", "local"),
             provider="local",
             **kwargs,
