@@ -652,13 +652,13 @@ async def test_memory_api_adds_lists_and_forgets_in_scope(agent_infrastructure):
         memory_api.PreferenceIn(content="  Call me Sam.  "),
         principal=owner,
     )
-    assert created == {"stored": 1, "content": "Call me Sam."}
+    assert created == {"stored": 1, "content": "Call me Sam.", "kind": "preference"}
 
-    [memory] = (await memory_api.list_memories(kind=None, limit=100, principal=owner))["memories"]
+    [memory] = (await memory_api.list_memories(kind=None, trust="all", q=None, limit=100, principal=owner))["memories"]
     assert memory["kind"] == "preference" and memory["trusted"] is True
     assert MemoryStore(owner.workspace_id, owner.id).preferences()[0].content == "Call me Sam."
 
-    assert (await memory_api.list_memories(kind=None, limit=100, principal=stranger))["memories"] == []
+    assert (await memory_api.list_memories(kind=None, trust="all", q=None, limit=100, principal=stranger))["memories"] == []
 
     with pytest.raises(HTTPException) as foreign:
         await memory_api.delete_memory(memory["id"], principal=stranger)

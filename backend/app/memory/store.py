@@ -34,6 +34,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tupl
 from sqlalchemy import func, literal_column
 
 from app.core import db as core_db
+from app.core.runtime_config import config_value
 from app.domain.models.memory import MemoryChunk, memory_tsvector
 from app.memory.embeddings import Embedder, cosine_similarity, get_embedder
 
@@ -108,9 +109,9 @@ class MemoryHit:
 def memory_enabled() -> bool:
     """
     Long-term memory (indexing and recall) is on unless AEHUB_MEMORY_ENABLED
-    is 0/false/off.
+    is 0/false/off (Control Plane, then environment).
     """
-    return os.getenv("AEHUB_MEMORY_ENABLED", "1").strip().lower() not in {
+    return (config_value("AEHUB_MEMORY_ENABLED", "1") or "1").strip().lower() not in {
         "0",
         "false",
         "off",
@@ -118,9 +119,13 @@ def memory_enabled() -> bool:
     }
 
 
+def min_similarity() -> float:
+    return _min_similarity()
+
+
 def _min_similarity() -> float:
     try:
-        return float(os.getenv("AEHUB_MEMORY_MIN_SIMILARITY", DEFAULT_MIN_SIMILARITY))
+        return float(config_value("AEHUB_MEMORY_MIN_SIMILARITY", str(DEFAULT_MIN_SIMILARITY)) or DEFAULT_MIN_SIMILARITY)
     except ValueError:
         return DEFAULT_MIN_SIMILARITY
 
@@ -411,6 +416,153 @@ class MemoryStore:
 
             return True
 
+    def delete_untrusted(self) -> int:
+        """
+        Forget every memory of the scope written from untrusted content.
+        """
+        with self._session() as db:
+            deleted = (
+                self._scope(db.query(MemoryChunk))
+                .filter(MemoryChunk.trusted.is_(False))
+                .delete(synchronize_session=False)
+            )
+            db.commit()
+
+            return int(deleted or 0)
+
+    def update(
+        self,
+        memory_id: str,
+        content: Optional[str] = None,
+        kind: Optional[MemoryKind | str] = None,
+        trusted: Optional[bool] = None,
+    ) -> Optional[MemoryHit]:
+        """
+        Edit one memory (F6). A new text is embedded again; the source
+        records that the user changed it. None leaves a field as it is.
+        Raises ValueError when the text is empty, too long for one memory,
+        or the same as another memory of the same kind.
+        """
+        with self._session() as db:
+            row = (
+                self._scope(db.query(MemoryChunk))
+                .filter(MemoryChunk.id == memory_id)
+                .first()
+            )
+
+            if row is None:
+                return None
+
+            new_kind = MemoryKind(kind).value if kind is not None else row.kind
+            new_content = row.content if content is None else content.strip()
+
+            if not new_content:
+                raise ValueError("A memory cannot be empty.")
+
+            if len(new_content) > CHUNK_MAX_CHARS:
+                raise ValueError(f"A memory can be at most {CHUNK_MAX_CHARS} characters.")
+
+            digest = content_hash(new_kind, new_content)
+
+            if digest != row.content_hash:
+                duplicate = (
+                    self._scope(db.query(MemoryChunk.id))
+                    .filter(MemoryChunk.content_hash == digest, MemoryChunk.id != row.id)
+                    .first()
+                )
+
+                if duplicate is not None:
+                    raise ValueError("The same memory already exists.")
+
+            if new_content != row.content:
+                vector, embedder_name = self._embed(new_content)
+                row.content = new_content
+                row.embedding = vector
+                row.embedder = embedder_name
+                row.source = "user-edit"
+
+            row.kind = new_kind
+            row.content_hash = digest
+
+            if trusted is not None:
+                row.trusted = bool(trusted)
+
+            db.commit()
+            db.refresh(row)
+
+            return self._hit(row)
+
+    def get(self, memory_id: str) -> Optional[MemoryHit]:
+        with self._session() as db:
+            row = (
+                self._scope(db.query(MemoryChunk))
+                .filter(MemoryChunk.id == memory_id)
+                .first()
+            )
+
+            return self._hit(row) if row is not None else None
+
+    def current_embedder_name(self) -> Optional[str]:
+        """
+        Name of the configured embedder, without loading its model; None
+        when the configuration is invalid.
+        """
+        try:
+            return self._get_embedder().name
+        except Exception:
+            return None
+
+    def stats(self) -> Dict[str, Any]:
+        """
+        Counts of the scope: by kind, untrusted, and vectors that the current
+        embedder cannot compare (another embedder, or none).
+        """
+        current = self.current_embedder_name()
+
+        with self._session() as db:
+            base = self._scope(db.query(MemoryChunk))
+            by_kind = {
+                kind: count
+                for kind, count in self._scope(db.query(MemoryChunk.kind, func.count(MemoryChunk.id)))
+                .group_by(MemoryChunk.kind)
+                .all()
+            }
+            untrusted = base.filter(MemoryChunk.trusted.is_(False)).count()
+            stale = self._scope(db.query(MemoryChunk)).filter(
+                (MemoryChunk.embedder.is_(None)) | (MemoryChunk.embedder != (current or ""))
+            ).count()
+
+        return {
+            "total": sum(by_kind.values()),
+            "by_kind": by_kind,
+            "untrusted": untrusted,
+            "stale_vectors": stale,
+        }
+
+    def reembed(self, limit: int = 2000) -> int:
+        """
+        Embed again, with the current embedder, the memories of the scope
+        whose vector came from another embedder or is missing. Returns how
+        many were updated; at most `limit` per call.
+        """
+        embedder = self._get_embedder()
+
+        with self._session() as db:
+            rows = (
+                self._scope(db.query(MemoryChunk))
+                .filter((MemoryChunk.embedder.is_(None)) | (MemoryChunk.embedder != embedder.name))
+                .limit(limit)
+                .all()
+            )
+
+            for row in rows:
+                row.embedding = embedder.embed(row.content)
+                row.embedder = embedder.name
+
+            db.commit()
+
+            return len(rows)
+
     # ------------------------------------------------------------------ read
 
     def list(
@@ -588,6 +740,7 @@ __all__ = [
     "chunk_text",
     "content_hash",
     "memory_enabled",
+    "min_similarity",
     "query_terms",
     "rrf_fuse",
 ]

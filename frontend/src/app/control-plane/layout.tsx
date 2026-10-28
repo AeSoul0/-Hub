@@ -19,6 +19,7 @@ const SECTIONS = [
     { href: "/control-plane/approvals", label: "APPROVAZIONI" },
     { href: "/control-plane/runs", label: "RUN" },
     { href: "/control-plane/memory", label: "MEMORIA" },
+    { href: "/control-plane/documents", label: "DOCUMENTI" },
     { href: "/control-plane/tools", label: "STRUMENTI" },
     { href: "/control-plane/skills", label: "SKILL" },
     { href: "/control-plane/security", label: "SICUREZZA" },
