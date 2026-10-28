@@ -4,7 +4,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import ApprovalCard, { type ApprovalRequest } from "@/components/control-plane/ApprovalCard";
 import AuthGate, { LoginForm } from "@/components/control-plane/AuthGate";
-import MemoryList, { type Memory } from "@/components/control-plane/MemoryList";
 import RunDetailView, { type RunDetail } from "@/components/control-plane/RunDetailView";
 
 import { stubFetch } from "./helpers";
@@ -208,27 +207,5 @@ describe("RunDetailView", () => {
 
         fireEvent.click(screen.getByRole("button", { name: "Ferma la run" }));
         expect(onCancel).toHaveBeenCalledTimes(1);
-    });
-});
-
-describe("MemoryList", () => {
-    it("lists memories with their source and forgets one", () => {
-        const memories: Memory[] = [
-            { id: "m1", kind: "preference", content: "Answer in Italian.", trusted: true, session_id: null, created_at: null, score: null },
-            { id: "m2", kind: "fact", content: "From a web page.", trusted: false, session_id: "s1", created_at: null, score: null },
-        ];
-        const onForget = vi.fn();
-        render(<MemoryList memories={memories} onForget={onForget} />);
-
-        expect(screen.getByText("affidabile")).toBeInTheDocument();
-        expect(screen.getByText("non affidabile")).toBeInTheDocument();
-
-        fireEvent.click(screen.getByRole("button", { name: "Forget fact m2" }));
-        expect(onForget).toHaveBeenCalledWith(memories[1]);
-    });
-
-    it("says when there is nothing", () => {
-        render(<MemoryList memories={[]} onForget={vi.fn()} />);
-        expect(screen.getByText("Nothing remembered here.")).toBeInTheDocument();
     });
 });

@@ -19,6 +19,7 @@ import Link from "next/link";
 import React, { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
 import type { ApprovalRequest, Decision } from "@/components/control-plane/ApprovalCard";
+import CitedText from "@/components/control-plane/CitedText";
 import { fetchApi, getJson, postJson } from "@/lib/api/client";
 import { useWorkspaceEvents } from "@/lib/api/events";
 import { playReply, startRecording, type Recording } from "@/lib/nucleo/audio";
@@ -506,7 +507,7 @@ export default function Nucleo() {
                                     {line.who === "me" ? "Tu" : line.who === "system" ? "Sistema" : "ÆHub"}
                                     {line.channel ? ` · ${line.channel}` : ""}
                                 </span>
-                                <p>{line.text}</p>
+                                <p>{line.who === "aehub" ? <CitedText text={line.text} /> : line.text}</p>
                             </li>
                         ))
                     )}

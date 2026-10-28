@@ -32,6 +32,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from app.agent_engine.guardrails import allowed_directories
 from app.core import db as core_db
+from app.core.runtime_config import config_value
 from app.domain.models.documents import DocumentFile
 from app.domain.models.memory import MemoryChunk
 from app.memory.embeddings import Embedder
@@ -63,9 +64,13 @@ _ANY_CITATION = re.compile(r"\[doc:[^\]\n]*\]")
 _SYNC_LOCK = threading.Lock()
 
 
+def max_file_bytes() -> int:
+    return _max_file_bytes()
+
+
 def _max_file_bytes() -> int:
     try:
-        megabytes = float(os.getenv("AEHUB_DOCUMENTS_MAX_FILE_MB", DEFAULT_MAX_FILE_MB))
+        megabytes = float(config_value("AEHUB_DOCUMENTS_MAX_FILE_MB", str(DEFAULT_MAX_FILE_MB)) or DEFAULT_MAX_FILE_MB)
     except ValueError:
         megabytes = DEFAULT_MAX_FILE_MB
 
@@ -522,6 +527,77 @@ class DocumentIndex:
 
         return hits
 
+    def passage(self, path: str, locator: str) -> Optional[str]:
+        """
+        The indexed text a citation points to, None when there is none.
+        """
+        with self._session() as db:
+            row = (
+                db.query(MemoryChunk)
+                .filter(
+                    MemoryChunk.workspace_id == self.workspace_id,
+                    MemoryChunk.principal_id == DOCUMENTS_PRINCIPAL,
+                    MemoryChunk.source == _source(path, locator),
+                )
+                .first()
+            )
+
+            return row.content if row is not None else None
+
+    def reembed(self) -> int:
+        """
+        Embed the document chunks again with the current embedder.
+        """
+        return self._store.reembed()
+
+    def stale_vectors(self) -> int:
+        return int(self._store.stats()["stale_vectors"])
+
+    def upload_target(self, filename: str, size: int, replace: bool = False) -> Tuple[str, Path]:
+        """
+        Where an uploaded file would go: the top of the working folder (F6).
+        Only a plain, visible file name with a supported extension, within
+        the size limit; an existing file is replaced only when asked. Raises
+        ValueError or FileExistsError.
+        """
+        name = (filename or "").replace("\\", "/").rsplit("/", 1)[-1].strip()
+
+        if (
+            not name
+            or name.startswith(".")
+            or len(name) > 255
+            or any(char in name for char in '<>:"|?*')
+            or any(ord(char) < 32 for char in name)
+        ):
+            raise ValueError("Use a plain file name.")
+
+        if Path(name).suffix.lower() not in SUPPORTED_SUFFIXES:
+            raise ValueError("Only .txt, .md, .markdown and .pdf files are indexed.")
+
+        if size > _max_file_bytes():
+            raise ValueError("The file is larger than the document size limit.")
+
+        if not self.root.is_dir():
+            raise ValueError("The working folder does not exist.")
+
+        target = (self.root / name).resolve()
+
+        if target.parent != self.root.resolve():
+            raise ValueError("Use a plain file name.")
+
+        if target.exists() and not replace:
+            raise FileExistsError(name)
+
+        return name, target
+
+    def save_upload(self, filename: str, data: bytes, replace: bool = False) -> str:
+        """
+        Write an uploaded file (see upload_target) and return its index path.
+        """
+        name, target = self.upload_target(filename, len(data), replace)
+        target.write_bytes(data)
+        return name
+
     def files(self) -> List[Dict[str, Any]]:
         with self._session() as db:
             rows = (
@@ -554,6 +630,7 @@ __all__ = [
     "documents_root",
     "extract_chunks",
     "find_citations",
+    "max_file_bytes",
     "missing_citations",
     "parse_source",
 ]

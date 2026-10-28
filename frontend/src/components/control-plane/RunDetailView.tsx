@@ -9,6 +9,7 @@ import React from "react";
 import { EMPTY_USAGE, localTime, meters, savedStatus, toUsage, type RunLimits, type TrackedRun } from "@/lib/nucleo/runs";
 import { runHref } from "@/lib/routes";
 
+import CitedText from "./CitedText";
 import RunMeters from "./RunMeters";
 import styles from "./control.module.css";
 
@@ -208,7 +209,11 @@ export default function RunDetailView({
 
             {(run.result !== null || run.error || run.errors.length > 0) && (
                 <Section title="Esito">
-                    {run.result !== null && <pre className={styles.pre}>{text(run.result)}</pre>}
+                    {run.result !== null && (
+                        <pre className={styles.pre}>
+                            <CitedText text={text(run.result)} />
+                        </pre>
+                    )}
                     {run.error && <p className={styles.error}>{run.error}</p>}
                     {run.errors.length > 0 && (
                         <ul className={styles.lines}>

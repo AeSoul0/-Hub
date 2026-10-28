@@ -2,7 +2,8 @@
 @file backend/app/memory/embeddings.py
 @description Embedding providers for the long-term memory store (roadmap M6).
 
-AEHUB_EMBEDDER selects the provider:
+AEHUB_EMBEDDER selects the provider (Control Plane, then environment; a
+change applies to the next embedding, F6):
 - "sentence-transformers" (default): all-MiniLM-L6-v2, or AEHUB_EMBEDDING_MODEL;
 - "hash": deterministic feature hashing. No model download, weaker recall;
   meant for tests and minimal installs.
@@ -15,10 +16,11 @@ from __future__ import annotations
 
 import hashlib
 import math
-import os
 import re
 from threading import Lock
 from typing import Any, List, Optional, Protocol
+
+from app.core.runtime_config import config_value
 
 
 EMBEDDING_DIMENSION = 384
@@ -113,8 +115,8 @@ def get_embedder() -> Embedder:
     """
     global _embedder, _embedder_key
 
-    kind = os.getenv("AEHUB_EMBEDDER", "sentence-transformers").strip().lower()
-    model_name = os.getenv("AEHUB_EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+    kind = (config_value("AEHUB_EMBEDDER", "sentence-transformers") or "sentence-transformers").strip().lower()
+    model_name = config_value("AEHUB_EMBEDDING_MODEL", "all-MiniLM-L6-v2") or "all-MiniLM-L6-v2"
     key = f"{kind}:{model_name}"
 
     with _embedder_lock:

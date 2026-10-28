@@ -7,8 +7,8 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10, ROADMA
 - Un parametro di avvio (porte, URL del database, cartelle dei dati) conta come coperto quando la pagina Sistema lo mostra in sola lettura.
 - ◐ vuol dire parziale e conta mezzo: per esempio si vede ma non si cambia, o si cambia solo scrivendo JSON.
 
-**Ultimo aggiornamento:** F5, strumenti, skill, policy e sicurezza (2026-10-26).
-**Copertura:** 35,5 righe su 48, cioè **74%**.
+**Ultimo aggiornamento:** F6, memoria e documenti (2026-10-28).
+**Copertura:** 38,5 righe su 48, cioè **80%**.
 
 ## Conversazione e voce
 
@@ -68,10 +68,10 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10, ROADMA
 
 | # | Funzione del backend | Nell'interfaccia | Stato | Milestone |
 |---|---|---|---|---|
-| 35 | Memoria: elenco, preferenze, cancellazione | Control Plane → MEMORIA | ✓ | M11 |
-| 36 | Memoria accesa o spenta, embedder, soglia di somiglianza | — | — | F6 |
-| 37 | Indice dei documenti e sincronizzazione (`/api/documents`) | — | — | F6 |
-| 38 | Dimensione massima dei documenti | — | — | F6 |
+| 35 | Memoria: elenco, ricerca, aggiunta, modifica, "mi fido", cancellazione | Control Plane → MEMORIA | ✓ | M11, F6 |
+| 36 | Memoria accesa o spenta, embedder, soglia di somiglianza; ricalcolo dei vettori | MEMORIA → Come ricorda | ✓ | F6 |
+| 37 | Indice dei documenti, sincronizzazione, caricamento, ricerca; citazioni nelle risposte | Control Plane → DOCUMENTI; chip delle citazioni nel Nucleo e nella vista della run | ✓ | F6 |
+| 38 | Dimensione massima dei documenti | DOCUMENTI → Cartella di lavoro | ✓ | F6 |
 
 ## Casa
 
@@ -100,3 +100,4 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10, ROADMA
 | F3 (prima versione della tabella) | 24,5 su 48 | 51% |
 | F4 | 30 su 48 | 62,5% |
 | F5 | 35,5 su 48 | 74% |
+| F6 | 38,5 su 48 | 80% |

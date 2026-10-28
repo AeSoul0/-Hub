@@ -50,9 +50,21 @@ MANAGEMENT = {
     ("GET", "/api/memory"),
     ("POST", "/api/memory/preferences"),
     ("DELETE", "/api/memory/{memory_id}"),
-    # M13: the document index of the working folder; search is a tool.
+    # F6: the user writes, edits, vouches for and forgets memories; vectors
+    # are recomputed after an embedder change. No tool runs.
+    ("POST", "/api/memory"),
+    ("PUT", "/api/memory/{memory_id}"),
+    ("DELETE", "/api/memory"),
+    ("POST", "/api/memory/reembed"),
+    # M13: the document index of the working folder; the agent searches
+    # through its tool.
     ("GET", "/api/documents"),
     ("POST", "/api/documents/sync"),
+    # F6: upload into the working folder, and search and citation passages
+    # for the user's screen only (never sent to a model).
+    ("POST", "/api/documents/upload"),
+    ("GET", "/api/documents/search"),
+    ("GET", "/api/documents/passage"),
     # M14: the desktop app's launch token and provider keys into the keyring.
     ("GET", "/desktop/launch/{token}"),
     ("GET", "/api/desktop"),
