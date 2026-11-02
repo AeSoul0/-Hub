@@ -22,6 +22,10 @@ topic: it names a declared device id, and this module builds the message.
 The file must live outside the agent's working folders (AEHUB_ALLOWED_DIRS):
 there the agent's file tools could rewrite it and declare a "device" on any
 topic.
+
+Since F7 devices can also be declared from the Control Plane; they are kept
+in the database (app.home.store), where no agent tool reaches. The agent
+sees both lists; an id may appear in only one of them.
 """
 
 from __future__ import annotations
@@ -57,9 +61,21 @@ class Device:
     type: str
     topic: str
     format: str = "zigbee2mqtt"
+    # "file" (AEHUB_HOME_DEVICES) or "app" (declared in the Control Plane).
+    source: str = "file"
+
+    def to_dict(self) -> Dict[str, str]:
+        return {
+            "id": self.id,
+            "name": self.name,
+            "type": self.type,
+            "topic": self.topic,
+            "format": self.format,
+            "source": self.source,
+        }
 
 
-def parse_devices(raw: object) -> Dict[str, Device]:
+def parse_devices(raw: object, source: str = "file") -> Dict[str, Device]:
     """
     Validate a device file's content; every problem is reported at once.
     """
@@ -110,6 +126,7 @@ def parse_devices(raw: object) -> Dict[str, Device]:
             type=str(device_type),
             topic=str(topic),
             format=str(fmt),
+            source=source,
         )
 
     if errors:
@@ -120,9 +137,38 @@ def parse_devices(raw: object) -> Dict[str, Device]:
 
 def load_devices(path: Optional[str] = None) -> Dict[str, Device]:
     """
-    The devices of AEHUB_HOME_DEVICES; none when it is not set.
+    The devices the agent may control: those of AEHUB_HOME_DEVICES and those
+    declared in the Control Plane. With `path`, only that file's.
     """
-    location = path if path is not None else os.getenv("AEHUB_HOME_DEVICES", "").strip()
+    if path is not None:
+        return file_devices(path)
+
+    from app.home.store import stored_devices
+
+    declared = file_devices()
+    stored = stored_devices()
+    clash = sorted(set(declared) & set(stored))
+
+    if clash:
+        raise DeviceConfigError(
+            f"Declared both in the device file and in the Control Plane: {', '.join(clash)}."
+        )
+
+    if len(declared) + len(stored) > MAX_DEVICES:
+        raise DeviceConfigError(f"At most {MAX_DEVICES} devices.")
+
+    return {**declared, **stored}
+
+
+def device_file() -> str:
+    return os.getenv("AEHUB_HOME_DEVICES", "").strip()
+
+
+def file_devices(path: Optional[str] = None) -> Dict[str, Device]:
+    """
+    The devices of AEHUB_HOME_DEVICES (or `path`); none when it is not set.
+    """
+    location = path if path is not None else device_file()
 
     if not location:
         return {}
@@ -176,13 +222,73 @@ def lock_message(device: Device, locked: bool) -> Tuple[str, str]:
     return device.topic, json.dumps({"state": "LOCK" if locked else "UNLOCK"})
 
 
+def state_request(device: Device) -> Optional[Tuple[str, str, str]]:
+    """
+    (topic the device reports on, topic to ask, question) for reading a
+    device's state (F7), or None when the command topic has no known shape.
+
+    zigbee2mqtt: commands on <base>/set, state on <base>, asked on <base>/get.
+    tasmota: commands on cmnd/<name>/POWER; an empty message there makes it
+    answer on stat/<name>/POWER.
+    """
+    if device.format == "tasmota":
+        if device.topic.startswith("cmnd/") and len(device.topic) > 5:
+            return "stat/" + device.topic[5:], device.topic, ""
+        return None
+
+    if device.topic.endswith("/set") and len(device.topic) > 4:
+        base = device.topic[:-4]
+        return base, base + "/get", json.dumps({"state": ""})
+
+    return None
+
+
+_STATES = {"ON": "on", "OFF": "off", "LOCK": "locked", "UNLOCK": "unlocked", "LOCKED": "locked", "UNLOCKED": "unlocked"}
+
+
+def parse_state(device: Device, payload: str) -> Dict[str, object]:
+    """
+    The state in a device's answer: {"state": on|off|locked|unlocked|None},
+    plus "brightness" in percent for a zigbee2mqtt light that reports it.
+    """
+    brightness: Optional[int] = None
+
+    if device.format == "tasmota":
+        raw: object = payload.strip()
+    else:
+        try:
+            data = json.loads(payload)
+        except ValueError:
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+        raw = data.get("state")
+        level = data.get("brightness")
+        if device.type == "light" and isinstance(level, (int, float)) and not isinstance(level, bool):
+            brightness = round(max(0, min(254, level)) * 100 / 254)
+
+    state = _STATES.get(str(raw).strip().upper()) if isinstance(raw, str) else None
+
+    if state is not None and (state in ("on", "off")) != (device.type == "light"):
+        state = None
+
+    result: Dict[str, object] = {"state": state}
+    if brightness is not None:
+        result["brightness"] = brightness
+    return result
+
+
 __all__ = [
     "Device",
     "DeviceConfigError",
     "UnknownDevice",
+    "device_file",
+    "file_devices",
     "find",
     "light_message",
     "load_devices",
     "lock_message",
     "parse_devices",
+    "parse_state",
+    "state_request",
 ]

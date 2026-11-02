@@ -2,7 +2,7 @@
 @file backend/app/core/runtime_config.py
 @description Settings that change without a restart (M12).
 
-Model roles, prices, run limits, voice, tools, memory and documents can be edited from the Control Plane. An
+Model roles, prices, run limits, voice, tools, memory, documents and the home broker can be edited from the Control Plane. An
 edited value is stored in the `app_settings` table and wins over the
 environment; a value never edited falls back to the environment variable of
 the same name, then to the built-in default. So CI, tests and an existing
@@ -38,7 +38,7 @@ class SettingSpec:
     """
 
     name: str
-    group: Literal["models", "prices", "limits", "engine", "voice", "tools", "memory", "documents"]
+    group: Literal["models", "prices", "limits", "engine", "voice", "tools", "memory", "documents", "home"]
     label: str
     kind: Literal["text", "roles", "prices", "price_pair", "number", "integer", "ratio", "choice"]
     default: str
@@ -354,6 +354,26 @@ SPECS: Tuple[SettingSpec, ...] = (
         default="eleven_flash_v2_5",
         help="eleven_flash_v2_5 is the fastest and cheapest; eleven_multilingual_v2 sounds richer.",
         pattern=r"[a-z0-9_]{3,64}",
+    ),
+    # Home (F7, ADR-028): the broker of the home devices, read on every
+    # message. The password is a keyring secret (AEHUB_MQTT_PASSWORD).
+    SettingSpec(
+        name="AEHUB_MQTT_URL",
+        group="home",
+        label="MQTT broker",
+        kind="text",
+        default="",
+        help="mqtt://host:1883, or mqtts://host:8883 for TLS.",
+        pattern=r"mqtts?://[A-Za-z0-9][A-Za-z0-9.-]{0,252}(:[0-9]{1,5})?/?",
+    ),
+    SettingSpec(
+        name="AEHUB_MQTT_USERNAME",
+        group="home",
+        label="MQTT user",
+        kind="text",
+        default="",
+        help="Only when the broker asks for one.",
+        pattern=r"[A-Za-z0-9_.@-]{1,64}",
     ),
 )
 
