@@ -54,7 +54,7 @@ export default function HomeDeviceCard({
                 </span>
             </div>
 
-            <p className={styles.faint}>
+            <p className={styles.muted}>
                 {TYPE_LABEL[device.type]} · {FORMAT_LABEL[device.format]} ·{" "}
                 {device.source === "file" ? "dal file" : "aggiunto da qui"}
             </p>
