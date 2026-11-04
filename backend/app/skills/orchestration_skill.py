@@ -18,9 +18,14 @@ is capped by AEHUB_RUN_MAX_SUBAGENTS, and a subagent cannot delegate again.
 from __future__ import annotations
 
 import json
+import math
 from typing import Any, Callable, Dict, List, Optional
 
-from app.agent_engine.delegation import DELEGATE_TOOL, current_delegation_scope
+from app.agent_engine.delegation import (
+    DELEGATE_TOOL,
+    UNCAPPED_SUBAGENT_BUDGET,
+    current_delegation_scope,
+)
 
 from .base import BaseSkill, RiskLevel, SkillMetadata, ToolMetadata
 
@@ -39,7 +44,9 @@ async def delegate_task(
     Run a subagent on `task` and return its outcome as JSON.
 
     Without `budget_usd` the subagent may spend half of what the run has
-    left; with it, at most that and never more than what is left.
+    left; with it, at most that and never more than what is left. A run
+    without a cost cap gives it what it asks for, by default
+    UNCAPPED_SUBAGENT_BUDGET.
     """
     scope = current_delegation_scope()
 
@@ -67,7 +74,13 @@ async def delegate_task(
     if remaining <= 0:
         raise RuntimeError("The run has no budget left for a subagent.")
 
-    budget = min(float(budget_usd), remaining) if budget_usd and budget_usd > 0 else remaining / 2
+    if budget_usd and budget_usd > 0:
+        budget = min(float(budget_usd), remaining)
+    elif math.isinf(remaining):
+        budget = UNCAPPED_SUBAGENT_BUDGET
+    else:
+        budget = remaining / 2
+
     allowed = [name for name in tools or [] if name != DELEGATE_TOOL] or None
 
     scope.count_started()

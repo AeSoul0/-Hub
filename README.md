@@ -658,7 +658,7 @@ The model, price and limit variables below (`OPENAI_MODEL`, `AEHUB_CHECKER_MODEL
 | `AEHUB_BREAKER_THRESHOLD` / `AEHUB_BREAKER_COOLDOWN_SECONDS` | Consecutive failures before a provider is skipped, and how long it stays skipped (also in Settings) | `3` / `60` |
 | `AEHUB_MODEL_PRICES` | Prices as JSON, USD per 1M tokens: `{"<model>": {"input": 1.0, "output": 4.0}}`. Unpriced models use a deliberately high fallback price and are flagged as estimated. | none |
 | `AEHUB_DEFAULT_MODEL_PRICE` | Fallback price `input,output` | `15,60` |
-| `AEHUB_RUN_MAX_COST` / `AEHUB_MONTHLY_BUDGET` | Per-run hard stop and monthly cap, in USD (warning at `AEHUB_BUDGET_WARNING_RATIO`) | `2` / `30` (`0.8`) |
+| `AEHUB_RUN_MAX_COST` / `AEHUB_MONTHLY_BUDGET` | Per-run hard stop and monthly cap, in USD (warning at `AEHUB_BUDGET_WARNING_RATIO`). `AEHUB_RUN_MAX_COST=0` removes the per-run cap; the monthly budget still applies | `2` / `30` (`0.8`) |
 | `AEHUB_RUN_TIMEOUT_SECONDS` | Limit on a run's active execution time; waiting for an approval does not count. `0` disables it | `900` |
 | `AEHUB_RUN_MAX_FAILED_TOOL_CALLS` | Failed tool calls after which a run stops (`LIMIT_EXCEEDED`), e.g. a loop on a failing tool or test. `0` disables it | `10` |
 | `AEHUB_RUN_MAX_SUBAGENTS` | Subagents one run may start with `delegate_task`; their cost counts toward the run. `0` turns delegation off (also in Settings) | `3` |
@@ -1082,7 +1082,7 @@ The supervisor decides when deep research should be delegated instead of attempt
 A run delegates part of its task with the `delegate_task` tool (ADR-029). It goes through the Tool Gateway like any other tool and needs the `agent:invoke` permission, so an admin can delegate and a member cannot. The subagent:
 
 * works with the role asked for (Architect, Research, Fast Worker or Triage), otherwise the one the triage picks, and is checked by the same independent Critic;
-* gets at most the tools, permissions and budget of its parent: half of what the parent has left unless it asks for less;
+* gets at most the tools, permissions and budget of its parent: half of what the parent has left unless it asks for less; when the parent has no run cost cap (`AEHUB_RUN_MAX_COST=0`) it gets the budget it asks for, 1 USD by default;
 * starts tainted when its parent has read untrusted content, and its answer is untrusted for the parent;
 * cannot delegate again, and a run starts at most `AEHUB_RUN_MAX_SUBAGENTS` of them;
 * costs its parent what it spent, even when it fails.
