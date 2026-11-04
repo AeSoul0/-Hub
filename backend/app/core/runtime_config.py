@@ -164,6 +164,16 @@ SPECS: Tuple[SettingSpec, ...] = (
         help="The run stops after modifying this many files. 0 disables the limit.",
     ),
     SettingSpec(
+        name="AEHUB_RUN_MAX_SUBAGENTS",
+        group="limits",
+        label="Subagents per run",
+        kind="integer",
+        default="3",
+        help="Subagents one run may start with delegate_task. Their cost counts toward the run. 0 turns delegation off.",
+        minimum=0,
+        maximum=10,
+    ),
+    SettingSpec(
         name="AEHUB_APPROVAL_TTL_SECONDS",
         group="limits",
         label="Approval window (seconds)",

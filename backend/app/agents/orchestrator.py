@@ -181,11 +181,14 @@ async def generate_ai_response(
     session_id: str,
     principal: Optional[Any] = None,
     input_channel: str = "text",
+    role: Optional[str] = None,
 ) -> dict[str, str]:
     """
     Delegate an authenticated interaction to the native Aurora runtime.
 
     input_channel is "voice" when the intent is a transcript (ADR-021).
+    role is the worker role chosen for this command (F8); None lets triage
+    pick.
 
     The caller must provide an explicit Principal. The principal is preserved
     unchanged through the compatibility facade and native AgentRuntime.
@@ -259,6 +262,7 @@ async def generate_ai_response(
         "principal": principal,
         "system_prompt": system_prompt,
         "input_channel": input_channel,
+        "role": role,
     }
 
     try:
@@ -425,6 +429,7 @@ async def process_orchestration_text(
     request: Request,
     text: str = Form(...),
     ui_context: str = Form(default=""),
+    role: str = Form(default=""),
     image: UploadFile = File(default=None),
     x_session_id: str = Header(
         default="default-session"
@@ -434,8 +439,17 @@ async def process_orchestration_text(
     Authenticate the request and execute text or multimodal Aurora input.
 
     The client-provided X-Session-ID header is intentionally ignored.
+    `role` picks the worker role for this command (F8); empty lets triage
+    pick.
     """
     del x_session_id
+
+    from app.agent_engine.routing import command_role
+
+    try:
+        command_role(role)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     try:
         from app.core.db import SessionLocal
@@ -482,6 +496,7 @@ async def process_orchestration_text(
             ui_context,
             principal.id,
             principal,
+            role=role or None,
         )
 
     except Exception as exc:

@@ -17,6 +17,9 @@ export interface RunUsage {
     failed_tool_calls: number;
     files_modified: number;
     active_seconds: number;
+    /** Subagents the run started and what they cost it (F8). */
+    subagents: number;
+    subagent_cost: number;
 }
 
 /** A limit of 0 is disabled. */
@@ -25,6 +28,8 @@ export interface RunLimits {
     max_run_seconds: number;
     max_failed_tool_calls: number;
     max_files_modified: number;
+    /** Subagents one run may start; 0 turns delegation off (F8). */
+    max_subagents?: number;
     monthly_budget: number;
 }
 
@@ -93,6 +98,8 @@ export const EMPTY_USAGE: RunUsage = {
     failed_tool_calls: 0,
     files_modified: 0,
     active_seconds: 0,
+    subagents: 0,
+    subagent_cost: 0,
 };
 
 export const initialRuns: RunsState = { runs: [], limits: null, halted: false, haltReason: null, nextId: 1 };
@@ -138,6 +145,8 @@ export function toUsage(value: unknown): RunUsage | null {
         failed_tool_calls: pick("failed_tool_calls"),
         files_modified: pick("files_modified"),
         active_seconds: pick("active_seconds"),
+        subagents: pick("subagents"),
+        subagent_cost: pick("subagent_cost"),
     };
 }
 
@@ -371,7 +380,7 @@ export function localTime(timestamp: string | null | undefined): string {
 export const usd = (value: number) => `$${value.toFixed(value >= 1 ? 2 : 4)}`;
 
 export interface Meter {
-    key: "cost" | "time" | "failed" | "files";
+    key: "cost" | "time" | "failed" | "files" | "subagents";
     label: string;
     text: string;
     /** 0..1, 0 when the limit is disabled. */
@@ -390,15 +399,52 @@ function meter(key: Meter["key"], label: string, value: number, max: number, sho
     };
 }
 
-/** The run's totals against the per-run limits. */
+/**
+ * The run's totals against the per-run limits. The sub-agent meter is for a
+ * run that may delegate: a subagent never can, and with the limit at 0
+ * nobody can (F8).
+ */
 export function meters(run: TrackedRun, limits: RunLimits | null, now: number): Meter[] {
     const usage = run.usage;
-    return [
+    const items = [
         meter("cost", "costo", usage.cost, limits?.max_run_cost ?? 0, usd),
         meter("time", "tempo attivo", elapsedSeconds(run, now), limits?.max_run_seconds ?? 0, duration),
         meter("failed", "tool falliti", usage.failed_tool_calls, limits?.max_failed_tool_calls ?? 0, String),
         meter("files", "file scritti", usage.files_modified, limits?.max_files_modified ?? 0, String),
     ];
+    if (!run.parentId && (limits?.max_subagents ?? 0) > 0) {
+        items.push(meter("subagents", "sub-agenti", usage.subagents, limits?.max_subagents ?? 0, String));
+    }
+    return items;
+}
+
+export interface TreeRow<T> {
+    run: T;
+    /** 0 for a run the user started (or whose parent is not listed), 1 for its subagents. */
+    depth: number;
+}
+
+/**
+ * A list of runs as a tree (F8): each subagent right after its parent,
+ * oldest first; the other runs keep their order. A subagent whose parent is
+ * not in the list stays where it is.
+ */
+export function treeRows<T extends { run_id: string; parent_run_id?: string | null }>(
+    runs: T[],
+    startedAt: (run: T) => string | null | undefined,
+): TreeRow<T>[] {
+    const ids = new Set(runs.map((run) => run.run_id));
+    const isChild = (run: T) => Boolean(run.parent_run_id && ids.has(run.parent_run_id));
+    const time = (run: T) => Date.parse(startedAt(run) ?? "") || 0;
+    return runs
+        .filter((run) => !isChild(run))
+        .flatMap((root) => [
+            { run: root, depth: 0 },
+            ...runs
+                .filter((run) => run.parent_run_id === root.run_id)
+                .sort((a, b) => time(a) - time(b))
+                .map((run) => ({ run, depth: 1 })),
+        ]);
 }
 
 /** A step's time from the start of the run: "+0.9 s" in the first minute, then "+1:07". */

@@ -66,7 +66,9 @@ describe("engine events", () => {
             risk: "HIGH",
             kind: "tool",
         });
-        expect(describeEvent(engine("checker.rejected")).kind).toBe("other");
+        // The Critic's verdicts have their own kind (F8).
+        expect(describeEvent(engine("checker.rejected")).kind).toBe("critic");
+        expect(describeEvent(engine("budget.exceeded")).kind).toBe("other");
     });
 });
 

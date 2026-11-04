@@ -94,6 +94,10 @@ export const SETTING_TEXT: Record<string, { label: string; help: string }> = {
         label: "File modificati per run",
         help: "La run si ferma dopo aver modificato questi file. 0 toglie il limite.",
     },
+    AEHUB_RUN_MAX_SUBAGENTS: {
+        label: "Sub-agenti per run",
+        help: "Quanti sub-agenti una run può avviare con delegate_task. Il loro costo conta per la run. 0 spegne la delega.",
+    },
     AEHUB_APPROVAL_TTL_SECONDS: {
         label: "Durata di un'approvazione (secondi)",
         help: "Un'approvazione non decisa entro questo tempo viene negata. Vale per le nuove richieste.",

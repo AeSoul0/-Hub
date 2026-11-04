@@ -24,10 +24,22 @@ export interface EngineEvent {
     role?: string | null;
     tool?: string | null;
     risk?: string | null;
+    /** The attempt a Critic verdict is about (F8). */
+    attempt?: number | null;
     details?: Record<string, unknown>;
 }
 
-export type LogKind = "run" | "model" | "tool" | "approval" | "voice" | "subagent" | "deny" | "other";
+export type LogKind = "run" | "model" | "tool" | "approval" | "voice" | "subagent" | "critic" | "deny" | "other";
+
+// The worker roles by name (F8): a role chosen for a command or a subagent.
+const ROLE_NAMES: Record<string, string> = {
+    architect: "Architect",
+    research: "Research",
+    fast_worker: "Fast Worker",
+    triage: "Triage",
+};
+
+export const roleName = (role: string | null | undefined) => (role ? (ROLE_NAMES[role] ?? role) : "");
 
 export interface LogLine {
     id: number;
@@ -91,10 +103,23 @@ export function clock(timestamp?: string): string {
 
 function kindOf(name: string): LogKind {
     const head = name.split(".")[0];
+    // The Critic's verdicts and the retries they ask for (F8).
+    if (head === "checker" || head === "retry") {
+        return "critic";
+    }
     if (["run", "model", "tool", "approval", "voice", "subagent"].includes(head)) {
         return head as LogKind;
     }
     return "other";
+}
+
+/** "tentativo 2 di 3" for a Critic verdict or a retry; "" without an attempt. */
+export function attemptText(event: EngineEvent): string {
+    if (event.attempt == null) {
+        return "";
+    }
+    const max = event.details?.max_attempts;
+    return typeof max === "number" ? `tentativo ${event.attempt} di ${max}` : `tentativo ${event.attempt}`;
 }
 
 /** The log line for one engine event. */
@@ -102,11 +127,24 @@ export function describe(event: EngineEvent): Omit<LogLine, "id"> {
     const name = event.event_type;
     const status = typeof event.details?.status === "string" ? event.details.status : "";
     const reason = typeof event.details?.reason === "string" ? event.details.reason : "";
+    const instruction = typeof event.details?.retry_instruction === "string" ? event.details.retry_instruction : "";
     let detail: string;
 
     switch (name) {
         case "run.started":
-            detail = `run ${short(event.run_id)}`;
+            detail = [`run ${short(event.run_id)}`, event.role ? `ruolo ${roleName(event.role)}` : ""].filter(Boolean).join(" · ");
+            break;
+        case "checker.accepted":
+            detail = [attemptText(event), "accettato"].filter(Boolean).join(" · ");
+            break;
+        case "checker.rejected":
+            detail = [attemptText(event), "respinto", instruction].filter(Boolean).join(" · ");
+            break;
+        case "checker.failed":
+            detail = [attemptText(event), "bocciato", reason].filter(Boolean).join(" · ");
+            break;
+        case "retry.requested":
+            detail = attemptText(event) || "nuovo tentativo";
             break;
         case "model.called":
             detail = [
@@ -126,10 +164,10 @@ export function describe(event: EngineEvent): Omit<LogLine, "id"> {
             detail = [event.tool, event.details?.succeeded === false ? "fallito" : "ok"].filter(Boolean).join(" · ");
             break;
         case "subagent.spawned":
-            detail = `${event.role ?? "sub-agente"} · ${short(event.run_id)}`;
+            detail = `${roleName(event.role) || "sub-agente"} · ${short(event.run_id)}`;
             break;
         case "subagent.completed":
-            detail = [event.role ?? "sub-agente", status.toLowerCase()].filter(Boolean).join(" · ");
+            detail = [roleName(event.role) || "sub-agente", status.toLowerCase()].filter(Boolean).join(" · ");
             break;
         case "budget.warning":
             detail = "budget del mese quasi esaurito";
@@ -143,7 +181,10 @@ export function describe(event: EngineEvent): Omit<LogLine, "id"> {
         name,
         detail,
         risk: event.risk ? event.risk.toUpperCase() : undefined,
-        kind: name === "tool.completed" && event.details?.succeeded === false ? "deny" : kindOf(name),
+        kind:
+            (name === "tool.completed" && event.details?.succeeded === false) || name === "checker.failed"
+                ? "deny"
+                : kindOf(name),
     };
 }
 

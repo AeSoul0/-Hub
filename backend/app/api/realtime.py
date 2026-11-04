@@ -350,10 +350,20 @@ async def websocket_endpoint(
                 }
             )
 
+            from app.agent_engine.routing import command_role
             from app.agents.orchestrator import (
                 AESOUL_SYSTEM_PROMPT,
                 generate_ai_response,
             )
+
+            # The worker role chosen for this command (F8).
+            role = payload.get("role") if isinstance(payload.get("role"), str) else None
+
+            try:
+                command_role(role)
+            except ValueError as exc:
+                await safe_send({"type": "error", "data": str(exc)})
+                continue
 
             response_payload = (
                 await generate_ai_response(
@@ -363,6 +373,7 @@ async def websocket_endpoint(
                     session_id,
                     principal=ws_principal,
                     input_channel=input_channel,
+                    role=role or None,
                 )
             )
 

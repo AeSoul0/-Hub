@@ -224,14 +224,40 @@ TRIAGE_MAX_CHARS = 280
 ARCHITECT_MIN_CHARS = 1500
 
 
-def triage_role(task: str) -> Role:
+def command_role(value: Optional[str]) -> Optional[Role]:
+    """
+    The role chosen for one command or one subagent (F8); None when nothing
+    was chosen and triage picks. Only an implementer role: the Critic never
+    works on the task it judges.
+    """
+    text = (value or "").strip().lower()
+
+    if not text:
+        return None
+
+    if text not in {role.value for role in IMPLEMENTER_ROLES}:
+        raise ValueError(
+            f"Unknown role '{value}': choose one of "
+            + ", ".join(role.value for role in IMPLEMENTER_ROLES)
+            + "."
+        )
+
+    return Role(text)
+
+
+def triage_role(task: str, role: Optional[str] = None) -> Role:
     """
     Pick the role for a task from its text, without a model call.
 
-    The order matters: architecture/coding hints win over research, which
-    wins over repetitive work; short plain requests go to triage; anything
-    long and unclassified goes to the architect.
+    A role chosen for the command wins, then AEHUB_FORCE_ROLE. Otherwise the
+    order matters: architecture/coding hints win over research, which wins
+    over repetitive work; short plain requests go to triage; anything long
+    and unclassified goes to the architect.
     """
+    chosen = command_role(role)
+    if chosen is not None:
+        return chosen
+
     forced = (config_value("AEHUB_FORCE_ROLE") or "").strip().lower()
     if forced:
         try:
@@ -469,6 +495,7 @@ __all__ = [
     "RoutingConfigError",
     "breaker_for",
     "check_routing_at_startup",
+    "command_role",
     "default_provider_factory",
     "ensure_distinct_models",
     "reset_breakers",
