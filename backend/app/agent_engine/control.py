@@ -237,6 +237,8 @@ class RunLimits:
     max_run_seconds: float = 900.0
     max_failed_tool_calls: int = 10
     max_files_modified: int = 20
+    # Subagents one run may start with delegate_task; 0 turns delegation off (F8).
+    max_subagents: int = 3
 
     @classmethod
     def from_env(cls) -> "RunLimits":
@@ -247,6 +249,7 @@ class RunLimits:
             max_run_seconds=_env_float("AEHUB_RUN_TIMEOUT_SECONDS", 900.0),
             max_failed_tool_calls=_env_int("AEHUB_RUN_MAX_FAILED_TOOL_CALLS", 10),
             max_files_modified=_env_int("AEHUB_RUN_MAX_FILES_MODIFIED", 20),
+            max_subagents=_env_int("AEHUB_RUN_MAX_SUBAGENTS", 3),
         )
 
 
@@ -263,6 +266,9 @@ def usage_view(usage: Dict[str, Any], active_seconds: float = 0.0) -> Dict[str, 
         "failed_tool_calls": int(usage.get("failed_tool_calls") or 0),
         "files_modified": len(usage.get("files_modified") or []),
         "active_seconds": round(float(active_seconds), 1),
+        # Delegation (F8): subagents started and what they cost the run.
+        "subagents": int(usage.get("subagents") or 0),
+        "subagent_cost": round(float(usage.get("subagent_cost") or 0.0), 6),
     }
 
 

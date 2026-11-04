@@ -80,6 +80,7 @@
 .ev[data-k="voice"] { --k: var(--ok); }
 .ev[data-k="run"] { --k: var(--ink); }
 .ev[data-k="deny"] { --k: var(--danger); }
+.ev[data-k="critic"] { --k: var(--ok); }
 .risk { display: inline-block; font-size: 10px; letter-spacing: 0.1em; padding: 0 6px; margin-left: 6px; border: 1px solid var(--faint); border-radius: 6px; color: var(--dim); }
 .riskHigh { border-color: var(--amber); color: var(--amber); }
 
@@ -137,6 +138,7 @@
 .timeline li[data-k="approval"] { --k: var(--amber); }
 .timeline li[data-k="run"] { --k: var(--ink); }
 .timeline li[data-k="deny"] { --k: var(--danger); }
+.timeline li[data-k="critic"] { --k: var(--ok); }
 .total { color: var(--dim); font-variant-numeric: tabular-nums; }
 
 /* core */
@@ -183,6 +185,10 @@
 .ask { flex: 1; min-width: 0; display: flex; border-bottom: 1px solid var(--faint); }
 .ask input { flex: 1; min-width: 0; background: transparent; border: 0; padding: 10px 2px; font-size: 14px; color: var(--ink); outline: none; }
 .ask input::placeholder { color: var(--faint); }
+/* The worker role of the next commands (F8). */
+.role { flex: none; max-width: 112px; background: transparent; border: 0; border-right: 1px solid var(--faint); margin-right: 8px; padding: 10px 6px 10px 0; color: var(--dim); font-family: var(--font-code); font-size: 11px; letter-spacing: 0.06em; cursor: pointer; outline: none; }
+.role:focus-visible { color: var(--ink); }
+.role option { background: var(--deep); color: var(--ink); }
 .ask:focus-within { border-color: var(--ice); }
 .ask button { background: transparent; border: 0; color: var(--dim); font-family: var(--font-code); font-size: 11px; letter-spacing: 0.14em; cursor: pointer; padding-inline: 6px; }
 .ask button:disabled { opacity: 0.4; cursor: default; }

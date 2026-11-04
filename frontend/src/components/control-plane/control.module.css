@@ -145,7 +145,15 @@
 .timeline li[data-k="approval"] { --k: var(--amber); }
 .timeline li[data-k="run"] { --k: var(--ink); }
 .timeline li[data-k="deny"] { --k: var(--danger); }
+/* The Critic's verdicts (F8). */
+.timeline li[data-k="critic"] { --k: var(--ok); }
 .stepName { color: var(--ink); }
+
+/* The run tree (F8): a subagent sits under its parent. */
+.card[data-depth="1"] { margin-left: 18px; border-left: 2px solid rgba(143, 184, 255, 0.45); }
+.table tr[data-depth="1"] td:first-child { padding-left: 22px; }
+.subagents { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.subagents li { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; min-width: 0; }
 .stepDetail { display: block; color: var(--dim); }
 .stepTotal { color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
 

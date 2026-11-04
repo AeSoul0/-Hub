@@ -30,8 +30,10 @@ import {
     nucleoReducer,
     orbMode,
     resumedReply,
+    roleName,
     toEngineEvent,
 } from "@/lib/nucleo/engine";
+import { IMPLEMENTER_ROLES } from "@/lib/nucleo/models";
 import { initialRuns, liveCount, runsReducer, type LiveView } from "@/lib/nucleo/runs";
 import { resumedByVoice } from "@/lib/nucleo/voice";
 
@@ -101,6 +103,8 @@ export default function Nucleo() {
     const [speaking, setSpeaking] = useState(false);
     const [sending, setSending] = useState(false);
     const [text, setText] = useState("");
+    // The worker role for the next commands; "" lets triage pick (F8).
+    const [role, setRole] = useState("");
     const [now, setNow] = useState(() => Date.now());
     const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
     const [deciding, setDeciding] = useState(false);
@@ -303,6 +307,9 @@ export default function Nucleo() {
         say("me", command, "testo");
         const form = new FormData();
         form.append("text", command);
+        if (role) {
+            form.append("role", role);
+        }
         try {
             const response = await fetchApi("/api/orchestrator/ask", { method: "POST", body: form });
             if (!response.ok) {
@@ -595,6 +602,20 @@ export default function Nucleo() {
                             }
                         }}
                     >
+                        <select
+                            aria-label="Ruolo del comando"
+                            title="Chi lavora sul comando: automatico lascia scegliere il triage"
+                            className={styles.role}
+                            value={role}
+                            onChange={(event) => setRole(event.target.value)}
+                        >
+                            <option value="">auto</option>
+                            {IMPLEMENTER_ROLES.map((item) => (
+                                <option key={item} value={item}>
+                                    {roleName(item)}
+                                </option>
+                            ))}
+                        </select>
                         <input
                             aria-label="Comando"
                             autoComplete="off"

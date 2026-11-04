@@ -33,6 +33,13 @@ from typing import Any, Dict, List, Optional, Tuple
 from app.agent_engine.adapters.base import ModelProvider
 from app.agent_engine.approval.manager import ApprovalManager
 from app.agent_engine.context import ContextManager
+from app.agent_engine.delegation import (
+    DELEGATE_TOOL,
+    DelegationScope,
+    Delegator,
+    clear_delegation_scope,
+    set_delegation_scope,
+)
 from app.agent_engine.control import (
     RunLimits,
     SpendLedger,
@@ -60,7 +67,7 @@ from app.agent_engine.models import (
     ToolSpec,
 )
 from app.agent_engine.resources import ResourceManager
-from app.agent_engine.routing import Role
+from app.agent_engine.routing import IMPLEMENTER_ROLES, Role
 from app.agent_engine.state.manager import AgentStateManager
 from app.agent_engine.tool_selection import select_tools
 from app.agents.subagents.base import SubagentFactory
@@ -100,6 +107,8 @@ DEFAULT_MAX_OUTPUT = 4000
 RECALL_LIMIT = 8
 PREFERENCE_LIMIT = 30
 DEFAULT_TOOL_COST = 0.0
+# How much of a Critic's instruction the timeline shows (F8).
+VERDICT_CHARS = 500
 NOTIFY_TIMEOUT_SECONDS = 0.5
 
 
@@ -184,6 +193,8 @@ class AgentRuntime:
         self.db = db_session
         self.tool_gateway = tool_gateway or ToolGateway()
         self._context_manager = context_manager
+        # Set by the AgentEngine: how delegate_task starts a subagent (F8).
+        self.delegator: Optional[Delegator] = None
 
     @property
     def context_manager(self) -> ContextManager:
@@ -381,9 +392,14 @@ class AgentRuntime:
         through the ToolGateway pipeline.
         """
         model_tools: List[Dict[str, Any]] = []
+        delegation_off = RunLimits.from_env().max_subagents <= 0
 
         for tool_name in skill_registry.get_registered_tool_names():
             if exposed_tools is not None and tool_name not in exposed_tools:
+                continue
+
+            # Delegation is one level deep (F8): a subagent never sees it.
+            if tool_name == DELEGATE_TOOL and (capabilities is not None or delegation_off):
                 continue
 
             try:
@@ -484,13 +500,14 @@ class AgentRuntime:
         capabilities: Optional[SubagentCapabilitySet] = None,
         max_cost: Optional[float] = None,
         inherit_untrusted: bool = False,
+        parent_run_id: Optional[str] = None,
     ) -> Any:
         """
         Run a task under the kill switch and report its live state.
 
-        `capabilities`, `max_cost` and `inherit_untrusted` are set for a
-        subagent: its delegated tools, the budget left by the parent run and
-        the parent's untrusted taint.
+        `capabilities`, `max_cost`, `inherit_untrusted` and `parent_run_id`
+        are set for a subagent: its delegated tools, the budget left by the
+        parent run, the parent's untrusted taint and the parent itself.
 
         The run is registered for cancellation (per run or "stop all") for
         as long as it executes; while the global stop is active no new run
@@ -535,6 +552,7 @@ class AgentRuntime:
                 capabilities=capabilities,
                 max_cost=max_cost,
                 inherit_untrusted=inherit_untrusted,
+                parent_run_id=parent_run_id,
             )
             return result
         finally:
@@ -573,6 +591,7 @@ class AgentRuntime:
         capabilities: Optional[SubagentCapabilitySet] = None,
         max_cost: Optional[float] = None,
         inherit_untrusted: bool = False,
+        parent_run_id: Optional[str] = None,
     ) -> Any:
         """
         Execute one deterministic Worker -> ToolGateway -> Checker cycle.
@@ -704,6 +723,8 @@ class AgentRuntime:
 
             agent_run = AgentRun(
                 run_id=run_id,
+                # The run tree (F8): a subagent keeps its parent.
+                parent_run_id=parent_run_id,
                 session_id=session_id,
                 workspace_id=workspace_id,
                 principal_id=principal.id,
@@ -725,8 +746,12 @@ class AgentRuntime:
             EventDispatcher().dispatch(
                 "run.started",
                 run_id=run_id,
+                parent_run_id=parent_run_id,
                 session_id=session_id,
                 workspace_id=workspace_id,
+                # Only a role chosen for the command (F8); triage is not shown.
+                role=task.get("role"),
+                details={"max_attempts": max_attempts},
             )
 
             _ACTIVE_SEGMENTS[run_id] = (0.0, time.monotonic())
@@ -1183,6 +1208,12 @@ class AgentRuntime:
                                     capabilities=capability_set,
                                     input_channel=self._input_channel(worker_context),
                                     exposed_tools=worker_context.get("exposed_tools"),
+                                    delegation=self._delegation_scope(
+                                        agent_run,
+                                        principal,
+                                        limits,
+                                        capability_set,
+                                    ),
                                 ),
                                 cancellation_token,
                             ),
@@ -1369,11 +1400,15 @@ class AgentRuntime:
                     trusted=not worker_context.get("untrusted_context"),
                 )
 
+                # The Critic's verdicts in the timeline (F8): which attempt
+                # out of how many.
                 EventDispatcher().dispatch(
                     "checker.accepted",
                     run_id=run_id,
                     session_id=session_id,
                     workspace_id=workspace_id,
+                    attempt=current_attempt,
+                    details={"max_attempts": max_attempts},
                 )
 
                 EventDispatcher().dispatch(
@@ -1406,6 +1441,18 @@ class AgentRuntime:
                     agent_run.error
                 )
 
+                EventDispatcher().dispatch(
+                    "checker.failed",
+                    run_id=run_id,
+                    session_id=session_id,
+                    workspace_id=workspace_id,
+                    attempt=current_attempt,
+                    details={
+                        "max_attempts": max_attempts,
+                        "reason": agent_run.error[:VERDICT_CHARS],
+                    },
+                )
+
                 self._save(
                     agent_run,
                     current_attempt,
@@ -1429,6 +1476,11 @@ class AgentRuntime:
                 run_id=run_id,
                 session_id=session_id,
                 workspace_id=workspace_id,
+                attempt=current_attempt,
+                details={
+                    "max_attempts": max_attempts,
+                    "retry_instruction": last_feedback[:VERDICT_CHARS],
+                },
             )
 
             EventDispatcher().dispatch(
@@ -1437,6 +1489,7 @@ class AgentRuntime:
                 session_id=session_id,
                 workspace_id=workspace_id,
                 attempt=current_attempt + 1,
+                details={"max_attempts": max_attempts},
             )
 
             current_attempt += 1
@@ -1514,12 +1567,14 @@ class AgentRuntime:
         capabilities: Optional[SubagentCapabilitySet] = None,
         input_channel: str = "text",
         exposed_tools: Optional[List[str]] = None,
+        delegation: Optional[DelegationScope] = None,
     ) -> Observation:
         """
         Run one proposal through the ToolGateway and return its Observation.
 
         ApprovalRequiredError propagates to the caller; any other failure
-        becomes an observation the model can react to.
+        becomes an observation the model can react to. `delegation` is
+        installed for the call, so delegate_task can start a subagent.
         """
         trusted = True
         succeeded = False
@@ -1559,14 +1614,19 @@ class AgentRuntime:
             async def executor(
                 **arguments: Any,
             ) -> Any:
-                return await self._execute_registered_tool(
-                    tool=tool,
-                    arguments=arguments,
-                    session_id=session_id,
-                    workspace_id=workspace_id,
-                    principal_id=principal.id,
-                    trusted=not untrusted_context,
-                )
+                set_delegation_scope(delegation)
+
+                try:
+                    return await self._execute_registered_tool(
+                        tool=tool,
+                        arguments=arguments,
+                        session_id=session_id,
+                        workspace_id=workspace_id,
+                        principal_id=principal.id,
+                        trusted=not untrusted_context,
+                    )
+                finally:
+                    clear_delegation_scope()
 
             tool_result = await self.tool_gateway.execute(
                 invocation,
@@ -1606,6 +1666,28 @@ class AgentRuntime:
             trusted=trusted,
             succeeded=succeeded,
             modified_file=modified_file,
+        )
+
+    def _delegation_scope(
+        self,
+        agent_run: AgentRun,
+        principal: Principal,
+        limits: RunLimits,
+        capabilities: Optional[SubagentCapabilitySet],
+    ) -> DelegationScope:
+        """
+        What delegate_task needs of the run calling it (F8).
+        """
+        return DelegationScope(
+            parent_run_id=agent_run.run_id,
+            session_id=agent_run.session_id,
+            workspace_id=agent_run.workspace_id,
+            principal=principal,
+            usage=agent_run.usage,
+            max_run_cost=limits.max_run_cost,
+            max_subagents=limits.max_subagents,
+            delegate=self.delegator,
+            is_subagent=capabilities is not None,
         )
 
     @staticmethod
@@ -1968,6 +2050,12 @@ class AgentRuntime:
                     capabilities=capability_set,
                     input_channel=self._input_channel(worker_context),
                     exposed_tools=worker_context.get("exposed_tools"),
+                    delegation=self._delegation_scope(
+                        agent_run,
+                        principal,
+                        limits,
+                        capability_set,
+                    ),
                 )
 
             except ApprovalRequiredError as exc:
@@ -2631,6 +2719,11 @@ class AgentRuntime:
             policy=workspace_policy(workspace_id),
         )
 
+        # The role is kept with the task, so the run tree shows it and a
+        # resumed subagent goes back to the same worker (F8).
+        if role in {item.value for item in IMPLEMENTER_ROLES}:
+            task = {**task, "role": role}
+
         worker = SubagentFactory.create_subagent(
             role_name=role,
             system_prompt=(
@@ -2665,6 +2758,7 @@ class AgentRuntime:
             capabilities=capability_set,
             max_cost=child_budget,
             inherit_untrusted=inherit_untrusted,
+            parent_run_id=parent_run_id,
         )
 
         EventDispatcher().dispatch(

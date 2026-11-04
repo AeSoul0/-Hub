@@ -166,8 +166,9 @@ The frontend is a **Next.js application** using React, TypeScript and Tailwind C
   - a dotted sphere in the centre reacts to what the engine does: model calls, tool calls, subagents as small moons, approvals in amber, the microphone, the spoken reply;
   - the conversation sits on the left and the engine's live events on the right; both panes grow from their top edge and can be hidden;
   - pending approvals are decided there;
-  - the **RUN** tab of the right pane follows each run of the session (ADR-023): cost, active time, failed tool calls and written files against the per-run limits, live, with a stop button and the run's timeline; **FERMA TUTTO** in the top bar stops every run (a second click confirms) and **RIPRENDI** lifts the stop.
-- **The Control Plane** (`/control-plane`) has runs, approvals, memory, documents, home, tools, skills, security, voice, settings and setup, all in the Nucleo's style; the history of the runs filters by text, status, period and subagents.
+  - the **RUN** tab of the right pane follows each run of the session (ADR-023): cost, active time, failed tool calls, written files and subagents against the per-run limits, live, with a stop button and the run's timeline; **FERMA TUTTO** in the top bar stops every run (a second click confirms) and **RIPRENDI** lifts the stop;
+  - next to the command field a role can be chosen for the next commands (Architect, Research, Fast Worker, Triage); "auto" leaves it to the triage (ADR-029).
+- **The Control Plane** (`/control-plane`) has runs, approvals, memory, documents, home, tools, skills, security, voice, settings and setup, all in the Nucleo's style; the history of the runs filters by text, status, period and subagents, and shows each subagent under its parent. A run's page lists its subagents, and its timeline shows each verdict of the Critic with the attempt and the correction it asked for (ADR-029).
 - **Settings** (ADR-025) choose the LLM of each role (Architect, Research, Critic, Fast Worker, Triage) with its fallbacks, suggesting each provider's models (OpenRouter with prices), and refuse a Critic that shares a model with another role. They also hold keys, default models, the local server, prices, budget and limits, the approval window, the circuit breaker and the context budget, all applied without a restart.
 - **Tools and skills** (ADR-026):
   - **STRUMENTI** lists every skill and tool with its risk, approval, network and file access, and whether it returns untrusted content. It switches tools off: a disabled tool is never shown to the agent and is refused if proposed. The page also sets the skill index and the allowed MCP servers, and shows the tools' folders, the API host names and the sandbox.
@@ -660,6 +661,7 @@ The model, price and limit variables below (`OPENAI_MODEL`, `AEHUB_CHECKER_MODEL
 | `AEHUB_RUN_MAX_COST` / `AEHUB_MONTHLY_BUDGET` | Per-run hard stop and monthly cap, in USD (warning at `AEHUB_BUDGET_WARNING_RATIO`) | `2` / `30` (`0.8`) |
 | `AEHUB_RUN_TIMEOUT_SECONDS` | Limit on a run's active execution time; waiting for an approval does not count. `0` disables it | `900` |
 | `AEHUB_RUN_MAX_FAILED_TOOL_CALLS` | Failed tool calls after which a run stops (`LIMIT_EXCEEDED`), e.g. a loop on a failing tool or test. `0` disables it | `10` |
+| `AEHUB_RUN_MAX_SUBAGENTS` | Subagents one run may start with `delegate_task`; their cost counts toward the run. `0` turns delegation off (also in Settings) | `3` |
 | `AEHUB_RUN_MAX_FILES_MODIFIED` | Distinct files a run may change through tools flagged `modifies_files`; a call on one more file is refused. `0` disables it | `20` |
 | `AEHUB_APPROVAL_TTL_SECONDS` | An approval left undecided this long is denied (30 s – 24 h; also in Settings) | `300` |
 | `AEHUB_CONTEXT_BUDGET` | Token budget of one model request, split across the Context Manager levels L0–L5 (spec 4.2; also in Settings) | `88000` |
@@ -1077,14 +1079,15 @@ The supervisor decides when deep research should be delegated instead of attempt
 
 ## Subagents
 
-Subagents are created as specialized LangGraph graphs with:
+A run delegates part of its task with the `delegate_task` tool (ADR-029). It goes through the Tool Gateway like any other tool and needs the `agent:invoke` permission, so an admin can delegate and a member cannot. The subagent:
 
-* a role-specific system prompt;
-* an optional tool set;
-* independent execution state;
-* a final result returned to the supervisor.
+* works with the role asked for (Architect, Research, Fast Worker or Triage), otherwise the one the triage picks, and is checked by the same independent Critic;
+* gets at most the tools, permissions and budget of its parent: half of what the parent has left unless it asks for less;
+* starts tainted when its parent has read untrusted content, and its answer is untrusted for the parent;
+* cannot delegate again, and a run starts at most `AEHUB_RUN_MAX_SUBAGENTS` of them;
+* costs its parent what it spent, even when it fails.
 
-The current repository contains a reusable `SubagentFactory`.
+A subagent that needs an approval waits on its own: the parent is told and goes on.
 
 ## Future multi-agent patterns
 

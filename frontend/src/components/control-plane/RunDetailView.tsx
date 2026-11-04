@@ -6,7 +6,8 @@
 import Link from "next/link";
 import React from "react";
 
-import { EMPTY_USAGE, localTime, meters, savedStatus, toUsage, type RunLimits, type TrackedRun } from "@/lib/nucleo/runs";
+import { roleName } from "@/lib/nucleo/engine";
+import { EMPTY_USAGE, localTime, meters, savedStatus, toUsage, usd, type RunLimits, type TrackedRun } from "@/lib/nucleo/runs";
 import { runHref } from "@/lib/routes";
 
 import CitedText from "./CitedText";
@@ -46,6 +47,16 @@ export interface AuditEntry {
     result_preview: string | null;
 }
 
+/** A subagent of the run (the run tree, F8). */
+export interface SubagentSummary {
+    run_id: string;
+    role: string | null;
+    status: string;
+    task: string | null;
+    cost: number;
+    created_at: string | null;
+}
+
 export interface RunDetail {
     run_id: string;
     parent_run_id: string | null;
@@ -70,6 +81,15 @@ export interface RunDetail {
     last_feedback: string | null;
     observations: Observation[];
     audit: AuditEntry[];
+    subagents?: SubagentSummary[];
+}
+
+/** The worker role chosen for the command or by the parent (F8), from the task. */
+function chosenRole(task: unknown): string | null {
+    if (task && typeof task === "object" && typeof (task as { role?: unknown }).role === "string") {
+        return (task as { role: string }).role;
+    }
+    return null;
 }
 
 // Statuses a run can still be cancelled from.
@@ -125,6 +145,8 @@ export default function RunDetailView({
 }) {
     const usage = toUsage(run.usage) ?? EMPTY_USAGE;
     const status = savedStatus(run.status);
+    const role = chosenRole(run.task);
+    const subagents = run.subagents ?? [];
     const tracked: TrackedRun = {
         id: run.run_id,
         parentId: run.parent_run_id,
@@ -169,9 +191,16 @@ export default function RunDetailView({
                                 </dd>
                             </>
                         )}
+                        <dt>Ruolo</dt>
+                        <dd>
+                            {role
+                                ? `${roleName(role)}, scelto ${run.parent_run_id ? "dalla run padre" : "per il comando"}`
+                                : "scelto dal triage"}
+                        </dd>
                         <dt>Consumo</dt>
                         <dd className={styles.mono}>
                             {usage.model_calls} chiamate al modello · {usage.tool_calls} tool · {usage.total_tokens} token
+                            {usage.subagents > 0 && ` · ${usage.subagents} sub-agenti per ${usd(usage.subagent_cost)}`}
                         </dd>
                         <dt>Contesto</dt>
                         <dd>{run.untrusted_context ? "ha letto contenuti non affidabili" : "solo contenuti affidabili"}</dd>
@@ -189,6 +218,31 @@ export default function RunDetailView({
             <Section title="Compito">
                 <pre className={styles.pre}>{text(run.task)}</pre>
             </Section>
+
+            {subagents.length > 0 && (
+                <Section title="Sub-agenti" count={subagents.length}>
+                    <div className={styles.card}>
+                        <ul className={styles.subagents} aria-label="Sub-agenti della run">
+                            {subagents.map((child) => {
+                                const childStatus = savedStatus(child.status);
+                                return (
+                                    <li key={child.run_id}>
+                                        <Link href={runHref(child.run_id)} className={`${styles.link} ${styles.mono}`}>
+                                            {child.run_id.slice(0, 8)}
+                                        </Link>
+                                        <span className={styles.badge}>{roleName(child.role) || "sub-agente"}</span>
+                                        <span className={styles.badge} data-tone={childStatus.tone || undefined}>
+                                            {childStatus.label}
+                                        </span>
+                                        <span className={styles.mono}>{usd(child.cost)}</span>
+                                        {child.task && <span className={styles.muted}>{child.task}</span>}
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    </div>
+                </Section>
+            )}
 
             {run.pending_tool_call && (
                 <Section title="Attende approvazione">

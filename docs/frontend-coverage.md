@@ -7,8 +7,8 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10, ROADMA
 - Un parametro di avvio (porte, URL del database, cartelle dei dati) conta come coperto quando la pagina Sistema lo mostra in sola lettura.
 - ◐ vuol dire parziale e conta mezzo: per esempio si vede ma non si cambia, o si cambia solo scrivendo JSON.
 
-**Ultimo aggiornamento:** F7, casa (2026-10-30).
-**Copertura:** 40,5 righe su 48, cioè **84%**.
+**Ultimo aggiornamento:** F8, orchestrazione e sub-agenti (2026-11-04).
+**Copertura:** 42,5 righe su 49, cioè **87%**.
 
 ## Conversazione e voce
 
@@ -35,8 +35,9 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10, ROADMA
 | 14 | Storico delle run con filtri | Control Plane → RUN | ✓ | F2 |
 | 15 | Vista di una run e timeline | Control Plane → RUN → Dettagli | ✓ | F2 |
 | 16 | Spesa e statistiche | Nucleo (chip del budget); Control Plane → RUN | ✓ | F2 |
-| 17 | Albero dei sub-agenti e verdetti del Critic | — | — | F8 |
-| 18 | Ruolo forzato (`AEHUB_FORCE_ROLE`) | IMPOSTAZIONI → Modelli predefiniti | ✓ | F4 |
+| 17 | Albero dei sub-agenti e verdetti del Critic | Control Plane → RUN (cronologia ad albero; Dettagli → SUB-AGENTI e timeline); Nucleo → RUN | ✓ | F8 |
+| 18 | Ruolo forzato (`AEHUB_FORCE_ROLE`) e ruolo di un comando | IMPOSTAZIONI → Modelli predefiniti; Nucleo, scelta del ruolo accanto al comando | ✓ | F4, F8 |
+| 49 | Delega a un sub-agente (`delegate_task`) e sub-agenti per run (`AEHUB_RUN_MAX_SUBAGENTS`) | STRUMENTI (acceso o spento); IMPOSTAZIONI → Limiti; il contatore nella run | ✓ | F8 |
 
 ## Modelli, chiavi e limiti
 
@@ -102,3 +103,4 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10, ROADMA
 | F5 | 35,5 su 48 | 74% |
 | F6 | 38,5 su 48 | 80% |
 | F7 | 40,5 su 48 | 84% |
+| F8 (una riga nuova: la delega) | 42,5 su 49 | 87% |

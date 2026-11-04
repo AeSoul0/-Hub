@@ -35,6 +35,7 @@ from app.agent_engine.checker import AgentChecker
 from app.agent_engine.routing import (
     ModelRouter,
     Role,
+    command_role,
     ensure_distinct_models,
     triage_role,
 )
@@ -211,21 +212,24 @@ class AgentEngine:
             or AgentRuntime()
         )
 
+        # delegate_task reaches the engine through the runtime (F8).
+        self.runtime.delegator = self.delegate
+
     def worker_for(
         self,
         task: str,
+        role: Optional[str] = None,
     ) -> NativeAgentWorker:
         """
         Return the worker for a task: the fixed one in single-model mode,
-        otherwise the failover chain of the role chosen by triage.
+        otherwise the failover chain of the role chosen for the command, or
+        else of the role triage picks.
         """
         if self.worker is not None:
             return self.worker
 
-        role = triage_role(task)
-
         return NativeAgentWorker(
-            model_provider=self.router.provider_for(role),
+            model_provider=self.router.provider_for(triage_role(task, role)),
             system_prompt=self.worker_system_prompt,
         )
 
@@ -326,6 +330,10 @@ class AgentEngine:
             else "text"
         )
 
+        # A role chosen for this command (F8) is kept with the task, so a
+        # resumed run goes back to the same role.
+        chosen = command_role(input_state.get("role"))
+
         task = {
             "description": str(
                 intent
@@ -333,10 +341,16 @@ class AgentEngine:
             "input_channel": input_channel,
         }
 
+        if chosen is not None:
+            task["role"] = chosen.value
+
         result = await self.runtime.execute_task(
             task=task,
             orchestrator=None,
-            worker=self.worker_for(str(intent)),
+            worker=self.worker_for(
+                str(intent),
+                chosen.value if chosen is not None else None,
+            ),
             checker=self.checker,
             run_id=(
                 str(run_id)
@@ -441,12 +455,14 @@ class AgentEngine:
         permissions: Optional[List[str]] = None,
         deadline: Optional[datetime] = None,
         result_schema: Optional[Dict[str, Any]] = None,
+        child_run_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Delegate a task to a subagent of a running parent.
 
-        The subagent uses the worker the triage picks for its task and the
-        same independent Critic as every run; the runtime narrows its tools,
+        The subagent uses the worker of `role` when it is an implementer
+        role, otherwise the one triage picks for its task, and the same
+        independent Critic as every run; the runtime narrows its tools,
         permissions and budget to what the parent may use.
         """
         if not isinstance(principal, Principal):
@@ -454,9 +470,14 @@ class AgentEngine:
                 "principal is required."
             )
 
+        try:
+            routed = command_role(role)
+        except ValueError:
+            routed = None
+
         return await self.runtime.spawn_agent(
             parent_run_id=parent_run_id,
-            child_run_id=f"run_{uuid4().hex}",
+            child_run_id=child_run_id or f"run_{uuid4().hex}",
             task={"description": task},
             role=role,
             budget=budget,
@@ -467,13 +488,79 @@ class AgentEngine:
             ),
             deadline=deadline,
             result_schema=result_schema or {},
-            worker_provider=self.worker_for(task).model_provider,
+            worker_provider=self.worker_for(
+                task,
+                routed.value if routed is not None else None,
+            ).model_provider,
             checker=self.checker,
             allowed_tools=allowed_tools,
             session_id=session_id,
             workspace_id=principal.workspace_id,
             principal=principal,
         )
+
+    async def delegate(
+        self,
+        parent_run_id: str,
+        session_id: str,
+        task: str,
+        principal: Principal,
+        budget: float,
+        role: Optional[str] = None,
+        allowed_tools: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Run one subagent for delegate_task (F8, ADR-029) and report how it
+        ended and what it cost, also when it failed: the cost is charged to
+        the parent either way.
+        """
+        chosen = command_role(role) or triage_role(task)
+        child_run_id = f"run_{uuid4().hex}"
+        status = "COMPLETED"
+        answer: Optional[str] = None
+        error: Optional[str] = None
+
+        try:
+            spawned = await self.spawn_subagent(
+                parent_run_id=parent_run_id,
+                session_id=session_id,
+                task=task,
+                role=chosen.value,
+                budget=budget,
+                principal=principal,
+                allowed_tools=allowed_tools,
+                child_run_id=child_run_id,
+            )
+            result = spawned.get("result")
+
+            if isinstance(result, dict):
+                status = str(result.get("status") or "COMPLETED").upper()
+                error = result.get("reason") or result.get("error")
+            elif result is None:
+                status = "FAILED"
+                error = "The Critic rejected the result as unrecoverable."
+            else:
+                answer = str(result)
+
+        except Exception as exc:
+            status = "FAILED"
+            error = str(exc)
+
+        child = AgentStateManager.load_agent_run(
+            child_run_id,
+            session_id=session_id,
+            workspace_id=principal.workspace_id,
+            principal_id=principal.id,
+        )
+
+        return {
+            "child_run_id": child_run_id if child is not None else None,
+            "role": chosen.value,
+            "status": status,
+            "answer": answer,
+            "error": error,
+            "cost": float((child.usage or {}).get("cost", 0.0)) if child is not None else 0.0,
+        }
 
     async def resume(
         self,
@@ -527,7 +614,11 @@ class AgentEngine:
             worker=self.worker_for(
                 str(persisted_task.get("description", ""))
                 if isinstance(persisted_task, dict)
-                else str(persisted_task)
+                else str(persisted_task),
+                # The role chosen for the command, kept with the task (F8).
+                persisted_task.get("role")
+                if isinstance(persisted_task, dict)
+                else None,
             ),
             checker=self.checker,
             run_id=run_id,
