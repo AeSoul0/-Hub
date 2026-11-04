@@ -16,6 +16,7 @@ and cannot delegate again.
 from __future__ import annotations
 
 import contextvars
+import math
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Dict, Optional
 
@@ -24,6 +25,11 @@ from app.core.security import Principal
 DELEGATE_TOOL = "delegate_task"
 
 Delegator = Callable[..., Awaitable[Dict[str, Any]]]
+
+# What a subagent may spend when it asks for no budget and its parent has no
+# run cost cap (AEHUB_RUN_MAX_COST=0): half of the default 2 USD cap, as with
+# a capped parent that has spent nothing. The monthly budget still applies.
+UNCAPPED_SUBAGENT_BUDGET = 1.0
 
 
 @dataclass
@@ -47,6 +53,12 @@ class DelegationScope:
     is_subagent: bool = False
 
     def remaining(self) -> float:
+        """
+        What the run has left to spend; infinite when it has no cost cap (0).
+        """
+        if self.max_run_cost <= 0:
+            return math.inf
+
         return self.max_run_cost - float(self.usage.get("cost", 0.0))
 
     def started(self) -> int:
@@ -101,6 +113,7 @@ __all__ = [
     "DELEGATE_TOOL",
     "DelegationScope",
     "Delegator",
+    "UNCAPPED_SUBAGENT_BUDGET",
     "clear_delegation_scope",
     "current_delegation_scope",
     "set_delegation_scope",

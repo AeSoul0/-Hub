@@ -11,6 +11,7 @@ parent, subagent, subagent's Critic, parent, parent's Critic.
 from __future__ import annotations
 
 import json
+import math
 from types import SimpleNamespace
 from typing import Any, Dict, List
 
@@ -20,6 +21,7 @@ from app.agent_engine import events as events_module
 from app.agent_engine import runtime as runtime_module
 from app.agent_engine.application import AgentEngine
 from app.agent_engine.control import run_registry
+from app.agent_engine.delegation import UNCAPPED_SUBAGENT_BUDGET, DelegationScope
 from app.agent_engine.resources import PROFILES, TaskClass
 from app.agent_engine.routing import Role, command_role, triage_role
 from app.agent_engine.runtime import AgentRuntime
@@ -258,6 +260,104 @@ async def test_a_budget_asked_for_never_exceeds_what_is_left(skills, admin, fake
 
     child = _children(db_session_factory, result["run_id"])[0]
     assert child["current_state"]["worker_context"]["max_cost"] == pytest.approx(97)
+
+
+# ==============================================================================
+# NO RUN COST CAP (AEHUB_RUN_MAX_COST=0)
+# ==============================================================================
+
+
+def test_an_uncapped_scope_has_no_end():
+    scope = DelegationScope(
+        parent_run_id="run-1",
+        session_id=SESSION_ID,
+        workspace_id=WORKSPACE_ID,
+        principal=Principal(id="admin-f8", role=RoleEnum.ADMIN, workspace_id=WORKSPACE_ID),
+        usage={"cost": 50.0},
+        max_run_cost=0,
+        max_subagents=3,
+    )
+
+    assert scope.remaining() == math.inf
+
+
+def test_without_a_run_cap_a_subagent_budget_is_its_cap(monkeypatch):
+    monkeypatch.setenv("AEHUB_RUN_MAX_COST", "0")
+    assert AgentRuntime._run_limits({"max_cost": 3}).max_run_cost == 3
+    assert AgentRuntime._run_limits({}).max_run_cost == 0
+
+    monkeypatch.setenv("AEHUB_RUN_MAX_COST", "2")
+    assert AgentRuntime._run_limits({"max_cost": 3}).max_run_cost == 2
+
+
+async def test_without_a_run_cap_a_subagent_gets_the_default_budget(
+    skills, admin, fake_model, db_session_factory, monkeypatch
+):
+    monkeypatch.setenv("AEHUB_RUN_MAX_COST", "0")
+    engine = _engine(
+        fake_model,
+        [
+            fake_model.function_call("call_d", "delegate_task", {"task": "Count the notes."}, usage=(2, 1)),
+            fake_model.text("Three."),
+            fake_model.text("You have three notes."),
+        ],
+        [fake_model.accept(), fake_model.accept()],
+    )
+
+    result = await engine.run(session_id=SESSION_ID, task="Delegate counting my notes.", principal=admin)
+
+    assert result["messages"][0].content == "You have three notes."
+    child = _children(db_session_factory, result["run_id"])[0]
+    assert child["status"] == "completed"
+    assert child["current_state"]["worker_context"]["max_cost"] == pytest.approx(UNCAPPED_SUBAGENT_BUDGET)
+
+
+async def test_without_a_run_cap_a_subagent_gets_the_budget_it_asks_for(
+    skills, admin, fake_model, db_session_factory, monkeypatch
+):
+    monkeypatch.setenv("AEHUB_RUN_MAX_COST", "0")
+    engine = _engine(
+        fake_model,
+        [
+            fake_model.function_call(
+                "call_d", "delegate_task", {"task": "Count the notes.", "budget_usd": 500}, usage=(2, 1)
+            ),
+            fake_model.text("Three."),
+            fake_model.text("Three notes."),
+        ],
+        [fake_model.accept(), fake_model.accept()],
+    )
+
+    result = await engine.run(session_id=SESSION_ID, task="Delegate counting my notes.", principal=admin)
+
+    child = _children(db_session_factory, result["run_id"])[0]
+    assert child["status"] == "completed"
+    assert child["current_state"]["worker_context"]["max_cost"] == pytest.approx(500)
+
+
+async def test_without_a_run_cap_a_subagent_still_stops_at_its_budget(
+    skills, admin, fake_model, db_session_factory, monkeypatch
+):
+    monkeypatch.setenv("AEHUB_RUN_MAX_COST", "0")
+    engine = _engine(
+        fake_model,
+        [
+            fake_model.function_call(
+                "call_d", "delegate_task", {"task": "Count the notes.", "budget_usd": 2}
+            ),
+            fake_model.text("Three.", usage=(2, 1)),
+            fake_model.text("The subagent ran out of budget."),
+        ],
+        [fake_model.accept()],
+    )
+
+    result = await engine.run(session_id=SESSION_ID, task="Delegate counting my notes.", principal=admin)
+
+    outcome = _outcome(_tool_outputs(engine.model_requests[2])[0])
+    assert outcome["status"] == "budget_exceeded"
+    assert "Run budget exhausted" in (outcome["error"] or "")
+    assert outcome["cost_usd"] == pytest.approx(3)
+    assert result["messages"][0].content == "The subagent ran out of budget."
 
 
 async def test_delegation_is_capped_per_run(skills, admin, fake_model, db_session_factory, monkeypatch):

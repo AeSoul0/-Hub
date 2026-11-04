@@ -274,6 +274,52 @@ async def test_monthly_budget_blocks_before_any_model_call(
     assert engine.model_requests == []
 
 
+async def test_a_run_cost_limit_of_zero_is_no_cap(
+    ops, user, fake_model, db_session_factory, monkeypatch
+):
+    monkeypatch.setenv("AEHUB_RUN_MAX_COST", "0")
+
+    engine = _engine(
+        fake_model,
+        [
+            fake_model.function_call("call_1", "ping", {"target": "a"}, usage=(2, 1)),
+            fake_model.text("Done.", usage=(100, 50)),
+        ],
+        [fake_model.accept()],
+    )
+
+    result = await engine.run(session_id=SESSION_ID, task="Ping a.", principal=user)
+
+    assert result["messages"][0].content == "Done."
+    assert ops.calls == ["a"]
+    assert _run_row(db_session_factory, result["run_id"])["snapshot"]["usage"]["cost"] == 204
+
+
+async def test_the_monthly_budget_applies_without_a_run_cap(
+    ops, user, fake_model, monkeypatch
+):
+    monkeypatch.setenv("AEHUB_RUN_MAX_COST", "0")
+    monkeypatch.setenv("AEHUB_MONTHLY_BUDGET", "10")
+
+    engine = _engine(
+        fake_model,
+        [
+            fake_model.function_call("call_1", "ping", {"target": "a"}, usage=(2, 1)),
+            fake_model.function_call("call_2", "ping", {"target": "b"}, usage=(3, 2)),
+            fake_model.text("Never reached.", usage=(1, 1)),
+        ],
+        [fake_model.accept()],
+    )
+
+    result = await engine.run(session_id=SESSION_ID, task="Ping a then b.", principal=user)
+    outcome = result["messages"][0].content
+
+    assert outcome["status"] == "BUDGET_EXCEEDED"
+    assert "Monthly budget exhausted" in outcome["reason"]
+    assert ops.calls == ["a"]
+    assert len(engine.model_requests) == 2
+
+
 @pytest.mark.parametrize(
     ("amount", "shown"),
     [(2, "2"), (0.001, "0.001"), (30.5, "30.5"), (0, "0")],

@@ -25,6 +25,7 @@ import asyncio
 import dataclasses
 import inspect
 import logging
+import math
 import time
 import uuid
 from datetime import datetime
@@ -1723,7 +1724,8 @@ class AgentRuntime:
     ) -> RunLimits:
         """
         Limits from the environment, with a subagent's run budget capped by
-        what its parent had left.
+        what its parent had left. With no run cost cap (0) the subagent's
+        own budget is its cap.
         """
         limits = RunLimits.from_env()
         max_cost = worker_context.get("max_cost")
@@ -1731,7 +1733,11 @@ class AgentRuntime:
         if max_cost is not None:
             limits = dataclasses.replace(
                 limits,
-                max_run_cost=min(limits.max_run_cost, float(max_cost)),
+                max_run_cost=(
+                    min(limits.max_run_cost, float(max_cost))
+                    if limits.max_run_cost > 0
+                    else float(max_cost)
+                ),
             )
 
         return limits
@@ -2122,7 +2128,7 @@ class AgentRuntime:
         """
         run_cost = float(agent_run.usage.get("cost", 0.0))
 
-        if run_cost >= limits.max_run_cost:
+        if limits.max_run_cost > 0 and run_cost >= limits.max_run_cost:
             return BudgetExceededError(
                 f"Run budget exhausted: {run_cost:.4f} USD of "
                 f"{_usd(limits.max_run_cost)} USD."
@@ -2233,7 +2239,7 @@ class AgentRuntime:
                 details={"monthly_budget": limits.monthly_budget},
             )
 
-        if totals["cost"] >= limits.max_run_cost:
+        if limits.max_run_cost > 0 and totals["cost"] >= limits.max_run_cost:
             return BudgetExceededError(
                 f"Run budget exhausted: {totals['cost']:.4f} USD of "
                 f"{_usd(limits.max_run_cost)} USD."
@@ -2622,7 +2628,10 @@ class AgentRuntime:
             )
 
         limits = RunLimits.from_env()
-        parent_remaining = limits.max_run_cost
+        # A run cost cap of 0 is no cap: the subagent gets what it asks for.
+        parent_remaining = (
+            limits.max_run_cost if limits.max_run_cost > 0 else math.inf
+        )
         inherit_untrusted = False
 
         if parent_run_id:
@@ -2651,9 +2660,12 @@ class AgentRuntime:
             if self._input_channel(parent_context) == "voice":
                 task = {**task, "input_channel": "voice"}
 
-            parent_remaining = self._run_limits(
-                parent_context
-            ).max_run_cost - float(parent_run.usage.get("cost", 0.0))
+            parent_cap = self._run_limits(parent_context).max_run_cost
+            parent_remaining = (
+                parent_cap - float(parent_run.usage.get("cost", 0.0))
+                if parent_cap > 0
+                else math.inf
+            )
 
         child_budget = min(budget, parent_remaining)
 
