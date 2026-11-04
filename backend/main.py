@@ -33,6 +33,7 @@ from app.api import (
     auth,
     desktop,
     documents,
+    home as home_api,
     memory,
     realtime,
     runs,
@@ -142,6 +143,12 @@ async def lifespan(
         from app.skills.imported_skills import reload_imported_skills
 
         reload_imported_skills(db)
+
+    # Home devices declared in the Control Plane (F7): their tools appear
+    # once the database is readable.
+    from app.home.store import refresh_home_tools
+
+    refresh_home_tools()
 
     # One line per problem (Critic equal to a Worker, missing provider key,
     # missing prices, ...). The API still starts, so the Settings page can
@@ -435,6 +442,10 @@ app.include_router(
 
 app.include_router(
     skills_api.router
+)
+
+app.include_router(
+    home_api.router
 )
 
 

@@ -167,13 +167,14 @@ The frontend is a **Next.js application** using React, TypeScript and Tailwind C
   - the conversation sits on the left and the engine's live events on the right; both panes grow from their top edge and can be hidden;
   - pending approvals are decided there;
   - the **RUN** tab of the right pane follows each run of the session (ADR-023): cost, active time, failed tool calls and written files against the per-run limits, live, with a stop button and the run's timeline; **FERMA TUTTO** in the top bar stops every run (a second click confirms) and **RIPRENDI** lifts the stop.
-- **The Control Plane** (`/control-plane`) has runs, approvals, memory, documents, tools, skills, security, voice, settings and setup, all in the Nucleo's style; the history of the runs filters by text, status, period and subagents.
+- **The Control Plane** (`/control-plane`) has runs, approvals, memory, documents, home, tools, skills, security, voice, settings and setup, all in the Nucleo's style; the history of the runs filters by text, status, period and subagents.
 - **Settings** (ADR-025) choose the LLM of each role (Architect, Research, Critic, Fast Worker, Triage) with its fallbacks, suggesting each provider's models (OpenRouter with prices), and refuse a Critic that shares a model with another role. They also hold keys, default models, the local server, prices, budget and limits, the approval window, the circuit breaker and the context budget, all applied without a restart.
 - **Tools and skills** (ADR-026):
   - **STRUMENTI** lists every skill and tool with its risk, approval, network and file access, and whether it returns untrusted content. It switches tools off: a disabled tool is never shown to the agent and is refused if proposed. The page also sets the skill index and the allowed MCP servers, and shows the tools' folders, the API host names and the sandbox.
   - **SKILL** imports skills in the open `SKILL.md` format (Claude Code, Codex, OpenClaw) from an https link (a GitHub page is turned into its raw file) or a file. Only the text is imported, and the skill starts off. The page shows the whole text and flags patterns to check before it can be turned on: download-and-run commands, encoded blobs, instruction overrides, secrets, bundled files and links. The agent reads an enabled skill through the `use_skill` tool as untrusted content, so after reading it every high-risk action waits for an approval.
   - **SICUREZZA** shows the audit hash chain, the log (Control Plane changes included) filtered by decision and tool, and which entries returned untrusted content.
   - **The run view** also lists the tools the skill index picked for the run.
+- **Home** (ADR-028): the **CASA** page lists your devices with what ÆHub last sent and, on request, what the device says; it adds and edits devices, sets the MQTT broker and tests the connection.
 - **Memory and documents** (ADR-027):
   - **MEMORIA** turns long-term memory on or off and sets the similarity threshold, the embedder and its model. After an embedder change it recomputes the old vectors.
   - On the same page you add facts, preferences and rules, search with the engine's hybrid retrieval, and filter by kind and trust. A memory can be edited in place, forgotten, or vouched for ("Mi fido", audited) when it was written from untrusted content. All untrusted memories can be forgotten at once.
@@ -599,7 +600,7 @@ cd desktop && npm ci && npx tauri build
 Configuration has three homes:
 
 * **Secrets** (provider API keys, the login key) — the OS keyring, through the launcher (see *First run*). The backend reads them from its environment.
-* **Settings** — model roles, prices, budget and run limits, voice, the tool settings (disabled tools, skill index, MCP servers), memory (on/off, similarity, embedder) and the document size limit. Edited in the Control Plane (**Settings**, `GET`/`PUT /api/settings`), stored in the `app_settings` table, applied from the next run without a restart. A setting never edited falls back to the environment variable of the same name, then to its default, so `backend/.env`, CI and tests keep working. Every change is validated as a whole (a Critic equal to a Worker is refused before it is saved) and recorded in the audit log as `settings.update`.
+* **Settings** — model roles, prices, budget and run limits, voice, the tool settings (disabled tools, skill index, MCP servers), memory (on/off, similarity, embedder), the document size limit and the home MQTT broker. Edited in the Control Plane (**Settings**, `GET`/`PUT /api/settings`), stored in the `app_settings` table, applied from the next run without a restart. A setting never edited falls back to the environment variable of the same name, then to its default, so `backend/.env`, CI and tests keep working. Every change is validated as a whole (a Critic equal to a Worker is refused before it is saved) and recorded in the audit log as `settings.update`.
 * **Infrastructure** — database, Redis, CORS, paths: environment only (`backend/.env`, root `.env` for Compose).
 
 At startup the backend logs one line per configuration problem (`[CONFIG ERROR]`, `[CONFIG WARNING]`, …): Critic equal to a Worker, a provider without its key, models without a price, a run limit above the monthly budget, a missing working folder. The Settings page shows the same list. The API starts anyway, so the page can fix what it can; runs are refused while an error remains.
@@ -681,8 +682,8 @@ The model, price and limit variables below (`OPENAI_MODEL`, `AEHUB_CHECKER_MODEL
 | `AEHUB_TTS_ENGINE` | `piper` (on this machine) or `elevenlabs` (the reply text goes to ElevenLabs, ADR-024); also editable on the VOCE page | `piper` |
 | `AEHUB_ELEVENLABS_VOICE` / `AEHUB_ELEVENLABS_MODEL` | ElevenLabs voice ID and model | none / `eleven_flash_v2_5` |
 | `AEHUB_VOICE_MODELS_DIR` | Where the speech models are downloaded on first use | `~/.cache/aehub/voice` |
-| `AEHUB_HOME_DEVICES` | JSON file of the home devices, outside the working folder (see Home devices) | none (no home tools) |
-| `AEHUB_MQTT_URL` / `AEHUB_MQTT_USERNAME` | Home MQTT broker (`mqtt://host:1883`, `mqtts://host:8883`) and user | none |
+| `AEHUB_HOME_DEVICES` | JSON file of the home devices, outside the working folder (see Home devices); optional, devices can also be declared on the CASA page | none |
+| `AEHUB_MQTT_URL` / `AEHUB_MQTT_USERNAME` | Home MQTT broker (`mqtt://host:1883`, `mqtts://host:8883`) and user; also editable on the CASA page, without a restart | none |
 | `AEHUB_TOOL_SELECTION` / `AEHUB_TOOL_TOP_K` | Skill index: show each run only the tools its task names (`AEHUB_TOOL_TOP_K` 1–50); also editable on the STRUMENTI page | `on` / `6` |
 | `AEHUB_SKILL_INDEX_PATH` | The skill index's own SQLite file | `~/.cache/aehub/skill_index.sqlite3` |
 
@@ -777,11 +778,24 @@ Voice runs on this machine: faster-whisper turns speech into text and Piper spea
 
 The agent controls lights and locks through an MQTT broker on your network (Mosquitto, Zigbee2MQTT, Tasmota).
 
-1. Copy `config/home.example.json` to `config/home.json` and list your devices: id, name, type (`light` or `lock`), MQTT topic and format (`zigbee2mqtt`, the default, or `tasmota` for lights).
-2. In `backend/.env` set `AEHUB_HOME_DEVICES=/app/config/home.json` and `AEHUB_MQTT_URL`, plus `AEHUB_MQTT_USERNAME` when the broker needs a user. The password goes in the keyring (`python scripts/aehub.py setup`). In the desktop app, `home.json` goes next to the database in `%LOCALAPPDATA%\AEHub`.
+**From the CASA page** (no restart):
+
+1. Set the broker address and, when it needs one, the user. The password goes in the keyring: the desktop app saves it from the page, otherwise use `python scripts/aehub.py setup` and restart. **Prova il collegamento** tests the connection.
+2. Add your devices: name, type (`light` or `lock`), MQTT topic and format (`zigbee2mqtt`, the default, or `tasmota` for lights). The home tools appear on their own.
+
+**From a file**, if you prefer:
+
+1. Copy `config/home.example.json` to `config/home.json` and list your devices.
+2. In `backend/.env` set `AEHUB_HOME_DEVICES=/app/config/home.json` and `AEHUB_MQTT_URL`, plus `AEHUB_MQTT_USERNAME` when the broker needs a user. In the desktop app, `home.json` goes next to the database in `%LOCALAPPDATA%\AEHub`.
 3. Restart. The configuration check reports an invalid file or a missing broker.
 
-Each action is its own tool with its own risk: listing devices, a light, and locking a door are LOW; **unlocking a door is HIGH and always waits for approval**. The agent names a device you declared, never a topic or a host. The device file must stay outside the agent's working folder: there the agent's file tools could change it.
+Both lists work together and CASA shows the file's devices read only. An id may appear in only one of them.
+
+Each action is its own tool with its own risk: listing devices, a light, and locking a door are LOW; **unlocking a door is HIGH**. From a run it always waits for approval. From CASA it needs a second click, recorded as the approval of that call. Commands sent from the page go through the same Tool Gateway as the agent's, so a tool turned off in STRUMENTI stays off.
+
+The agent names a device you declared, never a topic or a host. The device file must stay outside the agent's working folder: there the agent's file tools could change it. Devices declared on the page live in the database, out of reach of those tools.
+
+CASA shows the last command sent and says plainly that it is not proof the device obeyed. **Leggi lo stato** asks the device: Zigbee2MQTT topics ending in `/set` and Tasmota `cmnd/<name>/POWER` topics are supported.
 
 ## Which tools a run sees
 

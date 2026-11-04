@@ -7,8 +7,8 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10, ROADMA
 - Un parametro di avvio (porte, URL del database, cartelle dei dati) conta come coperto quando la pagina Sistema lo mostra in sola lettura.
 - ◐ vuol dire parziale e conta mezzo: per esempio si vede ma non si cambia, o si cambia solo scrivendo JSON.
 
-**Ultimo aggiornamento:** F6, memoria e documenti (2026-10-28).
-**Copertura:** 38,5 righe su 48, cioè **80%**.
+**Ultimo aggiornamento:** F7, casa (2026-10-30).
+**Copertura:** 40,5 righe su 48, cioè **84%**.
 
 ## Conversazione e voce
 
@@ -77,8 +77,8 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10, ROADMA
 
 | # | Funzione del backend | Nell'interfaccia | Stato | Milestone |
 |---|---|---|---|---|
-| 39 | Dispositivi e rischio di ogni azione (`home.json`) | — | — | F7 |
-| 40 | Broker MQTT | — | — | F7 |
+| 39 | Dispositivi e rischio di ogni azione (`home.json`) | CASA: dispositivi, stato, comandi attraverso il Tool Gateway; aprire una porta chiede conferma | ✓ | F7 |
+| 40 | Broker MQTT | CASA: indirizzo, utente, password nel portachiavi, prova del collegamento | ✓ | F7 |
 
 ## Sistema
 
@@ -101,3 +101,4 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10, ROADMA
 | F4 | 30 su 48 | 62,5% |
 | F5 | 35,5 su 48 | 74% |
 | F6 | 38,5 su 48 | 80% |
+| F7 | 40,5 su 48 | 84% |
