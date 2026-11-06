@@ -1,6 +1,6 @@
 # Copertura dell'interfaccia: quanto del backend si controlla dalla UI
 
-Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10, ROADMAP §5). Ogni milestone del frontend la aggiorna.
+Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10, ROADMAP §5) e dopo la migrazione a Pydantic AI (P1; decisione dell'utente del 2026-11-06). Ogni milestone del frontend la aggiorna.
 
 **Regole:**
 - Una riga conta come coperta (✓) quando la funzione si usa o si cambia dall'interfaccia, il Nucleo o il Control Plane.

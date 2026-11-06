@@ -54,7 +54,7 @@
 9. **Avvisi ed errori del backend:** gli ultimi 300 messaggi del logging a livello WARNING o superiore, in memoria. Niente su disco, e un riavvio li azzera.
 
 ## Consequences
-- La copertura dell'interfaccia (`docs/frontend-coverage.md`) passa dall'87% al 100% delle righe. F10 controlla che la tabella non abbia lasciato fuori nessuna funzione del backend, prima del tag `v1.0.0`.
+- La copertura dell'interfaccia (`docs/frontend-coverage.md`) passa dall'87% al 100% delle righe. F10 controlla che la tabella non abbia lasciato fuori nessuna funzione del backend; il tag `v1.0.0` arriva dopo la migrazione a Pydantic AI (P1).
 - **WebView2 a finestra ridotta a icona** (memoria al livello basso, sfera ferma): rimandato. La ROADMAP lo vuole solo se libera RAM in modo visibile, e va misurato sull'app vera. La pagina ora mostra la RAM della finestra, quindi la misura si può fare.
 - La riga Rust che passa la versione non viene compilata in CI finché il build Tauri gira solo sui tag (scelta dell'utente del 2026-11-04).
 - Un eval avviato da qui occupa per qualche decina di secondi un secondo processo Python, con 200–300 MB.
