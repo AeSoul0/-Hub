@@ -70,6 +70,8 @@ fn start_engine(app: &AppHandle) -> Result<Child, String> {
         .arg(resources.join("postgres").join("bin"))
         .arg("--frontend-dir")
         .arg(resources.join("frontend"))
+        // Shown on the SISTEMA page next to the latest published version (F9).
+        .env("AEHUB_APP_VERSION", app.package_info().version.to_string())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::from(log));

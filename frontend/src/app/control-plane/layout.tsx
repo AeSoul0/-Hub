@@ -26,6 +26,7 @@ const SECTIONS = [
     { href: "/control-plane/security", label: "SICUREZZA" },
     { href: "/control-plane/voice", label: "VOCE" },
     { href: "/control-plane/settings", label: "IMPOSTAZIONI" },
+    { href: "/control-plane/system", label: "SISTEMA" },
 ] as const;
 
 /**

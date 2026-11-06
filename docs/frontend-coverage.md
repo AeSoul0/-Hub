@@ -7,8 +7,8 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10, ROADMA
 - Un parametro di avvio (porte, URL del database, cartelle dei dati) conta come coperto quando la pagina Sistema lo mostra in sola lettura.
 - ◐ vuol dire parziale e conta mezzo: per esempio si vede ma non si cambia, o si cambia solo scrivendo JSON.
 
-**Ultimo aggiornamento:** F8, orchestrazione e sub-agenti (2026-11-04).
-**Copertura:** 42,5 righe su 49, cioè **87%**.
+**Ultimo aggiornamento:** F9, sistema e osservabilità (2026-11-06).
+**Copertura:** 49 righe su 49, cioè **100%**. F10 controlla che la tabella non abbia lasciato fuori nessuna funzione del backend.
 
 ## Conversazione e voce
 
@@ -22,7 +22,7 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10, ROADMA
 | 6 | Anteprima della voce | Control Plane → VOCE | ✓ | F3 |
 | 7 | Risposta a voce di una run chiesta a voce e ripresa dopo un'approvazione | Nucleo | ✓ | F3 |
 | 8 | Modelli vocali già scaricati, con il peso | Control Plane → VOCE | ✓ | F3 |
-| 9 | Voce accesa o spenta (`AEHUB_VOICE`) | lo stato si vede in VOCE; si cambia solo dall'ambiente | ◐ | F9 |
+| 9 | Voce accesa o spenta (`AEHUB_VOICE`) e quando si liberano i modelli (`AEHUB_VOICE_IDLE_MINUTES`) | Control Plane → VOCE, Accensione e memoria | ✓ | F9 |
 
 ## Motore e run
 
@@ -87,12 +87,12 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10, ROADMA
 |---|---|---|---|---|
 | 41 | Accesso e uscita | schermata di accesso; Esci | ✓ | M11 |
 | 42 | Primo avvio | Control Plane → Primo avvio | ✓ | M12, F4 |
-| 43 | Stato di database, sidecar, bus degli eventi e aggiornamenti | — | — | F9 |
-| 44 | Parametri di avvio in sola lettura (database, Redis, bus, host, origini, cartelle dei dati e dei modelli) | — | — | F9 |
-| 45 | Flight recorder: ricerca ed esportazione | — | — | F9 |
-| 46 | Eval dall'interfaccia | — | — | F9 |
-| 47 | Rotazione della chiave di accesso | — | — | F9 |
-| 48 | RAM dei componenti | — | — | F9 |
+| 43 | Stato di database, sidecar, bus degli eventi e aggiornamenti | Control Plane → SISTEMA, Stato e Aggiornamenti | ✓ | F9 |
+| 44 | Parametri di avvio in sola lettura (database, Redis, bus, host, origini, cartelle dei dati e dei modelli) | Control Plane → SISTEMA, Parametri di avvio | ✓ | F9 |
+| 45 | Flight recorder: ricerca ed esportazione | Control Plane → SISTEMA, Flight recorder | ✓ | F9 |
+| 46 | Eval dall'interfaccia | Control Plane → SISTEMA, Eval | ✓ | F9 |
+| 47 | Rotazione della chiave di accesso | Control Plane → SISTEMA, Chiave di accesso (solo con il keyring) | ✓ | F9 |
+| 48 | RAM dei componenti | Control Plane → SISTEMA, Memoria | ✓ | F9 |
 
 ## Storia
 
@@ -104,3 +104,4 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10, ROADMA
 | F6 | 38,5 su 48 | 80% |
 | F7 | 40,5 su 48 | 84% |
 | F8 (una riga nuova: la delega) | 42,5 su 49 | 87% |
+| F9 | 49 su 49 | 100% |
