@@ -20,12 +20,14 @@ AEHUB_VOICE=off turns voice off. Tests replace the engines with set_engines().
 
 from __future__ import annotations
 
+import gc
 import importlib.util
 import io
 import logging
 import os
 import re
 import threading
+import time
 import wave
 from pathlib import Path
 from typing import Dict, List, Optional, Protocol, Tuple
@@ -39,6 +41,8 @@ DEFAULT_STT_MODEL = "base"
 DEFAULT_STT_LANGUAGE = "it"
 DEFAULT_TTS_VOICE = "it_IT-paola-medium"
 DEFAULT_ELEVENLABS_MODEL = "eleven_flash_v2_5"
+# Minutes without use after which the voice models leave memory (F9).
+DEFAULT_IDLE_MINUTES = 15
 WAV_MIME = "audio/wav"
 MP3_MIME = "audio/mpeg"
 
@@ -62,7 +66,19 @@ class TextToSpeech(Protocol):
 
 
 def voice_enabled() -> bool:
-    return os.getenv("AEHUB_VOICE", "local").strip().lower() != "off"
+    # A runtime setting since F9: switching voice off applies to the next sentence.
+    return (config_value("AEHUB_VOICE", "local") or "local").strip().lower() != "off"
+
+
+def idle_seconds_limit() -> float:
+    """
+    After how long without use the voice models are let go (F9); 0: never.
+    """
+    try:
+        minutes = float(config_value("AEHUB_VOICE_IDLE_MINUTES", str(DEFAULT_IDLE_MINUTES)) or DEFAULT_IDLE_MINUTES)
+    except ValueError:
+        minutes = DEFAULT_IDLE_MINUTES
+    return max(0.0, minutes) * 60
 
 
 def models_dir() -> Path:
@@ -348,6 +364,8 @@ def downloaded_models() -> Dict[str, List[Dict[str, object]]]:
 _engines: dict = {}
 _overrides: dict = {}
 _engines_lock = threading.Lock()
+# When each engine was last asked for (time.monotonic()).
+_last_used: dict = {}
 
 
 def set_engines(stt: Optional[SpeechToText] = None, tts: Optional[TextToSpeech] = None) -> None:
@@ -394,7 +412,62 @@ def _engine(kind: str):
             engine = _build(kind, config)
             _engines[kind] = engine
 
+        _last_used[kind] = time.monotonic()
+
     return engine
+
+
+def _model_loaded(engine: object) -> bool:
+    if isinstance(engine, WhisperSTT):
+        return engine._model is not None
+    if isinstance(engine, PiperTTS):
+        return engine._voice is not None
+    if isinstance(engine, ElevenLabsTTS):
+        return _model_loaded(engine.fallback)
+    return False
+
+
+def loaded_engines(now: Optional[float] = None) -> List[Dict[str, object]]:
+    """
+    The voice models in memory now, and how long each has been unused.
+    """
+    now = time.monotonic() if now is None else now
+
+    with _engines_lock:
+        return [
+            {
+                "kind": kind,
+                "config": list(engine.config),
+                "idle_seconds": round(now - _last_used.get(kind, now), 1),
+            }
+            for kind, engine in sorted(_engines.items())
+            if _model_loaded(engine)
+        ]
+
+
+def release_idle_engines(now: Optional[float] = None) -> List[str]:
+    """
+    Let go of the engines unused for longer than AEHUB_VOICE_IDLE_MINUTES
+    (F9): their models leave memory and load again with the next sentence.
+    A sentence in progress keeps its engine until it ends.
+    """
+    limit = idle_seconds_limit()
+
+    if limit <= 0:
+        return []
+
+    now = time.monotonic() if now is None else now
+
+    with _engines_lock:
+        idle = [kind for kind in _engines if now - _last_used.get(kind, now) >= limit]
+        for kind in idle:
+            _engines.pop(kind, None)
+            _last_used.pop(kind, None)
+
+    if idle:
+        gc.collect()
+
+    return idle
 
 
 def speech_to_text() -> SpeechToText:
@@ -416,6 +489,8 @@ __all__ = [
     "WhisperSTT",
     "downloaded_models",
     "elevenlabs_voices",
+    "loaded_engines",
+    "release_idle_engines",
     "missing_packages",
     "models_dir",
     "set_engines",

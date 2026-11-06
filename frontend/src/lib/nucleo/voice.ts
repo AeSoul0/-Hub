@@ -34,6 +34,9 @@ export interface CloudVoice {
 
 /** The voice settings, in the order the page shows them. */
 export const VOICE_SETTINGS = [
+    // On or off, and when the models leave memory (F9).
+    "AEHUB_VOICE",
+    "AEHUB_VOICE_IDLE_MINUTES",
     "AEHUB_STT_MODEL",
     "AEHUB_STT_LANGUAGE",
     "AEHUB_TTS_ENGINE",
