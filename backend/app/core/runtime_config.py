@@ -365,6 +365,26 @@ SPECS: Tuple[SettingSpec, ...] = (
         help="eleven_flash_v2_5 is the fastest and cheapest; eleven_multilingual_v2 sounds richer.",
         pattern=r"[a-z0-9_]{3,64}",
     ),
+    # Voice on or off, and when its models leave memory (F9, ADR-030).
+    SettingSpec(
+        name="AEHUB_VOICE",
+        group="voice",
+        label="Voice",
+        kind="choice",
+        default="local",
+        help="local turns voice on; off turns it off. Applies to the next sentence.",
+        options=("local", "off"),
+    ),
+    SettingSpec(
+        name="AEHUB_VOICE_IDLE_MINUTES",
+        group="voice",
+        label="Release the voice models after (minutes)",
+        kind="integer",
+        default="15",
+        help="Whisper and Piper leave memory after this long without use and load again with the next sentence. 0 keeps them.",
+        minimum=0,
+        maximum=1440,
+    ),
     # Home (F7, ADR-028): the broker of the home devices, read on every
     # message. The password is a keyring secret (AEHUB_MQTT_PASSWORD).
     SettingSpec(

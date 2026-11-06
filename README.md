@@ -168,12 +168,21 @@ The frontend is a **Next.js application** using React, TypeScript and Tailwind C
   - pending approvals are decided there;
   - the **RUN** tab of the right pane follows each run of the session (ADR-023): cost, active time, failed tool calls, written files and subagents against the per-run limits, live, with a stop button and the run's timeline; **FERMA TUTTO** in the top bar stops every run (a second click confirms) and **RIPRENDI** lifts the stop;
   - next to the command field a role can be chosen for the next commands (Architect, Research, Fast Worker, Triage); "auto" leaves it to the triage (ADR-029).
-- **The Control Plane** (`/control-plane`) has runs, approvals, memory, documents, home, tools, skills, security, voice, settings and setup, all in the Nucleo's style; the history of the runs filters by text, status, period and subagents, and shows each subagent under its parent. A run's page lists its subagents, and its timeline shows each verdict of the Critic with the attempt and the correction it asked for (ADR-029).
+- **The Control Plane** (`/control-plane`) has runs, approvals, memory, documents, home, tools, skills, security, voice, settings, system and setup, all in the Nucleo's style; the history of the runs filters by text, status, period and subagents, and shows each subagent under its parent. A run's page lists its subagents, and its timeline shows each verdict of the Critic with the attempt and the correction it asked for (ADR-029).
 - **Settings** (ADR-025) choose the LLM of each role (Architect, Research, Critic, Fast Worker, Triage) with its fallbacks, suggesting each provider's models (OpenRouter with prices), and refuse a Critic that shares a model with another role. They also hold keys, default models, the local server, prices, budget and limits, the approval window, the circuit breaker and the context budget, all applied without a restart.
 - **Tools and skills** (ADR-026):
   - **STRUMENTI** lists every skill and tool with its risk, approval, network and file access, and whether it returns untrusted content. It switches tools off: a disabled tool is never shown to the agent and is refused if proposed. The page also sets the skill index and the allowed MCP servers, and shows the tools' folders, the API host names and the sandbox.
   - **SKILL** imports skills in the open `SKILL.md` format (Claude Code, Codex, OpenClaw) from an https link (a GitHub page is turned into its raw file) or a file. Only the text is imported, and the skill starts off. The page shows the whole text and flags patterns to check before it can be turned on: download-and-run commands, encoded blobs, instruction overrides, secrets, bundled files and links. The agent reads an enabled skill through the `use_skill` tool as untrusted content, so after reading it every high-risk action waits for an approval.
   - **SICUREZZA** shows the audit hash chain, the log (Control Plane changes included) filtered by decision and tool, and which entries returned untrusted content.
+- **SISTEMA** (ADR-030), for the owner only:
+  - the state of the database and the event bus, the app's version and uptime;
+  - the RAM of ÆHub's processes (backend with voice, PostgreSQL, the browser's Chromium, the desktop window) and the voice models in memory;
+  - whether a newer desktop version is published;
+  - the startup parameters, read only, with no password shown;
+  - flight recorder search and JSONL export;
+  - the offline evals, run in a separate process (the release gate when `evals/baseline.json` is there);
+  - rotating the access key (desktop app, keyring), which closes every other session;
+  - the backend's recent warnings and errors.
   - **The run view** also lists the tools the skill index picked for the run.
 - **Home** (ADR-028): the **CASA** page lists your devices with what ÆHub last sent and, on request, what the device says; it adds and edits devices, sets the MQTT broker and tests the connection.
 - **Memory and documents** (ADR-027):
@@ -679,7 +688,8 @@ The model, price and limit variables below (`OPENAI_MODEL`, `AEHUB_CHECKER_MODEL
 | `AEHUB_EVENT_BUS` | `memory` keeps live events and the cache inside the process, without Redis (the desktop app; also `REDIS_URL=memory://`) | Redis |
 | `AEHUB_FRONTEND_DIR` | Static frontend export the API serves from its own origin (the desktop app) | none |
 | `AEHUB_DATA_DIR` / `AEHUB_PG_BIN` | Desktop app: folder of the database cluster and logs; folder with `initdb` and `pg_ctl` | `%LOCALAPPDATA%\AEHub` / bundled |
-| `AEHUB_VOICE` | `local` (faster-whisper + Piper on this machine) or `off` | `local` |
+| `AEHUB_VOICE` | `local` (faster-whisper + Piper on this machine) or `off`; also on the VOCE page, no restart | `local` |
+| `AEHUB_VOICE_IDLE_MINUTES` | Whisper and Piper leave memory after this long without use and load again with the next sentence; `0` keeps them (also on the VOCE page) | `15` |
 | `AEHUB_STT_MODEL` / `AEHUB_STT_LANGUAGE` / `AEHUB_TTS_VOICE` | Whisper model, spoken language (`auto` to detect), Piper voice; also editable on the VOCE page | `base` / `it` / `it_IT-paola-medium` |
 | `AEHUB_TTS_ENGINE` | `piper` (on this machine) or `elevenlabs` (the reply text goes to ElevenLabs, ADR-024); also editable on the VOCE page | `piper` |
 | `AEHUB_ELEVENLABS_VOICE` / `AEHUB_ELEVENLABS_MODEL` | ElevenLabs voice ID and model | none / `eleven_flash_v2_5` |
