@@ -4,7 +4,7 @@
 # Ubuntu 24.04 (noble) ships Python 3.12. The tag must match the `playwright`
 # pin in requirements.txt, so the package finds the browsers bundled here.
 # ==============================================================================
-FROM mcr.microsoft.com/playwright/python:v1.64.1-noble
+FROM mcr.microsoft.com/playwright/python:v1.65.2-noble
 
 # PREVENT PYTHON FROM BUFFERING STDOUT/STDERR (Real-time logs)
 ENV PYTHONUNBUFFERED=1
