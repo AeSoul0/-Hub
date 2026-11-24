@@ -39,9 +39,11 @@ from app.api import (
     runs,
     settings as settings_api,
     skills as skills_api,
+    system as system_api,
     tools as tools_api,
     voice as voice_api,
 )
+from app.core import log_buffer
 from app.core.telemetry import (
     setup_telemetry,
     shutdown_telemetry,
@@ -115,6 +117,10 @@ def startup_db():
     )
 
 
+# How often idle voice models are looked for (F9).
+VOICE_SWEEP_SECONDS = 60
+
+
 @asynccontextmanager
 async def lifespan(
     app: FastAPI,
@@ -155,10 +161,27 @@ async def lifespan(
     # fix what it can; the engine refuses runs while routing is invalid.
     log_configuration_issues()
 
+    # The SISTEMA page shows the recent warnings and errors (F9).
+    log_buffer.install()
+
+    # Voice models unused for AEHUB_VOICE_IDLE_MINUTES leave memory (F9).
+    async def release_idle_voice() -> None:
+        from app.voice.engines import release_idle_engines
+
+        while True:
+            await asyncio.sleep(VOICE_SWEEP_SECONDS)
+            try:
+                await asyncio.to_thread(release_idle_engines)
+            except Exception as exc:
+                print(f"[WARN] Voice release failed: {exc}")
+
+    voice_sweeper = asyncio.create_task(release_idle_voice())
+
     try:
         yield
 
     finally:
+        voice_sweeper.cancel()
         shutdown_telemetry()
 
 
@@ -446,6 +469,10 @@ app.include_router(
 
 app.include_router(
     home_api.router
+)
+
+app.include_router(
+    system_api.router
 )
 
 

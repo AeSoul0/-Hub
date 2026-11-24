@@ -87,6 +87,16 @@ MANAGEMENT = {
     ("POST", "/api/home/devices/{device_id}/command"),
     ("POST", "/api/home/devices/{device_id}/state"),
     ("POST", "/api/home/broker/check"),
+    # F9: the SISTEMA page. The evals run offline in a child process with
+    # their own tools and database; nothing here runs a tool of the server.
+    ("GET", "/api/system"),
+    ("POST", "/api/system/updates/check"),
+    ("GET", "/api/system/events"),
+    ("GET", "/api/system/events/export"),
+    ("GET", "/api/system/evals"),
+    ("POST", "/api/system/evals"),
+    ("POST", "/api/system/access-key/rotate"),
+    ("GET", "/api/system/logs"),
     ("GET", "/api/events"),
     ("GET", "/health"),
     ("MOUNT", "/metrics"),

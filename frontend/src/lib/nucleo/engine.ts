@@ -92,7 +92,8 @@ export function toEngineEvent(event: ControlEvent): EngineEvent | null {
     return data as unknown as EngineEvent;
 }
 
-const short = (id: string | null | undefined) => (id ? id.slice(0, 4) : "");
+// The engine's run ids all start with "run_": the part after it tells them apart.
+const short = (id: string | null | undefined) => (id ? id.replace(/^run_/, "").slice(0, 4) : "");
 
 // Backend timestamps are naive UTC.
 export function clock(timestamp?: string): string {

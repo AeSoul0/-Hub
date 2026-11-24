@@ -205,6 +205,38 @@ export default function VoicePage() {
 
             <form onSubmit={submit} className={styles.stack} aria-label="Impostazioni della voce">
                 <section className={styles.card}>
+                    <h2 className={styles.h2}>Accensione e memoria</h2>
+                    <div className={styles.filters}>
+                        <label className={styles.field}>
+                            Voce
+                            <select
+                                value={form.AEHUB_VOICE || "local"}
+                                onChange={(event) => set("AEHUB_VOICE", event.target.value)}
+                            >
+                                <option value="local">accesa</option>
+                                <option value="off">spenta</option>
+                            </select>
+                        </label>
+                        <label className={styles.field}>
+                            Libera i modelli dopo (minuti)
+                            <input
+                                type="number"
+                                min={0}
+                                max={1440}
+                                value={form.AEHUB_VOICE_IDLE_MINUTES}
+                                onChange={(event) => set("AEHUB_VOICE_IDLE_MINUTES", event.target.value)}
+                            />
+                        </label>
+                    </div>
+                    <p className={styles.help}>
+                        Whisper e Piper escono dalla memoria dopo questo tempo senza usarli e si ricaricano alla prima
+                        frase (1–2 secondi in più solo quella volta). 0 li tiene sempre caricati.
+                    </p>
+                    {fieldError("AEHUB_VOICE")}
+                    {fieldError("AEHUB_VOICE_IDLE_MINUTES")}
+                </section>
+
+                <section className={styles.card}>
                     <h2 className={styles.h2}>Riconoscimento vocale</h2>
                     <div className={styles.filters}>
                         <label className={styles.field}>
