@@ -40,7 +40,7 @@ paho-mqtt>=2.1.0
 
 duckduckgo-search>=3.9.3
 # Must match the tag of the backend image (backend/dockerfile).
-playwright==1.64.1
+playwright==1.65.2
 beautifulsoup4>=4.12.2
 mcp>=1.0.0
 
