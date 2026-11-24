@@ -1,14 +1,15 @@
 # Copertura dell'interfaccia: quanto del backend si controlla dalla UI
 
-Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10, ROADMAP §5) e dopo la migrazione a Pydantic AI (P1; decisione dell'utente del 2026-11-06). Ogni milestone del frontend la aggiorna.
+Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo D1 (migrazioni), P1 (Pydantic AI), R1 (controllo generale) e Q1 (`runtime.py`), come dice la ROADMAP §6 (2026-11-24). Ogni milestone la aggiorna.
 
 **Regole:**
 - Una riga conta come coperta (✓) quando la funzione si usa o si cambia dall'interfaccia, il Nucleo o il Control Plane.
 - Un parametro di avvio (porte, URL del database, cartelle dei dati) conta come coperto quando la pagina Sistema lo mostra in sola lettura.
 - ◐ vuol dire parziale e conta mezzo: per esempio si vede ma non si cambia, o si cambia solo scrivendo JSON.
+- ⏸ vuol dire **sospesa**: riguarda solo l'app desktop (Tauri), sospesa dal 2026-11-24. Non conta né tra le coperte né tra le mancanti.
 
-**Ultimo aggiornamento:** F9, sistema e osservabilità (2026-11-06).
-**Copertura:** 49 righe su 49, cioè **100%**. F10 controlla che la tabella non abbia lasciato fuori nessuna funzione del backend.
+**Ultimo aggiornamento:** F10, copertura al 100% (2026-11-24).
+**Copertura:** 51 righe su 51, cioè **100%**, più 2 righe sospese (⏸). F10 ha confrontato la tabella con tutte le route e tutte le impostazioni del backend: l'[indice](#indice-ogni-route-e-ogni-impostazione) in fondo dice quale riga copre ciascuna, e un test in CI lo tiene allineato al codice.
 
 ## Conversazione e voce
 
@@ -88,11 +89,20 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10, ROADMA
 | 41 | Accesso e uscita | schermata di accesso; Esci | ✓ | M11 |
 | 42 | Primo avvio | Control Plane → Primo avvio | ✓ | M12, F4 |
 | 43 | Stato di database, sidecar, bus degli eventi e aggiornamenti | Control Plane → SISTEMA, Stato e Aggiornamenti | ✓ | F9 |
-| 44 | Parametri di avvio in sola lettura (database, Redis, bus, host, origini, cartelle dei dati e dei modelli) | Control Plane → SISTEMA, Parametri di avvio | ✓ | F9 |
+| 44 | Parametri di avvio in sola lettura (database, Redis, bus, host e nomi dell'API, origini, cartelle dei dati e dei modelli, ambiente, tracce, indirizzi di OpenAI e OpenRouter) | Control Plane → SISTEMA, Parametri di avvio | ✓ | F9, F10 |
 | 45 | Flight recorder: ricerca ed esportazione | Control Plane → SISTEMA, Flight recorder | ✓ | F9 |
 | 46 | Eval dall'interfaccia | Control Plane → SISTEMA, Eval | ✓ | F9 |
 | 47 | Rotazione della chiave di accesso | Control Plane → SISTEMA, Chiave di accesso (solo con il keyring) | ✓ | F9 |
 | 48 | RAM dei componenti | Control Plane → SISTEMA, Memoria | ✓ | F9 |
+| 50 | Avvisi ed errori recenti del backend (`GET /api/system/logs`) | Control Plane → SISTEMA, Avvisi | ✓ | F9 (riga aggiunta in F10) |
+| 51 | Pagine dell'API stessa: documentazione (`/docs`, `/redoc`, `/openapi.json`), metriche Prometheus (`/metrics`), controllo di salute (`/health`) | Control Plane → SISTEMA, API: un link per ciascuna | ✓ | F10 |
+
+## Sospese: solo app desktop (Tauri)
+
+| # | Funzione del backend | Nell'interfaccia | Stato | Milestone |
+|---|---|---|---|---|
+| S1 | Avvio dell'app desktop: token d'avvio (`GET /desktop/launch/{token}`), launcher (`AEHUB_LAUNCHER`), password del PostgreSQL incorporato (`AEHUB_DESKTOP_DB_PASSWORD`) | l'app desktop stessa: nessun controllo da aggiungere | ⏸ | M14 |
+| S2 | WebView2 a finestra ridotta (memoria al livello basso, sfera ferma) | da misurare sull'app vera | ⏸ | rimandato da F9 |
 
 ## Storia
 
@@ -105,3 +115,160 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10, ROADMA
 | F7 | 40,5 su 48 | 84% |
 | F8 (una riga nuova: la delega) | 42,5 su 49 | 87% |
 | F9 | 49 su 49 | 100% |
+| F10 (confronto con route e impostazioni: due righe nuove, due sospese) | 51 su 51 | 100% |
+
+## Indice: ogni route e ogni impostazione
+
+F10 (2026-11-24): l'elenco viene dal codice (`tests/security/test_api_surface.py`, `app/core/runtime_config.py`, `app/system/status.py`) e `tests/security/test_frontend_coverage.py` controlla in CI che non manchi nulla. Una route o un'impostazione nuova va aggiunta qui con la sua riga.
+
+### Route
+
+| Route | Riga |
+|---|---|
+| `GET /api/approvals` | 11 |
+| `POST /api/approvals/{approval_id}` | 11 |
+| `GET /api/audit` | 34 |
+| `POST /api/auth/login` | 41 |
+| `POST /api/auth/logout` | 41 |
+| `GET /api/auth/verify` | 41 |
+| `GET /api/desktop` | 23 |
+| `PUT /api/desktop/secrets` | 23 |
+| `GET /api/documents` | 37 |
+| `GET /api/documents/passage` | 37 |
+| `GET /api/documents/search` | 37 |
+| `POST /api/documents/sync` | 37 |
+| `POST /api/documents/upload` | 37 |
+| `GET /api/events` | 10 |
+| `GET /api/home` | 39, 40 |
+| `POST /api/home/broker/check` | 40 |
+| `PUT /api/home/devices` | 39 |
+| `POST /api/home/devices/{device_id}/command` | 39 |
+| `POST /api/home/devices/{device_id}/state` | 39 |
+| `DELETE /api/memory` | 35 |
+| `GET /api/memory` | 35 |
+| `POST /api/memory` | 35 |
+| `POST /api/memory/preferences` | 35 (come `POST /api/memory` con una preferenza) |
+| `POST /api/memory/reembed` | 36 |
+| `DELETE /api/memory/{memory_id}` | 35 |
+| `PUT /api/memory/{memory_id}` | 35 |
+| `POST /api/orchestrator/ask` | 1 |
+| `POST /api/orchestrator/listen` | 2 |
+| `GET /api/runs` | 14 |
+| `GET /api/runs/live` | 12 |
+| `POST /api/runs/resume` | 13 |
+| `GET /api/runs/stats` | 16 |
+| `POST /api/runs/stop-all` | 13 |
+| `GET /api/runs/{run_id}` | 15, 17 |
+| `POST /api/runs/{run_id}/cancel` | 12 |
+| `GET /api/runs/{run_id}/events` | 15 |
+| `GET /api/settings` | 18–27, 29, 31–32, 36, 38, 49 (vedi le impostazioni) |
+| `PUT /api/settings` | 18–27, 29, 31–32, 36, 38, 49 (vedi le impostazioni) |
+| `POST /api/settings/onboarding` | 42 |
+| `GET /api/settings/provider-models/{provider}` | 19 |
+| `GET /api/skills` | 30 |
+| `POST /api/skills/import` | 30 |
+| `DELETE /api/skills/{skill_id}` | 30 |
+| `GET /api/skills/{skill_id}` | 30 |
+| `PUT /api/skills/{skill_id}` | 30 |
+| `GET /api/system` | 43, 44, 48 |
+| `POST /api/system/access-key/rotate` | 47 |
+| `GET /api/system/evals` | 46 |
+| `POST /api/system/evals` | 46 |
+| `GET /api/system/events` | 45 |
+| `GET /api/system/events/export` | 45 |
+| `GET /api/system/logs` | 50 |
+| `POST /api/system/updates/check` | 43 |
+| `GET /api/tools` | 28, 29, 31–33 |
+| `GET /api/voice` | 4, 5, 8, 9 |
+| `GET /api/voice/elevenlabs/voices` | 5 |
+| `POST /api/voice/speak` | 6 |
+| `GET /desktop/launch/{token}` | S1 (sospesa) |
+| `GET /docs` | 51 |
+| `GET /docs/oauth2-redirect` | 51 |
+| `GET /health` | 51 |
+| `MOUNT /metrics` | 51 |
+| `GET /openapi.json` | 51 |
+| `GET /redoc` | 51 |
+| `WS /ws/orchestrator` | 3 |
+
+### Impostazioni senza riavvio (IMPOSTAZIONI, VOCE, MEMORIA, CASA, STRUMENTI)
+
+| Impostazione | Riga |
+|---|---|
+| `AEHUB_APPROVAL_TTL_SECONDS` | 26 |
+| `AEHUB_BREAKER_COOLDOWN_SECONDS` | 25 |
+| `AEHUB_BREAKER_THRESHOLD` | 25 |
+| `AEHUB_BUDGET_WARNING_RATIO` | 22 |
+| `AEHUB_CHECKER_MODEL` | 20 |
+| `AEHUB_CONTEXT_BUDGET` | 27 |
+| `AEHUB_DEFAULT_MODEL_PRICE` | 21 |
+| `AEHUB_DISABLED_TOOLS` | 29 |
+| `AEHUB_DOCUMENTS_MAX_FILE_MB` | 38 |
+| `AEHUB_ELEVENLABS_MODEL` | 5 |
+| `AEHUB_ELEVENLABS_VOICE` | 5 |
+| `AEHUB_EMBEDDER` | 36 |
+| `AEHUB_EMBEDDING_MODEL` | 36 |
+| `AEHUB_FORCE_ROLE` | 18 |
+| `AEHUB_LOCAL_BASE_URL` | 24 |
+| `AEHUB_MCP_ALLOWED_SERVERS` | 31 |
+| `AEHUB_MEMORY_ENABLED` | 36 |
+| `AEHUB_MEMORY_MIN_SIMILARITY` | 36 |
+| `AEHUB_MODEL_PRICES` | 21 |
+| `AEHUB_MODEL_ROLES` | 19 |
+| `AEHUB_MONTHLY_BUDGET` | 22 |
+| `AEHUB_MQTT_URL` | 40 |
+| `AEHUB_MQTT_USERNAME` | 40 |
+| `AEHUB_RUN_MAX_COST` | 22 |
+| `AEHUB_RUN_MAX_FAILED_TOOL_CALLS` | 22 |
+| `AEHUB_RUN_MAX_FILES_MODIFIED` | 22 |
+| `AEHUB_RUN_MAX_SUBAGENTS` | 49 |
+| `AEHUB_RUN_TIMEOUT_SECONDS` | 22 |
+| `AEHUB_SNAPSHOT_EVERY` | 27 |
+| `AEHUB_STT_LANGUAGE` | 4 |
+| `AEHUB_STT_MODEL` | 4 |
+| `AEHUB_TOOL_SELECTION` | 32 |
+| `AEHUB_TOOL_TOP_K` | 32 |
+| `AEHUB_TTS_ENGINE` | 5 |
+| `AEHUB_TTS_VOICE` | 5 |
+| `AEHUB_VOICE` | 9 |
+| `AEHUB_VOICE_IDLE_MINUTES` | 9 |
+| `OPENAI_MODEL` | 19, 20 |
+
+### Parametri di avvio (SISTEMA, sola lettura)
+
+| Parametro | Riga |
+|---|---|
+| `POSTGRES_URL` | 44 |
+| `REDIS_URL` | 44 |
+| `AEHUB_EVENT_BUS` | 44 |
+| `AEHUB_HOST` | 44 |
+| `AEHUB_ALLOWED_HOSTS` | 33, 44 |
+| `FRONTEND_URL` | 44 |
+| `AEHUB_ALLOWED_ORIGINS` | 44 |
+| `AEHUB_DATA_DIR` | 44 |
+| `AEHUB_ALLOWED_DIRS` | 33, 44 |
+| `AEHUB_VOICE_MODELS_DIR` | 44 |
+| `AEHUB_SKILL_INDEX_PATH` | 44 |
+| `AEHUB_FLIGHT_RECORDER_PATH` | 44 |
+| `AEHUB_HOME_DEVICES` | 44 |
+| `AEHUB_PG_BIN` | 44 |
+| `AEHUB_FRONTEND_DIR` | 44 |
+| `AEHUB_TELEMETRY_CONSOLE` | 44 |
+| `ENVIRONMENT` | 44 |
+| `OPENAI_BASE_URL` | 44 |
+| `OPENROUTER_BASE_URL` | 44 |
+
+### Segreti e variabili interne
+
+| Variabile | Cos'è | Riga |
+|---|---|---|
+| `AEHUB_SECRET_KEY` | chiave di accesso: si ruota da SISTEMA (nel keyring) | 41, 47 |
+| `OPENAI_API_KEY` | chiave del provider, nel keyring | 23 |
+| `OPENROUTER_API_KEY` | chiave del provider, nel keyring | 23 |
+| `ELEVENLABS_API_KEY` | chiave della voce cloud, nel keyring | 5 |
+| `AEHUB_LOCAL_API_KEY` | chiave del server locale, nel keyring | 24 |
+| `AEHUB_MQTT_PASSWORD` | password del broker, nel keyring | 40 |
+| `AEHUB_APP_VERSION` | versione passata dall'app desktop, mostrata in STATO | 43 |
+| `AEHUB_LAUNCHER` | segnale interno del launcher del desktop | S1 (sospesa) |
+| `AEHUB_DESKTOP_DB_PASSWORD` | password del PostgreSQL incorporato, nel keyring, mai mostrata | S1 (sospesa) |
+| `GROQ_API_KEY` | nessuna funzione: c'è solo nell'ambiente finto delle eval; P1 la sostituisce con Groq vero | - |

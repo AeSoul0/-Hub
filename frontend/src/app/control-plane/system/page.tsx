@@ -2,7 +2,8 @@
  * @file frontend/src/app/control-plane/system/page.tsx
  * @description System (F9, ADR-030): the state of the engine and what it
  * runs on, the startup parameters read only, memory, desktop updates, the
- * flight recorder, the evals, the access key and the recent warnings.
+ * flight recorder, the evals, the access key, the recent warnings and the
+ * API's own pages (documentation, metrics, health; F10).
  *
  * Everything comes from /api/system (admin only). The evals run offline in
  * a child process of the backend; the page follows a run while it lasts.
@@ -12,8 +13,9 @@
 import React, { useCallback, useEffect, useState } from "react";
 
 import styles from "@/components/control-plane/control.module.css";
-import { fetchApi, getJson, postJson } from "@/lib/api/client";
+import { API_BASE_URL, fetchApi, getJson, postJson } from "@/lib/api/client";
 import {
+    API_PAGES,
     bytesText,
     EVAL_STATUS,
     eventTime,
@@ -222,6 +224,26 @@ function Startup({ view }: { view: SystemView }) {
                     </tbody>
                 </table>
             </div>
+        </div>
+    );
+}
+
+function ApiPages() {
+    return (
+        <div className={styles.card}>
+            <p className={styles.muted}>
+                Pagine dell&apos;API stessa, senza accesso: rispondono sull&apos;host dell&apos;API, cioè su questo computer.
+            </p>
+            <ul className={styles.lines} aria-label="Pagine dell'API">
+                {API_PAGES.map((page) => (
+                    <li key={page.path}>
+                        <a className={styles.link} href={new URL(page.path, API_BASE_URL).toString()} target="_blank" rel="noreferrer">
+                            {page.label}
+                        </a>{" "}
+                        <span className={styles.mono}>{page.path}</span> <span className={styles.faint}>· {page.help}</span>
+                    </li>
+                ))}
+            </ul>
         </div>
     );
 }
@@ -590,6 +612,9 @@ export default function SystemPage() {
                     </Section>
                     <Section id="startup-title" title="PARAMETRI DI AVVIO">
                         <Startup view={view} />
+                    </Section>
+                    <Section id="api-title" title="API">
+                        <ApiPages />
                     </Section>
                 </div>
             )}
