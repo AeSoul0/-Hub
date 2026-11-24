@@ -25,6 +25,7 @@ import {
     metricText,
     PARAMETER_LABELS,
     recorderQuery,
+    schemaText,
     SOURCE_LABELS,
     uptimeText,
     voiceText,
@@ -92,6 +93,8 @@ function StatusCards({ view }: { view: SystemView }) {
                     <dd className={styles.mono}>{database.dialect}</dd>
                     <dt>Risposta</dt>
                     <dd className={styles.mono}>{database.latency_ms != null ? `${database.latency_ms} ms` : "-"}</dd>
+                    <dt>Schema</dt>
+                    <dd className={styles.mono}>{schemaText(database.revision, database.head)}</dd>
                 </dl>
                 {database.error && <p className={styles.error}>{database.error}</p>}
             </article>

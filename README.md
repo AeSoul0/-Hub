@@ -277,7 +277,7 @@ The memory layer currently provides:
 
 ### PostgreSQL
 
-PostgreSQL is used for durable state and agent persistence, including LangGraph checkpoints and structured memory records.
+PostgreSQL (with pgvector) holds everything durable: identities and sessions, runs and approvals, the hash-chained audit, settings, long-term memory with its vectors and full-text index, the document index and imported skills. The schema comes from the Alembic revisions in `backend/alembic/versions/`, applied at every start (see [Changing the schema](#changing-the-schema)).
 
 ### Redis
 
@@ -1474,6 +1474,26 @@ feature/tool-permissions
 fix/session-isolation
 docs/agent-architecture
 ```
+
+## Changing the schema
+
+Since D1 (ADR-031) Alembic is the only source of the schema. At every start the API runs `alembic upgrade head` (Docker, `make demo` and the desktop app alike), so an update keeps memory, runs and audit. A database built before D1 by the old `create_all` is recognised, gets the tables it lacks and is marked at the baseline, without losing a row.
+
+Every change to a model in `backend/app/domain/models/` is a new revision; no more separate tables to get around `create_all`:
+
+```bash
+cd backend
+alembic revision --autogenerate -m "memory: add the expiry date"
+```
+
+Read the generated file before committing it: autogenerate does not see everything (data moves, expression indexes, extensions). Then check that the models and the revisions agree:
+
+```bash
+alembic upgrade head
+alembic check
+```
+
+All three commands use `POSTGRES_URL`. In CI, `tests/database/test_migrations.py` builds a database from scratch and one with the old `create_all`, and fails when a model changed without a revision.
 
 ## Pull requests
 

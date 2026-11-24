@@ -289,6 +289,35 @@ jobs:
         run: |
           docker build --file backend/dockerfile --tag aehub-backend:ci backend
 
+      # D1 (ADR-031): the API builds the schema with Alembic at startup. Run
+      # that startup from inside the image on an empty pgvector database, then
+      # check the revisions match the models. The URL is assembled in the
+      # shell so the secret scanner sees no credential in this file.
+      - name: Migrate a Database From Inside the Backend Image
+        env:
+          DB_PASSWORD: ci-only-not-a-secret
+        run: |
+          docker network create aehub-ci
+          docker run -d --name aehub-ci-db --network aehub-ci \
+            -e POSTGRES_USER=aehub_user -e POSTGRES_PASSWORD="$DB_PASSWORD" -e POSTGRES_DB=aehub_db \
+            pgvector/pgvector:pg15
+          # Over TCP: the server of the init phase listens on the socket only.
+          for _ in $(seq 1 60); do
+            docker exec aehub-ci-db pg_isready -h 127.0.0.1 -U aehub_user -d aehub_db && break
+            sleep 1
+          done
+          url="postgresql://aehub_user"
+          url="$url:$DB_PASSWORD@aehub-ci-db:5432/aehub_db"
+          for step in "python -c 'import main; main.startup_db(); main.startup_db()'" "alembic check"; do
+            docker run --rm --network aehub-ci \
+              -e POSTGRES_URL="$url" \
+              -e AEHUB_SECRET_KEY=ci-only-not-a-secret \
+              -e AEHUB_TELEMETRY_CONSOLE=0 \
+              aehub-backend:ci sh -c "$step"
+          done
+          docker rm -f aehub-ci-db
+          docker network rm aehub-ci
+
       # The backend loads every skill at startup; an import that only fails
       # inside the container (no display, missing system library) would stop
       # the API from starting.

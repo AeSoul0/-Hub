@@ -181,7 +181,7 @@ class MonthlySpend(Base):
     """
     Model spend (USD) of one principal in one calendar month (YYYY-MM).
 
-    A separate table so existing databases get it through create_all.
+    A separate table, as was the rule before migrations (D1, ADR-031).
     """
 
     __tablename__ = "monthly_spend"
