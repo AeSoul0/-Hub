@@ -102,6 +102,7 @@ export const PARAMETER_LABELS: Record<string, string> = {
     REDIS_URL: "Redis",
     AEHUB_EVENT_BUS: "Bus degli eventi",
     AEHUB_HOST: "Host dell'API",
+    AEHUB_ALLOWED_HOSTS: "Altri nomi dell'API",
     FRONTEND_URL: "Origine del frontend",
     AEHUB_ALLOWED_ORIGINS: "Altre origini permesse",
     AEHUB_DATA_DIR: "Cartella dei dati",
@@ -112,7 +113,20 @@ export const PARAMETER_LABELS: Record<string, string> = {
     AEHUB_HOME_DEVICES: "File dei dispositivi",
     AEHUB_PG_BIN: "Programmi di PostgreSQL",
     AEHUB_FRONTEND_DIR: "Frontend servito dall'API",
+    AEHUB_TELEMETRY_CONSOLE: "Tracce nella console",
+    ENVIRONMENT: "Ambiente (production: cookie solo HTTPS)",
+    OPENAI_BASE_URL: "Indirizzo di OpenAI",
+    OPENROUTER_BASE_URL: "Indirizzo di OpenRouter",
 };
+
+/** The API's own pages for tools and developers (F10): they need no login. */
+export const API_PAGES: ReadonlyArray<{ path: string; label: string; help: string }> = [
+    { path: "/docs", label: "Documentazione dell'API", help: "ogni route, da provare (Swagger)" },
+    { path: "/redoc", label: "Riferimento dell'API", help: "la stessa documentazione, da leggere" },
+    { path: "/openapi.json", label: "Schema OpenAPI", help: "per generare un client" },
+    { path: "/metrics", label: "Metriche Prometheus", help: "processo e Python, per un monitor esterno" },
+    { path: "/health", label: "Controllo di salute", help: "la sonda dei container: risponde sempre ok" },
+];
 
 export const SOURCE_LABELS: Record<StartupParameter["source"], string> = {
     environment: "dall'ambiente",

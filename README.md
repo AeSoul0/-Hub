@@ -182,7 +182,8 @@ The frontend is a **Next.js application** using React, TypeScript and Tailwind C
   - flight recorder search and JSONL export;
   - the offline evals, run in a separate process (the release gate when `evals/baseline.json` is there);
   - rotating the access key (desktop app, keyring), which closes every other session;
-  - the backend's recent warnings and errors.
+  - the backend's recent warnings and errors;
+  - links to the API's own pages: `/docs`, `/redoc`, `/openapi.json`, the Prometheus `/metrics` and the `/health` probe (they need no login and answer on the API's host).
   - **The run view** also lists the tools the skill index picked for the run.
 - **Home** (ADR-028): the **CASA** page lists your devices with what ÆHub last sent and, on request, what the device says; it adds and edits devices, sets the MQTT broker and tests the connection.
 - **Memory and documents** (ADR-027):
@@ -190,7 +191,7 @@ The frontend is a **Next.js application** using React, TypeScript and Tailwind C
   - On the same page you add facts, preferences and rules, search with the engine's hybrid retrieval, and filter by kind and trust. A memory can be edited in place, forgotten, or vouched for ("Mi fido", audited) when it was written from untrusted content. All untrusted memories can be forgotten at once.
   - **DOCUMENTI** shows the working folder and its index. It syncs, uploads a file into the folder, sets the size limit and searches the index.
   - **Citations** `[doc: file#lines]` in answers (Nucleo and run view) open the cited passage.
-- **How much of the backend the interface controls** is tracked in `docs/frontend-coverage.md`; `v1.0.0` waits for 100%.
+- **How much of the backend the interface controls** is tracked in `docs/frontend-coverage.md`: 100% since F10. Its index maps every route, setting, startup parameter and secret to the row that covers it, and `tests/security/test_frontend_coverage.py` fails when something new is missing.
 
 The look is a deep-blue space theme with squircle corners. The visual reference is `docs/design/hud-prototype.html`.
 

@@ -38,6 +38,7 @@ STARTUP_PARAMETERS: Tuple[Tuple[str, Optional[str]], ...] = (
     ("REDIS_URL", "redis://localhost:6379/0"),
     ("AEHUB_EVENT_BUS", "redis"),
     ("AEHUB_HOST", "127.0.0.1"),
+    ("AEHUB_ALLOWED_HOSTS", None),
     ("FRONTEND_URL", "http://localhost:3000"),
     ("AEHUB_ALLOWED_ORIGINS", None),
     ("AEHUB_DATA_DIR", None),
@@ -48,6 +49,11 @@ STARTUP_PARAMETERS: Tuple[Tuple[str, Optional[str]], ...] = (
     ("AEHUB_HOME_DEVICES", None),
     ("AEHUB_PG_BIN", None),
     ("AEHUB_FRONTEND_DIR", None),
+    ("AEHUB_TELEMETRY_CONSOLE", "1"),
+    # "production" makes the session cookie HTTPS only.
+    ("ENVIRONMENT", "development"),
+    ("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+    ("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
 )
 
 _PASSWORD_IN_URL = re.compile(r"(//[^/:@\s]*:)[^/\s]*@")

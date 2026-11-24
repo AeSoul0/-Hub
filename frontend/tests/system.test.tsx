@@ -144,6 +144,19 @@ describe("the SISTEMA page", () => {
         expect(within(startup).getByText("non impostato")).toBeInTheDocument();
     });
 
+    it("links the API's own pages: documentation, metrics and health", async () => {
+        routes();
+        render(<SystemPage />);
+
+        const pages = await screen.findByRole("list", { name: "Pagine dell'API" });
+        const docs = within(pages).getByRole("link", { name: "Documentazione dell'API" });
+        expect(new URL(docs.getAttribute("href") ?? "").pathname).toBe("/docs");
+        expect(docs).toHaveAttribute("target", "_blank");
+        for (const name of ["Riferimento dell'API", "Schema OpenAPI", "Metriche Prometheus", "Controllo di salute"]) {
+            expect(within(pages).getByRole("link", { name })).toBeInTheDocument();
+        }
+    });
+
     it("says when the database does not answer", async () => {
         routes({
             "GET /api/system": () => ({
