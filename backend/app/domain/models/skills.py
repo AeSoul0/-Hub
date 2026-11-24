@@ -5,8 +5,8 @@
 One row per skill, keyed by an id; the name is unique. The whole SKILL.md
 text is kept as imported, with its SHA-256, so what the agent reads is
 exactly what the user was shown before turning the skill on. A new skill
-starts disabled. A separate table, so existing databases get it through
-create_all.
+starts disabled. A separate table, as was the rule before migrations (D1,
+ADR-031).
 """
 
 from __future__ import annotations

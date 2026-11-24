@@ -9,6 +9,7 @@ import {
     eventTime,
     metricText,
     recorderQuery,
+    schemaText,
     uptimeText,
     voiceText,
     type EvalState,
@@ -21,7 +22,7 @@ import { stubFetch } from "./helpers";
 function view(extra: Partial<SystemView> = {}): SystemView {
     return {
         app: { version: "1.0.0", desktop: true, python: "3.12.4", pid: 42, started_at: "2026-11-06T09:00:00", uptime_seconds: 3700 },
-        database: { ok: true, dialect: "postgresql", latency_ms: 1.4, error: null },
+        database: { ok: true, dialect: "postgresql", latency_ms: 1.4, revision: "0001", head: "0001", error: null },
         event_bus: { kind: "memory", ok: true, error: null },
         startup: [
             { name: "POSTGRES_URL", value: "postgresql://aehub:***@127.0.0.1:5432/aehub", source: "environment" },
@@ -84,6 +85,12 @@ describe("system helpers", () => {
         expect(metricText("cases", 44)).toBe("44");
     });
 
+    it("say whether the database schema is up to date", () => {
+        expect(schemaText("0001", "0001")).toBe("0001, aggiornato");
+        expect(schemaText("0001", "0002")).toBe("0001, da aggiornare a 0002");
+        expect(schemaText(null, "0001")).toBe("non migrato (ultima 0001)");
+    });
+
     it("name the voice models in memory", () => {
         expect(voiceText({ kind: "stt", config: ["base", "it"], idle_seconds: 180 })).toBe("Whisper base, ferma da 3 min");
         expect(voiceText({ kind: "tts", config: ["piper", "it_IT-paola-medium"], idle_seconds: 5 })).toBe(
@@ -126,6 +133,7 @@ describe("the SISTEMA page", () => {
         const database = await screen.findByRole("article", { name: "Database" });
         expect(within(database).getByText("raggiungibile")).toBeInTheDocument();
         expect(within(database).getByText("1.4 ms")).toBeInTheDocument();
+        expect(within(database).getByText("0001, aggiornato")).toBeInTheDocument();
         expect(within(screen.getByRole("article", { name: "Applicazione" })).getByText("app desktop")).toBeInTheDocument();
         expect(screen.getByText("In memoria, dentro il backend.")).toBeInTheDocument();
 
@@ -161,7 +169,7 @@ describe("the SISTEMA page", () => {
         routes({
             "GET /api/system": () => ({
                 status: 200,
-                body: view({ database: { ok: false, dialect: "postgresql", latency_ms: null, error: "OperationalError: refused" } }),
+                body: view({ database: { ok: false, dialect: "postgresql", latency_ms: null, revision: null, head: "0001", error: "OperationalError: refused" } }),
             }),
         });
         render(<SystemPage />);

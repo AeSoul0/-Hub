@@ -92,6 +92,10 @@ def test_the_database_check_reports_without_the_password(monkeypatch):
     monkeypatch.setattr(db_module, "engine", create_engine("sqlite://", poolclass=StaticPool))
     good = status.database_status()
     assert good["ok"] is True and good["dialect"] == "sqlite" and good["latency_ms"] >= 0
+    # A database never migrated has no revision; the code's newest one is shown (D1).
+    from app.core.migrations import head_revision
+
+    assert good["revision"] is None and good["head"] == head_revision()
 
     class Broken:
         dialect = type("D", (), {"name": "postgresql"})()

@@ -50,6 +50,8 @@ mcp>=1.0.0
 # ==============================================================================
 
 SQLAlchemy>=2.0.23
+# The schema: every change is an Alembic revision (D1, ADR-031).
+alembic>=1.20.1
 asyncpg>=0.29.0
 psycopg2-binary>=2.9.9
 psycopg[binary]>=3.1.0

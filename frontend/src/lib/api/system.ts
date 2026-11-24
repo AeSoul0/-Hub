@@ -33,7 +33,16 @@ export interface SystemView {
         started_at: string;
         uptime_seconds: number;
     };
-    database: { ok: boolean; dialect: string; latency_ms: number | null; error: string | null };
+    database: {
+        ok: boolean;
+        dialect: string;
+        latency_ms: number | null;
+        /** Alembic revision of the database (D1); null before the first migration. */
+        revision: string | null;
+        /** Newest revision shipped with this code. */
+        head: string;
+        error: string | null;
+    };
     event_bus: { kind: "memory" | "redis"; ok: boolean; error: string | null };
     startup: StartupParameter[];
     memory: {
@@ -233,4 +242,10 @@ export function recorderQuery(filters: RecorderFilters, extra: Record<string, st
     }
     const text = params.toString();
     return text ? `?${text}` : "";
+}
+
+/** The schema revision of the database against the newest one of the code (D1, ADR-031). */
+export function schemaText(revision: string | null, head: string): string {
+    if (!revision) return `non migrato (ultima ${head})`;
+    return revision === head ? `${revision}, aggiornato` : `${revision}, da aggiornare a ${head}`;
 }

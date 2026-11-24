@@ -8,7 +8,7 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 - ◐ vuol dire parziale e conta mezzo: per esempio si vede ma non si cambia, o si cambia solo scrivendo JSON.
 - ⏸ vuol dire **sospesa**: riguarda solo l'app desktop (Tauri), sospesa dal 2026-11-24. Non conta né tra le coperte né tra le mancanti.
 
-**Ultimo aggiornamento:** F10, copertura al 100% (2026-11-24).
+**Ultimo aggiornamento:** D1, migrazioni del database (2026-11-24): la scheda Database di SISTEMA dice a che revisione è lo schema.
 **Copertura:** 51 righe su 51, cioè **100%**, più 2 righe sospese (⏸). F10 ha confrontato la tabella con tutte le route e tutte le impostazioni del backend: l'[indice](#indice-ogni-route-e-ogni-impostazione) in fondo dice quale riga copre ciascuna, e un test in CI lo tiene allineato al codice.
 
 ## Conversazione e voce
@@ -88,7 +88,7 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 |---|---|---|---|---|
 | 41 | Accesso e uscita | schermata di accesso; Esci | ✓ | M11 |
 | 42 | Primo avvio | Control Plane → Primo avvio | ✓ | M12, F4 |
-| 43 | Stato di database, sidecar, bus degli eventi e aggiornamenti | Control Plane → SISTEMA, Stato e Aggiornamenti | ✓ | F9 |
+| 43 | Stato di database (con la revisione dello schema), sidecar, bus degli eventi e aggiornamenti | Control Plane → SISTEMA, Stato e Aggiornamenti | ✓ | F9, D1 |
 | 44 | Parametri di avvio in sola lettura (database, Redis, bus, host e nomi dell'API, origini, cartelle dei dati e dei modelli, ambiente, tracce, indirizzi di OpenAI e OpenRouter) | Control Plane → SISTEMA, Parametri di avvio | ✓ | F9, F10 |
 | 45 | Flight recorder: ricerca ed esportazione | Control Plane → SISTEMA, Flight recorder | ✓ | F9 |
 | 46 | Eval dall'interfaccia | Control Plane → SISTEMA, Eval | ✓ | F9 |
@@ -116,6 +116,7 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 | F8 (una riga nuova: la delega) | 42,5 su 49 | 87% |
 | F9 | 49 su 49 | 100% |
 | F10 (confronto con route e impostazioni: due righe nuove, due sospese) | 51 su 51 | 100% |
+| D1 (la revisione dello schema nella riga 43) | 51 su 51 | 100% |
 
 ## Indice: ogni route e ogni impostazione
 

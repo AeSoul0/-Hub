@@ -2,7 +2,8 @@
 @file backend/app/system/status.py
 @description What the SISTEMA page shows (F9, ADR-030):
 - the app: version, desktop or server, Python, uptime;
-- the database and the event bus, checked when the page asks;
+- the database and the event bus, checked when the page asks, with the
+  schema revision of the database and the newest one of the code (D1);
 - the startup parameters, read only: they are read when the API starts, so
   they change only with a restart, and a password in a URL is never shown;
 - the memory of ÆHub's processes, read with psutil;
@@ -104,18 +105,33 @@ def database_status() -> Dict[str, Any]:
 
     from app.core.db import engine
 
+    from app.core.migrations import current_revision, head_revision
+
     started = time.perf_counter()
+    # The newest schema revision shipped with this code (D1, ADR-031).
+    head = head_revision()
 
     try:
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
+            latency = round((time.perf_counter() - started) * 1000, 1)
+            revision = current_revision(connection)
     except Exception as exc:
-        return {"ok": False, "dialect": engine.dialect.name, "latency_ms": None, "error": _short_error(exc)}
+        return {
+            "ok": False,
+            "dialect": engine.dialect.name,
+            "latency_ms": None,
+            "revision": None,
+            "head": head,
+            "error": _short_error(exc),
+        }
 
     return {
         "ok": True,
         "dialect": engine.dialect.name,
-        "latency_ms": round((time.perf_counter() - started) * 1000, 1),
+        "latency_ms": latency,
+        "revision": revision,
+        "head": head,
         "error": None,
     }
 

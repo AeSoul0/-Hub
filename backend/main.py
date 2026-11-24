@@ -88,32 +88,25 @@ if (
 
 def startup_db():
     """
-    Initialize shared persistence and telemetry instrumentation: pgvector
-    and every SQLAlchemy table (the only persistence layer since M15).
+    Initialize shared persistence and telemetry instrumentation. The schema
+    comes from the Alembic revisions (D1, ADR-031): `upgrade head` creates
+    pgvector and the tables on an empty database, marks a database built by
+    the old `create_all`, and applies any newer revision.
     """
-    from sqlalchemy import text
-
     from app.core.db import engine
+    from app.core.migrations import upgrade_database
     from app.core.telemetry import instrument_sqlalchemy
-    from app.domain.models import Base
 
     instrument_sqlalchemy(
         engine
     )
 
-    with engine.begin() as conn:
-        conn.execute(
-            text(
-                "CREATE EXTENSION IF NOT EXISTS vector"
-            )
-        )
-
-    Base.metadata.create_all(
-        bind=engine
+    revision = upgrade_database(
+        engine
     )
 
     print(
-        "[OK] Centralized PostgreSQL database schema initialized."
+        f"[OK] Database schema at revision {revision}."
     )
 
 

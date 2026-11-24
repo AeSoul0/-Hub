@@ -43,8 +43,8 @@ class AuditChainLink(Base):
 
     Each link stores the SHA-256 of its audit row chained to the previous
     link, so editing or deleting a row breaks every later hash. The chain
-    lives in its own table so existing databases pick it up through
-    create_all without a migration.
+    lives in its own table, as was the rule before migrations (D1,
+    ADR-031): since then a schema change is an Alembic revision.
     """
     __tablename__ = "audit_chain"
 

@@ -65,9 +65,10 @@ class MemoryChunk(Base):
     in the run context: such chunks never reach the Project level (L2) and
     are fenced as data when recalled.
 
-    A separate table so existing databases get it through create_all. The
+    A separate table, as was the rule before migrations (D1, ADR-031). The
     lexical index is a GIN expression index on to_tsvector('simple', content),
-    created with the table, only on PostgreSQL.
+    only on PostgreSQL: the baseline revision creates it, and the DDL event
+    below creates it for `create_all` (the offline evals, some tests).
     """
 
     __tablename__ = "memory_chunks"
