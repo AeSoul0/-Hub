@@ -174,7 +174,8 @@ def test_secrets_report_never_shows_values():
     assert "sk-visible?" not in report
     assert "OPENAI_API_KEY" in report and "set" in report
     assert "AEHUB_MQTT_PASSWORD" in report and "not set" in report
-    assert "GROQ_API_KEY" not in report
+    # Groq is a model provider again (P1, ADR-032): its key is listed, unset.
+    assert "GROQ_API_KEY" in report
 
 
 def test_no_keyring_explains_how_to_get_one(monkeypatch):

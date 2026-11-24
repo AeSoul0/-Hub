@@ -91,7 +91,7 @@ async def update_settings(
 
 @router.get("/provider-models/{provider}")
 async def list_provider_models(
-    provider: Literal["openai", "openrouter", "local"],
+    provider: Literal["openai", "openrouter", "local", "groq", "anthropic", "google"],
     principal: Principal = Depends(resolve_principal),
 ) -> Dict[str, Any]:
     import asyncio

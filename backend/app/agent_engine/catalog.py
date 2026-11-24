@@ -9,6 +9,10 @@ the routing is validated when it is saved.
   keeps only the models that can call tools, which the agent needs.
 - openai: GET https://api.openai.com/v1/models with the key; no prices.
 - local: GET <AEHUB_LOCAL_BASE_URL>/models (Ollama, LM Studio, vLLM).
+- groq: GET https://api.groq.com/openai/v1/models with the key (P1).
+- anthropic: GET https://api.anthropic.com/v1/models, key in `x-api-key` (P1).
+- google: GET the Gemini API models, key in `x-goog-api-key`; only the
+  models that generate content (P1).
 
 Answers are cached for CACHE_SECONDS per provider and address. The key is
 sent only to its own provider and never returned.
@@ -28,6 +32,21 @@ from app.core.runtime_config import config_value
 OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
 OPENAI_MODELS_URL = "https://api.openai.com/v1/models"
 LOCAL_BASE_URL = "http://localhost:11434/v1"
+GROQ_MODELS_URL = "https://api.groq.com/openai/v1/models"
+ANTHROPIC_MODELS_URL = "https://api.anthropic.com/v1/models?limit=1000"
+GOOGLE_MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000"
+ANTHROPIC_VERSION = "2023-06-01"
+
+# Provider -> the variable holding its key and how the key is sent.
+_KEYED = {
+    "groq": ("GROQ_API_KEY", GROQ_MODELS_URL, lambda key: {"Authorization": f"Bearer {key}"}),
+    "anthropic": (
+        "ANTHROPIC_API_KEY",
+        ANTHROPIC_MODELS_URL,
+        lambda key: {"x-api-key": key, "anthropic-version": ANTHROPIC_VERSION},
+    ),
+    "google": ("GEMINI_API_KEY", GOOGLE_MODELS_URL, lambda key: {"x-goog-api-key": key}),
+}
 
 TIMEOUT_SECONDS = 10.0
 CACHE_SECONDS = 600
@@ -57,10 +76,11 @@ def _per_million(value: Any) -> Optional[float]:
     return round(number, 6)
 
 
-def _get(url: str, key: Optional[str]) -> Any:
+def _get(url: str, key: Optional[str], headers: Optional[Dict[str, str]] = None) -> Any:
     import httpx
 
-    headers = {"Authorization": f"Bearer {key}"} if key else {}
+    if headers is None:
+        headers = {"Authorization": f"Bearer {key}"} if key else {}
 
     try:
         response = httpx.get(url, headers=headers, timeout=TIMEOUT_SECONDS)
@@ -121,6 +141,28 @@ def _plain(payload: Any, prefixes: Tuple[str, ...] = ()) -> List[Dict[str, Any]]
     return models
 
 
+def _google(payload: Any) -> List[Dict[str, Any]]:
+    models = []
+
+    for item in (payload or {}).get("models") or []:
+        if not isinstance(item, dict) or "generateContent" not in (item.get("supportedGenerationMethods") or []):
+            continue
+
+        model_id = str(item.get("name") or "").removeprefix("models/")
+
+        if model_id:
+            models.append(
+                {
+                    "id": model_id[:200],
+                    "name": str(item.get("displayName") or model_id)[:200],
+                    "context": item.get("inputTokenLimit") if isinstance(item.get("inputTokenLimit"), int) else None,
+                    "price": None,
+                }
+            )
+
+    return models
+
+
 def provider_models(provider: str) -> List[Dict[str, Any]]:
     """
     The models of `provider`, sorted by id. Raises CatalogUnavailable when
@@ -136,6 +178,11 @@ def provider_models(provider: str) -> List[Dict[str, Any]]:
     elif provider == "local":
         base = (config_value("AEHUB_LOCAL_BASE_URL") or LOCAL_BASE_URL).rstrip("/")
         url, key = f"{base}/models", os.getenv("AEHUB_LOCAL_API_KEY") or None
+    elif provider in _KEYED:
+        variable, url, _ = _KEYED[provider]
+        key = os.getenv(variable) or None
+        if not key:
+            raise CatalogUnavailable(f"{variable} is not set.")
     else:
         raise CatalogUnavailable(f"Unknown provider '{provider}'.")
 
@@ -147,12 +194,14 @@ def provider_models(provider: str) -> List[Dict[str, Any]]:
         if cached and now - cached[0] < CACHE_SECONDS:
             return cached[1]
 
-    payload = _get(url, key)
+    payload = _get(url, key, _KEYED[provider][2](key) if provider in _KEYED else None)
 
     if provider == "openrouter":
         models = _openrouter(payload)
     elif provider == "openai":
         models = _plain(payload, OPENAI_CHAT_PREFIXES)
+    elif provider == "google":
+        models = _google(payload)
     else:
         models = _plain(payload)
 

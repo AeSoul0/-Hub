@@ -228,9 +228,9 @@ def observation_tokens(observation: Observation) -> int:
     Tokens of one observation as the adapters render it (function call plus
     its output, untrusted fence included).
     """
-    from app.agent_engine.adapters.openai_adapter import OpenAIAdapter
+    from app.agent_engine.model_input import observation_to_input
 
-    items = OpenAIAdapter._observation_to_input(observation)
+    items = observation_to_input(observation)
 
     return estimate_tokens(json.dumps(items, ensure_ascii=False, default=str))
 
