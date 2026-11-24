@@ -123,6 +123,8 @@ def run_suite_in_child(baseline: Optional[Path] = BASELINE_PATH) -> EvalRun:
         try:
             done = subprocess.run(
                 [sys.executable, "-c", _CHILD, str(BACKEND_DIR), *args],
+                # A failing gate exits non-zero on purpose; the report file says how it went.
+                check=False,
                 cwd=str(BACKEND_DIR),
                 env=child_environment(),
                 capture_output=True,
