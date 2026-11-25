@@ -32,7 +32,6 @@ def main() -> int:
     # values already in the environment (or a --live configuration) win.
     if "--live" not in sys.argv:
         os.environ.setdefault("AEHUB_SECRET_KEY", secrets.token_urlsafe(32))
-        os.environ.setdefault("GROQ_API_KEY", "offline-eval")
         os.environ.setdefault("POSTGRES_URL", "postgresql://offline-eval@localhost:5432/offline-eval")
         os.environ.setdefault("AEHUB_CHECKER_MODEL", "eval-critic")
         os.environ.setdefault("AEHUB_TELEMETRY_CONSOLE", "0")

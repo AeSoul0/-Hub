@@ -1,4 +1,7 @@
 [lint]
 ignore = [
-    "E", "F", "B", "W", "UP", "DTZ", "BLE", "SIM", "PIE", "I", "ASYNC", "RUF", "S", "TRY", "UP"
+    "E", "F", "B", "W", "UP", "DTZ", "SIM", "PIE", "I", "ASYNC", "RUF", "S", "TRY", "UP"
 ]
+# R1: a blind `except Exception` needs a reason (`# noqa: BLE001 - why`) and,
+# unless it re-raises or reports the error, a log line.
+extend-select = ["BLE001"]

@@ -6,7 +6,7 @@ This module exposes memory operations as framework-agnostic Python callables.
 Execution context is supplied only by the trusted AgentRuntime and contains
 the authenticated session and workspace boundaries.
 
-No LangChain decorators or implicit default session are used.
+No implicit default session is used.
 """
 
 from __future__ import annotations

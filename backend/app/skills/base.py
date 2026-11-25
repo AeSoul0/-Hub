@@ -118,8 +118,8 @@ class BaseSkill:
     - additional system instructions;
     - permission requirements.
 
-    The runtime does not assume that the callable is decorated by LangChain
-    or any other external orchestration framework.
+    The callables are plain Python functions: no decorator of an external
+    framework is needed.
     """
 
     @property

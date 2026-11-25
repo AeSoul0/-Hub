@@ -8,7 +8,7 @@ Output, in desktop/src-tauri/resources/ (gitignored):
 
     python/     the CPython interpreter running this script, with a clean
                 site-packages holding only backend/requirements-desktop.txt
-    backend/    app/, main.py, desktop.py and the keyring code of
+    backend/    app/, alembic/ and alembic.ini, main.py, desktop.py and the keyring code of
                 scripts/aehub.py (as aehub_launcher.py)
     frontend/   the static export (frontend/out, AEHUB_STATIC_EXPORT=1)
     postgres/   bin/, lib/, share/ of the PostgreSQL install, which must
@@ -73,8 +73,11 @@ def bundle_python(out: Path) -> Path:
 def bundle_backend(out: Path) -> Path:
     target = out / "backend"
     shutil.copytree(ROOT / "backend" / "app", target / "app", ignore=ignore(set()))
+    # The schema revisions: the engine runs `alembic upgrade head` at every
+    # start, so an update keeps the user's data (D1, ADR-031).
+    shutil.copytree(ROOT / "backend" / "alembic", target / "alembic", ignore=ignore(set()))
 
-    for name in ("main.py", "desktop.py", "requirements-desktop.txt"):
+    for name in ("main.py", "desktop.py", "requirements-desktop.txt", "alembic.ini"):
         shutil.copy2(ROOT / "backend" / name, target / name)
 
     shutil.copy2(ROOT / "scripts" / "aehub.py", target / "aehub_launcher.py")

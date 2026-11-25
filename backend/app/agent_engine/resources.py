@@ -1,18 +1,13 @@
 """
 @file backend/app/agent_engine/resources.py
-@description Implements resources.py. Core components: TaskClass, ResourceProfile, ResourceManager.
-
-This module manages the internal business logic for TaskClass, ResourceProfile, ResourceManager.
-It provides specialized functionality to handle: classify_task, check_availability, allocate.
+@description Resource profiles: guesses a task's class from its text and checks the free RAM before a subagent starts.
 """
 import psutil
 from enum import Enum
 from typing import Dict, Any, Optional
 
 class TaskClass(str, Enum):
-    """
-    Represents the TaskClass entity and its core operations.
-    """
+    """The kind of resources a task needs, guessed from its text."""
     LIGHT = "light"
     STANDARD = "standard"
     BROWSER = "browser"
@@ -21,13 +16,9 @@ class TaskClass(str, Enum):
     HEAVY = "heavy"
 
 class ResourceProfile:
-    """
-    Represents the ResourceProfile entity and its core operations.
-    """
+    """RAM, run time and parallelism allowed for one task class."""
     def __init__(self, task_class: TaskClass, max_ram_mb: int, max_runtime: int, max_parallel: int):
-        """
-        Executes __init__ logic.
-        """
+        """Store the limits of one task class."""
         self.task_class = task_class
         self.max_ram_mb = max_ram_mb
         self.max_runtime = max_runtime
@@ -43,17 +34,12 @@ PROFILES = {
 
 class ResourceManager:
     """
-    Represents the ResourceManager entity and its core operations.
-    """
-    """
     Phase 13 Memory Budget Manager.
     """
     
     @classmethod
     def classify_task(cls, task_description: str) -> TaskClass:
-        """
-        Executes classify_task logic.
-        """
+        """The task class from keywords in the task text."""
         text = task_description.lower()
         if any(kw in text for kw in ["video", "render", "heavy"]):
             return TaskClass.HEAVY
@@ -67,9 +53,7 @@ class ResourceManager:
 
     @classmethod
     def check_availability(cls, profile: ResourceProfile) -> bool:
-        """
-        Executes check_availability logic.
-        """
+        """Whether the free RAM of this computer covers the profile."""
         # Check available RAM using psutil
         mem = psutil.virtual_memory()
         available_mb = mem.available / (1024 * 1024)
@@ -81,9 +65,7 @@ class ResourceManager:
         
     @classmethod
     def allocate(cls, task_description: str) -> Optional[ResourceProfile]:
-        """
-        Executes allocate logic.
-        """
+        """The profile of the task; ResourceWarning when there is not enough free RAM for it."""
         task_class = cls.classify_task(task_description)
         profile = PROFILES.get(task_class, PROFILES[TaskClass.STANDARD])
         

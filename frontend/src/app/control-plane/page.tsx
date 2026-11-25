@@ -8,6 +8,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
+import styles from "@/components/control-plane/control.module.css";
 import { getJson } from "@/lib/api/client";
 import type { SettingsView } from "@/lib/api/settings";
 
@@ -22,5 +23,9 @@ export default function ControlPlaneIndex() {
             .catch(() => router.replace("/control-plane/approvals"));
     }, [router]);
 
-    return <div className="p-8 text-gray-400">Loading…</div>;
+    return (
+        <div className={styles.page}>
+            <p className={styles.muted}>Caricamento…</p>
+        </div>
+    );
 }

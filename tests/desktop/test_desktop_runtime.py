@@ -492,6 +492,7 @@ def test_sidecar_reports_errors_as_one_json_line(tmp_path):
 
     result = subprocess.run(
         [sys.executable, str(BACKEND / "desktop.py"), "--data-dir", str(tmp_path / "data"), "--pg-bin", str(tmp_path)],
+        check=False,
         capture_output=True,
         text=True,
         env=env,

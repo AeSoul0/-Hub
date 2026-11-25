@@ -11,7 +11,8 @@ One tool per action, so each carries its own risk:
 
 The agent names a device id from the user's device file; the topic and the
 message are built here, so the model can reach no other topic or host.
-Without a device file (AEHUB_HOME_DEVICES) the skill offers no tools.
+Without devices (AEHUB_HOME_DEVICES, or declared in the Control Plane since
+F7) the skill offers no tools.
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ from app.home.devices import (
     lock_message,
 )
 from app.home.mqtt import PUBLISH_TIMEOUT_SECONDS, publish
+from app.home.store import record_command
 
 from .base import BaseSkill, RiskLevel, SkillMetadata, ToolMetadata
 
@@ -73,6 +75,7 @@ async def home_set_light(device: str, on: bool, brightness: Optional[int] = None
     """
     light = find(load_devices(), device, "light")
     await _send(*light_message(light, on, brightness))
+    record_command(light.id, "on" if on else "off", brightness if on else None)
 
     if not on:
         return f"{light.name}: off."
@@ -85,6 +88,7 @@ async def home_lock(device: str) -> str:
     """
     lock = find(load_devices(), device, "lock")
     await _send(*lock_message(lock, locked=True))
+    record_command(lock.id, "locked")
     return f"{lock.name}: locked."
 
 
@@ -94,6 +98,7 @@ async def home_unlock(device: str) -> str:
     """
     lock = find(load_devices(), device, "lock")
     await _send(*lock_message(lock, locked=False))
+    record_command(lock.id, "unlocked")
     return f"{lock.name}: unlocked."
 
 

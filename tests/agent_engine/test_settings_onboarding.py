@@ -18,6 +18,7 @@ from unittest.mock import patch
 
 import pytest
 from fastapi import FastAPI
+from openai import AsyncOpenAI as RealAsyncOpenAI
 from fastapi.testclient import TestClient
 
 from app.agent_engine.application import get_agent_engine, reset_agent_engine
@@ -236,7 +237,8 @@ def test_settings_http_contract(agent_infrastructure, db_session_factory, monkey
     secrets = {secret["name"]: secret["configured"] for secret in body["secrets"]}
     assert secrets["OPENAI_API_KEY"] is True
     assert secrets["AEHUB_MQTT_PASSWORD"] is False
-    assert "GROQ_API_KEY" not in secrets
+    # Groq is a model provider since P1 (ADR-032): its key is listed, unset.
+    assert secrets["GROQ_API_KEY"] is False
 
     by_name = {setting["name"]: setting for setting in body["settings"]}
     assert by_name["AEHUB_RUN_MAX_COST"]["value"] == "2.5"
@@ -294,8 +296,14 @@ class ScriptedOpenAI:
         self.api_keys: List[str] = []
 
     def __call__(self, **kwargs: Any) -> Any:
+        from openai import AsyncOpenAI
+
         self.api_keys.append(kwargs.get("api_key"))
-        return SimpleNamespace(responses=SimpleNamespace(create=self.create))
+        # A real client (Pydantic AI reads its options, P1) with this
+        # Responses endpoint.
+        client = RealAsyncOpenAI(api_key=kwargs.get("api_key"), base_url="http://openai.invalid/v1", max_retries=0)
+        client.responses = SimpleNamespace(create=self.create)
+        return client
 
     async def create(self, **request: Any) -> Any:
         self.requests.append(request)
@@ -376,7 +384,7 @@ async def test_onboarding_from_empty_database_to_first_completed_run(
         }
     )
 
-    with patch("app.agent_engine.adapters.openai_adapter.AsyncOpenAI", fake_openai):
+    with patch("openai.AsyncOpenAI", fake_openai):
         engine = await get_agent_engine()
         result = await engine.run(
             session_id="session-onboarding",

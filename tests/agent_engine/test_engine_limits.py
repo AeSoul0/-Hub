@@ -24,6 +24,7 @@ import pytest
 from app.agent_engine.application import AgentEngine
 from app.agent_engine.approval.manager import ApprovalManager
 from app.agent_engine.control import run_registry
+from app.agent_engine import events as events_module
 from app.agent_engine import runtime as runtime_module
 from app.agent_engine.errors import TaskTimeoutError
 from app.agent_engine.resources import PROFILES, TaskClass
@@ -498,6 +499,36 @@ async def test_subagent_gets_only_its_delegated_tools(work, admin, fake_model):
     assert outcome["result"] == "Subtask done."
     assert work.calls == ["note:sub"]
     assert _tool_names(engine.model_requests[0]) == ["fetch_page", "note"]
+
+
+async def test_subagent_is_announced_live_with_its_role(work, admin, fake_model, monkeypatch):
+    # The Nucleo draws a moon per subagent: spawned first, completed last.
+    seen = []
+    monkeypatch.setattr(events_module, "broadcast", seen.append)
+
+    engine = _engine(
+        fake_model,
+        [fake_model.text("Subtask done.")],
+        [fake_model.accept()],
+    )
+
+    await engine.spawn_subagent(
+        parent_run_id=None,
+        session_id=SESSION_ID,
+        task="Summarise the notes.",
+        role="research",
+        budget=1.0,
+        principal=admin,
+        allowed_tools=["note"],
+    )
+
+    kinds = [event.event_type for event in seen]
+    assert kinds[0] == "subagent.spawned"
+    assert kinds[-1] == "subagent.completed"
+    assert "run.started" in kinds
+    assert seen[0].run_id == seen[-1].run_id
+    assert seen[0].role == seen[-1].role == "research"
+    assert seen[-1].details["status"]
 
 
 async def test_subagent_cannot_call_a_tool_it_was_not_delegated(work, admin, fake_model):
