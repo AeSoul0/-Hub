@@ -10,9 +10,15 @@ The engine runs inside the backend process (`backend/app/agent_engine/`).
 `AgentEngine` (`application.py`) is the entry point; `runtime/aurora.py` is a
 thin compatibility facade over it.
 
-`AgentRuntime` (`runtime.py`) holds the loop: start or resume a run, the
-worker's turns, the Critic's verdict and the retry. Since Q1 its other parts
-are mixins in their own modules:
+`AgentRuntime` (`runtime.py`) holds the loop. `_execute_task` is its
+outline, and each step is a method over one `_RunLoop` state:
+- `_start_run` or `_resume_run`;
+- per attempt, `_run_attempt`, which covers the worker's turns, with
+  `_run_proposals` for the tool calls of a turn;
+- `_end_incomplete_attempt`;
+- `_critic_verdict`.
+
+Since Q1 the other parts of the runtime are mixins in their own modules:
 
 | Module | What it does |
 | --- | --- |
