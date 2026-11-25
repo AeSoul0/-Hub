@@ -36,7 +36,7 @@ sidecar dell'app desktop (PostgreSQL e API su `127.0.0.1`).
 - `app/desktop/`: chiavi nel keyring e avvio per l'app desktop.
 - `app/evaluation/`: la suite di eval e il gate di rilascio.
 - `app/domain/models/`: i modelli SQLAlchemy, la fonte delle revisioni Alembic.
-- `app/agents/`, `app/workers/`, `app/budget/`: l'orchestratore delle richieste (testo, voce, comandi `/`), la sandbox Docker, la facciata del budget.
+- `app/agents/`, `app/workers/`: l'orchestratore delle richieste (testo, voce, comandi `/`) e la sandbox Docker. Il budget sta in `app/agent_engine/budget.py`.
 - `alembic/`: le revisioni dello schema (ADR-031).
 
 ### Frontend (`frontend/`)
@@ -63,17 +63,17 @@ Guscio Tauri dell'app Windows (ADR-020): `src-tauri/` (Rust), `scripts/` (bundle
 ### Backend (`backend/requirements.txt`)
 - **Runtime**: FastAPI, Uvicorn, Pydantic 2, pydantic-settings.
 - **Modelli**: Pydantic AI (`pydantic-ai-slim` con gli extra openai, groq, anthropic, google) e l'SDK `openai` (ADR-032).
-- **Persistenza**: SQLAlchemy, Alembic, psycopg, asyncpg, pgvector (PostgreSQL 16+ con l'estensione `vector`).
+- **Persistenza**: SQLAlchemy, Alembic, psycopg (psycopg2 per il PostgreSQL del desktop), pgvector (PostgreSQL 16+ con l'estensione `vector`).
 - **Event bus e cache**: Redis (in processo nell'app desktop).
 - **Memoria e documenti**: sentence-transformers (CPU), pypdf.
 - **Web e strumenti**: duckduckgo-search, Playwright, BeautifulSoup, mcp.
 - **Voce**: faster-whisper, Piper.
 - **Casa**: paho-mqtt.
 - **Osservabilità**: OpenTelemetry, prometheus-client.
-- **Qualità**: Ruff, pytest. In CI anche bandit, pip-audit, Trivy e TruffleHog.
+- **Qualità** (`backend/requirements-dev.txt`, fuori dall'immagine): Ruff, pytest, pytest-asyncio. In CI anche bandit, pip-audit, Trivy e TruffleHog.
 
 ### Frontend (`frontend/package.json`)
-- **Core**: Next.js 16, React 19, TypeScript; React Compiler.
+- **Core**: Next.js 16, React 19, TypeScript. Il React Compiler è installato ma spento.
 - **Stile**: Tailwind CSS 4, font locali da `@fontsource`.
 - **Test e lint**: Vitest, Testing Library, jsdom, ESLint, Prettier.
 

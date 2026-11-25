@@ -15,7 +15,6 @@ Security invariants:
 from __future__ import annotations
 
 import json
-from datetime import datetime
 from typing import Any, Dict, Optional
 
 from app.agent_engine.models import (
@@ -188,49 +187,6 @@ class AgentStateManager:
     """
     Durable persistence boundary for native Agent Runtime state.
     """
-
-    @classmethod
-    def save_state(
-        cls,
-        run_id: str,
-        state: Dict[str, Any],
-    ) -> None:
-        """
-        Replace the current runtime checkpoint for an existing run.
-        """
-        run = cls.load_agent_run(
-            run_id
-        )
-
-        if run is None:
-            raise ValueError(
-                f"Cannot save state: agent run "
-                f"'{run_id}' does not exist."
-            )
-
-        run.current_state = state
-        run.updated_at = datetime.utcnow()
-
-        cls.save_agent_run(
-            run
-        )
-
-    @classmethod
-    def load_state(
-        cls,
-        run_id: str,
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Load the serialized runtime checkpoint for one run.
-        """
-        run = cls.load_agent_run(
-            run_id
-        )
-
-        if run is None:
-            return None
-
-        return run.current_state
 
     @classmethod
     def save_agent_run(

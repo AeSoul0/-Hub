@@ -9,7 +9,6 @@ DNS rebinding by re-resolving during execution.
 import socket
 import urllib.parse
 import ipaddress
-import httpx
 from typing import Tuple
 
 class SSRFError(Exception):
@@ -79,44 +78,3 @@ class SSRFProtector:
         ip_address = SSRFProtector.resolve_and_validate(hostname)
         return parsed, ip_address
 
-class SafeHTTPClient:
-    """An HTTP client that validates every URL, redirects included, against SSRF."""
-
-    @staticmethod
-    async def request(method: str, url: str, **kwargs) -> httpx.Response:
-        """
-        Validates URL and handles redirects manually to prevent redirect SSRF.
-        """
-        SSRFProtector.validate_url(url)
-
-        # Disable automatic redirects to validate each hop
-        kwargs["follow_redirects"] = False
-
-        current_url = url
-        redirect_count = 0
-        max_redirects = 5
-
-        async with httpx.AsyncClient() as client:
-            while redirect_count < max_redirects:
-                response = await client.request(method, current_url, **kwargs)
-
-                if 300 <= response.status_code < 400:
-                    location = response.headers.get("Location")
-                    if not location:
-                        break
-
-                    # Handle relative redirects
-                    next_url = urllib.parse.urljoin(current_url, location)
-
-                    # Validate the redirect URL
-                    SSRFProtector.validate_url(next_url)
-
-                    current_url = next_url
-                    redirect_count += 1
-                else:
-                    return response
-
-            if redirect_count >= max_redirects:
-                raise SSRFError("Too many redirects")
-
-            return response

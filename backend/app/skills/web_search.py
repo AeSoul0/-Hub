@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 
 import json
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List
 
 from duckduckgo_search import DDGS
 
@@ -135,19 +135,6 @@ class WebSearchSkill(BaseSkill):
                 audit_policy="standard",
             )
         }
-
-    @property
-    def system_prompt_extension(self) -> Optional[str]:
-        """
-        Return web-search system instructions.
-        """
-        return (
-            "You have access to a controlled public web-search tool. "
-            "Use it when information must be checked against current or "
-            "external sources. Network access is enforced by the central "
-            "policy layer."
-        )
-
 
 def get_skill() -> BaseSkill:
     """

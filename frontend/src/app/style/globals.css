@@ -1,6 +1,4 @@
 @import "tailwindcss";
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
 
 /*
  * Space theme (F1): always deep blue, stars behind everything, one ice-blue
@@ -25,7 +23,7 @@
     --font-body: "IBM Plex Sans Variable", "Segoe UI", system-ui, sans-serif;
     --font-code: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
 
-    /* shadcn tokens, mapped onto the same palette */
+    /* Theme tokens read by @theme below (border, ring, background), on the same palette */
     --background: var(--void);
     --foreground: var(--ink);
     --card: var(--deep);

@@ -64,39 +64,6 @@ class AgentRun(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
-class RunContext(BaseModel):
-    """
-    Execution context scoped to a single run and workspace.
-    """
-
-    run_id: str
-    workspace_id: str
-    history: List[Any] = Field(default_factory=list)
-    metadata: Dict[str, Any] = Field(default_factory=dict)
-
-
-class AgentIntent(BaseModel):
-    """Normalized intent representation produced by the orchestration layer."""
-
-    intent: str
-    confidence: float
-
-
-class TaskExecution(BaseModel):
-    """Execution metadata for orchestrated and delegated tasks."""
-
-    task_id: str
-    parent_run_id: Optional[str] = None
-    orchestrator_run_id: str
-    subagent_run_id: Optional[str] = None
-    checker_run_id: Optional[str] = None
-
-    attempt: int = 1
-    max_attempts: int = 3
-    status: str
-    feedback: Optional[str] = None
-
-
 class ToolSpec(BaseModel):
     """
     Declarative specification for an executable tool.
@@ -157,32 +124,6 @@ class PolicyDecision(BaseModel):
 
     decision: PolicyDecisionEnum
     reason: Optional[str] = None
-
-
-class ApprovalRequest(BaseModel):
-    """Runtime representation of an approval request."""
-
-    id: str
-    run_id: str
-    tool_call_id: str
-    tool: str
-    arguments: Dict[str, Any]
-    risk: str
-
-    requested_at: datetime = Field(default_factory=datetime.utcnow)
-    expires_at: datetime
-
-    requested_by: str
-    decided_by: Optional[str] = None
-    decision: Optional[str] = None
-
-
-class ToolExecution(BaseModel):
-    """Execution metadata for a single tool call."""
-
-    tool_call_id: str
-    status: str
-    started_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class ToolResult(BaseModel):
@@ -253,20 +194,6 @@ class CheckerDecision(BaseModel):
     usage: Optional[Dict[str, Any]] = None
 
 
-class RetryInstruction(BaseModel):
-    """Explicit instruction used to guide a retry iteration."""
-
-    instruction: str
-    attempt: int
-
-
-class MemoryContext(BaseModel):
-    """Scoped memory context attached to an execution."""
-
-    context_id: str
-    data: Dict[str, Any]
-
-
 class RunEvent(BaseModel):
     """Serializable runtime event used by the observability subsystem."""
 
@@ -276,10 +203,3 @@ class RunEvent(BaseModel):
     details: Dict[str, Any] = Field(default_factory=dict)
 
 
-class RunUsage(BaseModel):
-    """Aggregate resource usage information for a run."""
-
-    run_id: str
-    tokens: int
-    cost: float
-    latency: float

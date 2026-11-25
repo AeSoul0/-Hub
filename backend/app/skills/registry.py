@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import importlib
 import pkgutil
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from .base import BaseSkill, ToolMetadata
 
@@ -329,84 +329,6 @@ class SkillRegistry:
                 return tool
 
         return None
-
-    def resolve_tool(
-        self,
-        tool_name: str,
-    ) -> Optional[
-        Tuple[Any, ToolMetadata]
-    ]:
-        """
-        Resolve executable implementation and metadata atomically.
-        """
-        metadata = self.get_tool_metadata(
-            tool_name
-        )
-
-        if metadata is None:
-            return None
-
-        tool = self.get_tool(
-            tool_name
-        )
-
-        if tool is None:
-            return None
-
-        return (
-            tool,
-            metadata,
-        )
-
-    def get_all_tools(self) -> List[Any]:
-        """
-        Return all executable tools exposed by registered skills.
-        """
-        tools: List[Any] = []
-
-        for skill_name in self.get_registered_skill_names():
-            tools.extend(
-                self._skills[
-                    skill_name
-                ].tools
-            )
-
-        return tools
-
-    # ==========================================================================
-    # PROMPT CONTEXT
-    # ==========================================================================
-
-    def get_system_prompt_extensions(self) -> str:
-        """
-        Return the combined system-prompt extensions from active skills.
-        """
-        extensions: List[str] = []
-
-        for skill_name in self.get_registered_skill_names():
-            skill = self._skills[
-                skill_name
-            ]
-
-            extension = (
-                skill.system_prompt_extension
-            )
-
-            if extension:
-                extensions.append(
-                    f"[{skill.metadata.name.upper()} SKILL]\n"
-                    f"{extension}"
-                )
-
-        if not extensions:
-            return ""
-
-        return (
-            "\n\n--- ACTIVE SKILLS CONTEXT ---\n"
-            + "\n\n".join(
-                extensions
-            )
-        )
 
 
 # ==============================================================================

@@ -379,8 +379,9 @@ def _requirements(name: str) -> Dict[str, str]:
 def test_desktop_requirements_follow_the_backend_ones():
     backend = _requirements("requirements.txt")
     desktop = _requirements("requirements-desktop.txt")
-    # Left out on purpose (ADR-020): the embedder's torch, and dev tools.
-    left_out = {"sentence-transformers", "torch", "pytest", "pytest-asyncio", "ruff"}
+    # Left out on purpose (ADR-020): the embedder's torch. Test tools live
+    # in requirements-dev.txt.
+    left_out = {"sentence-transformers", "torch"}
 
     assert set(desktop) == set(backend) - left_out
     # Same constraint on every shared package, so both stay in step.

@@ -147,15 +147,3 @@ class BaseSkill:
         """
         return {}
 
-    @property
-    def system_prompt_extension(self) -> Optional[str]:
-        """
-        Return optional system-level instructions contributed by this skill.
-        """
-        return None
-
-    def get_permission_scopes(self) -> List[str]:
-        """
-        Return the permission scopes required by the skill.
-        """
-        return []
