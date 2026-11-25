@@ -18,6 +18,7 @@ import styles from "@/components/control-plane/control.module.css";
 import { ApiError, getJson, postJson, putJson } from "@/lib/api/client";
 import { useSettings } from "@/lib/api/settings";
 import { playReply } from "@/lib/nucleo/audio";
+import { issueText } from "@/lib/nucleo/models";
 import {
     ELEVENLABS_MODELS,
     formatBytes,
@@ -111,7 +112,9 @@ export default function VoicePage() {
         const outcome = await save(changes);
         setBusy(false);
         setErrors(outcome.errors);
-        setNote(outcome.ok ? "Salvato: vale dalla prossima frase." : outcome.message ?? "Non salvato.");
+        setNote(
+            outcome.ok ? "Salvato: vale dalla prossima frase." : (outcome.message ?? "Non salvato.")
+        );
         if (outcome.ok) {
             void refreshStatus();
         }
@@ -149,10 +152,13 @@ export default function VoicePage() {
         setPreviewing(true);
         setPreviewError(null);
         try {
-            const spoken = await postJson<{ audio_base64: string; audio_mime: string }>("/api/voice/speak", {
-                text: previewText.trim() || PREVIEW_TEXT,
-                preview: true,
-            });
+            const spoken = await postJson<{ audio_base64: string; audio_mime: string }>(
+                "/api/voice/speak",
+                {
+                    text: previewText.trim() || PREVIEW_TEXT,
+                    preview: true,
+                }
+            );
             if (spoken.audio_base64) {
                 await playReply(spoken.audio_base64, () => undefined);
             }
@@ -198,8 +204,11 @@ export default function VoicePage() {
             </div>
 
             {voiceIssues.map((issue) => (
-                <p key={issue.code} className={issue.severity === "error" ? styles.error : styles.warn}>
-                    {issue.message}
+                <p
+                    key={issue.code}
+                    className={issue.severity === "error" ? styles.error : styles.warn}
+                >
+                    {issueText(issue)}
                 </p>
             ))}
 
@@ -224,13 +233,16 @@ export default function VoicePage() {
                                 min={0}
                                 max={1440}
                                 value={form.AEHUB_VOICE_IDLE_MINUTES}
-                                onChange={(event) => set("AEHUB_VOICE_IDLE_MINUTES", event.target.value)}
+                                onChange={(event) =>
+                                    set("AEHUB_VOICE_IDLE_MINUTES", event.target.value)
+                                }
                             />
                         </label>
                     </div>
                     <p className={styles.help}>
-                        Whisper e Piper escono dalla memoria dopo questo tempo senza usarli e si ricaricano alla prima
-                        frase (1–2 secondi in più solo quella volta). 0 li tiene sempre caricati.
+                        Whisper e Piper escono dalla memoria dopo questo tempo senza usarli e si
+                        ricaricano alla prima frase (1–2 secondi in più solo quella volta). 0 li
+                        tiene sempre caricati.
                     </p>
                     {fieldError("AEHUB_VOICE")}
                     {fieldError("AEHUB_VOICE_IDLE_MINUTES")}
@@ -268,8 +280,8 @@ export default function VoicePage() {
                     </div>
                     {sttInfo && (
                         <p className={styles.muted}>
-                            Download {sttInfo.download} la prima volta, RAM {sttInfo.ram} mentre trascrive. Gira
-                            su questo computer: l&apos;audio non esce mai.
+                            Download {sttInfo.download} la prima volta, RAM {sttInfo.ram} mentre
+                            trascrive. Gira su questo computer: l&apos;audio non esce mai.
                         </p>
                     )}
                     {fieldError("AEHUB_STT_MODEL")}
@@ -320,14 +332,20 @@ export default function VoicePage() {
                     {cloud && (
                         <div className={styles.stack}>
                             <p className={styles.warn}>
-                                Con ElevenLabs il testo delle risposte va ai suoi server per diventare voce; il
-                                microfono resta locale. Se il cloud non risponde, o la risposta supera{" "}
-                                {status?.tts.max_cloud_chars ?? 2500} caratteri, parla Piper.
+                                Con ElevenLabs il testo delle risposte va ai suoi server per
+                                diventare voce; il microfono resta locale. Se il cloud non risponde,
+                                o la risposta supera {status?.tts.max_cloud_chars ?? 2500}{" "}
+                                caratteri, parla Piper.
                             </p>
 
                             <div className={styles.row}>
-                                <span className={styles.badge} data-tone={status?.tts.elevenlabs_key ? "ok" : "warn"}>
-                                    {status?.tts.elevenlabs_key ? "chiave impostata" : "chiave mancante"}
+                                <span
+                                    className={styles.badge}
+                                    data-tone={status?.tts.elevenlabs_key ? "ok" : "warn"}
+                                >
+                                    {status?.tts.elevenlabs_key
+                                        ? "chiave impostata"
+                                        : "chiave mancante"}
                                 </span>
                                 {desktop ? (
                                     <>
@@ -352,7 +370,11 @@ export default function VoicePage() {
                                 ) : (
                                     !status?.tts.elevenlabs_key && (
                                         <span className={styles.muted}>
-                                            Aggiungila con <code className={styles.mono}>python scripts/aehub.py setup</code>.
+                                            Aggiungila con{" "}
+                                            <code className={styles.mono}>
+                                                python scripts/aehub.py setup
+                                            </code>
+                                            .
                                         </span>
                                     )
                                 )}
@@ -364,7 +386,9 @@ export default function VoicePage() {
                                     {cloudVoices ? (
                                         <select
                                             value={form.AEHUB_ELEVENLABS_VOICE}
-                                            onChange={(event) => set("AEHUB_ELEVENLABS_VOICE", event.target.value)}
+                                            onChange={(event) =>
+                                                set("AEHUB_ELEVENLABS_VOICE", event.target.value)
+                                            }
                                         >
                                             <option value="">Scegli una voce</option>
                                             {cloudVoices.map((voice) => (
@@ -378,7 +402,9 @@ export default function VoicePage() {
                                         <input
                                             value={form.AEHUB_ELEVENLABS_VOICE}
                                             placeholder="ID della voce"
-                                            onChange={(event) => set("AEHUB_ELEVENLABS_VOICE", event.target.value)}
+                                            onChange={(event) =>
+                                                set("AEHUB_ELEVENLABS_VOICE", event.target.value)
+                                            }
                                             spellCheck={false}
                                         />
                                     )}
@@ -395,7 +421,9 @@ export default function VoicePage() {
                                     Modello
                                     <select
                                         value={form.AEHUB_ELEVENLABS_MODEL}
-                                        onChange={(event) => set("AEHUB_ELEVENLABS_MODEL", event.target.value)}
+                                        onChange={(event) =>
+                                            set("AEHUB_ELEVENLABS_MODEL", event.target.value)
+                                        }
                                     >
                                         {Object.entries(ELEVENLABS_MODELS).map(([name, label]) => (
                                             <option key={name} value={name}>
@@ -418,11 +446,19 @@ export default function VoicePage() {
                 </section>
 
                 <div className={styles.row}>
-                    <button type="submit" className={`${styles.btn} ${styles.go}`} disabled={busy || !dirty}>
+                    <button
+                        type="submit"
+                        className={`${styles.btn} ${styles.go}`}
+                        disabled={busy || !dirty}
+                    >
                         Salva
                     </button>
                     {dirty && (
-                        <button type="button" className={styles.btn} onClick={() => saved && setForm(saved)}>
+                        <button
+                            type="button"
+                            className={styles.btn}
+                            onClick={() => saved && setForm(saved)}
+                        >
                             Annulla
                         </button>
                     )}
@@ -484,7 +520,9 @@ export default function VoicePage() {
                         ))}
                     </ul>
                 ) : (
-                    <p className={styles.muted}>Nessuno ancora: si scaricano al primo uso del microfono e della voce.</p>
+                    <p className={styles.muted}>
+                        Nessuno ancora: si scaricano al primo uso del microfono e della voce.
+                    </p>
                 )}
             </section>
         </main>

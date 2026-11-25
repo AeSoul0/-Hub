@@ -19,9 +19,9 @@ import logging
 import math
 import os
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from typing import Dict, List, Literal, Mapping, Optional
+from typing import Any, Dict, List, Literal, Mapping, Optional
 
 from sqlalchemy.orm import Session as DBSession
 
@@ -74,8 +74,10 @@ class ConfigIssue:
     severity: Severity
     message: str
     setting: Optional[str] = None
+    # The values inside the message, so the frontend can say it in Italian.
+    params: Dict[str, str] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Optional[str]]:
+    def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
 
@@ -313,7 +315,7 @@ def check_configuration() -> List[ConfigIssue]:
     try:
         routing = RoutingConfig.from_env()
     except RoutingConfigError as exc:
-        issues.append(ConfigIssue("routing_invalid", "error", str(exc), "AEHUB_MODEL_ROLES"))
+        issues.append(ConfigIssue("routing_invalid", "error", str(exc), "AEHUB_MODEL_ROLES", {"error": str(exc)}))
         routing = None
 
     if routing is not None:
@@ -321,7 +323,7 @@ def check_configuration() -> List[ConfigIssue]:
         try:
             validate_critic_independence(routing)
         except RoutingConfigError as exc:
-            issues.append(ConfigIssue("routing_invalid", "error", str(exc), "AEHUB_CHECKER_MODEL"))
+            issues.append(ConfigIssue("routing_invalid", "error", str(exc), "AEHUB_CHECKER_MODEL", {"error": str(exc)}))
 
     if routing is not None:
         roles_by_provider: Dict[str, List[str]] = {}
@@ -344,20 +346,23 @@ def check_configuration() -> List[ConfigIssue]:
                         "error",
                         f"The {provider} provider is used by {', '.join(roles)}, but {key} "
                         f"is not set. {SETUP_HINT}",
+                        params={"provider": provider, "roles": ", ".join(roles), "key": key},
                     )
                 )
 
         unpriced = sorted(models - configured_price_models())
 
         if unpriced:
+            fallback_price = config_value("AEHUB_DEFAULT_MODEL_PRICE") or "%g,%g" % FALLBACK_PRICE
             issues.append(
                 ConfigIssue(
                     "price_missing",
                     "warning",
                     f"No price for {', '.join(unpriced)}: the cost is estimated with the price "
-                    f"of an unlisted model ({config_value('AEHUB_DEFAULT_MODEL_PRICE') or '%g,%g' % FALLBACK_PRICE} "
+                    f"of an unlisted model ({fallback_price} "
                     "USD per 1M tokens), so spend and budget are approximate.",
                     "AEHUB_MODEL_PRICES",
+                    {"models": ", ".join(unpriced), "price": fallback_price},
                 )
             )
 
@@ -374,6 +379,7 @@ def check_configuration() -> List[ConfigIssue]:
                 "warning",
                 f"One run may cost up to ${run_cost:g}, more than the monthly budget of ${monthly:g}.",
                 "AEHUB_RUN_MAX_COST",
+                {"run_cost": f"{run_cost:g}", "monthly": f"{monthly:g}"},
             )
         )
 
@@ -386,6 +392,7 @@ def check_configuration() -> List[ConfigIssue]:
                 "warning",
                 f"The working folder {workspace} does not exist: file tools will fail. "
                 "Choose it with: python scripts/aehub.py setup.",
+                params={"folder": str(workspace)},
             )
         )
     elif not os.access(workspace, os.W_OK):
@@ -394,6 +401,7 @@ def check_configuration() -> List[ConfigIssue]:
                 "workspace_read_only",
                 "warning",
                 f"The working folder {workspace} is not writable.",
+                params={"folder": str(workspace)},
             )
         )
 
@@ -413,6 +421,7 @@ def check_configuration() -> List[ConfigIssue]:
                 "voice_disabled",
                 "warning",
                 f"Voice needs {', '.join(missing_packages())}: install the backend requirements.",
+                params={"packages": ", ".join(missing_packages())},
             )
         )
 
@@ -443,14 +452,21 @@ def check_configuration() -> List[ConfigIssue]:
     try:
         devices = load_devices()
     except DeviceConfigError as exc:
-        issues.append(ConfigIssue("home_devices_invalid", "error", f"Home devices are off: {exc}"))
+        issues.append(ConfigIssue("home_devices_invalid", "error", f"Home devices are off: {exc}", params={"error": str(exc)}))
         devices = {}
 
     if devices:
         try:
             broker()
         except MqttNotConfigured as exc:
-            issues.append(ConfigIssue("home_broker_missing", "error", f"{len(devices)} home devices declared, but: {exc}"))
+            issues.append(
+                ConfigIssue(
+                    "home_broker_missing",
+                    "error",
+                    f"{len(devices)} home devices declared, but: {exc}",
+                    params={"devices": str(len(devices)), "error": str(exc)},
+                )
+            )
 
     return issues
 
