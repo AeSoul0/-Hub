@@ -16,6 +16,7 @@ request), so the ToolGateway re-checks the approval for the exact call.
 """
 
 from __future__ import annotations
+import logging
 
 import asyncio
 import json
@@ -42,6 +43,9 @@ router = APIRouter(
 
 # Strong references keep background resumes alive until they finish.
 _resume_tasks: Set[asyncio.Task] = set()
+
+
+logger = logging.getLogger(__name__)
 
 
 class ApprovalDecision(BaseModel):
@@ -103,7 +107,8 @@ async def resume_after_decision(
             ),
         }
 
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - a failed resume is reported on the run.resumed event
+        logger.exception("Resume of run %s failed", run_id)
         payload = {
             "run_id": run_id,
             "error": f"Resume failed: {exc}",
@@ -116,7 +121,8 @@ async def resume_after_decision(
             payload,
             workspace_id=approval["workspace_id"],
         )
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - the bus is best effort; the run state is already saved
+        logger.warning("run.resumed for run %s not delivered: %s", run_id, exc)
         pass
 
 
@@ -205,7 +211,8 @@ async def list_pending_approvals(
 
         try:
             approval["arguments"] = _parked_arguments(approval)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - arguments are shown only when the parked call can be read
+            logger.debug("Arguments of approval %s not shown: %s", approval.get("id"), exc)
             approval["arguments"] = None
 
     return pending
@@ -250,7 +257,8 @@ async def decide_approval(
             },
             workspace_id=approval["workspace_id"],
         )
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - the bus is best effort; the decision is already saved
+        logger.warning("approval.decided for %s not delivered: %s", approval["id"], exc)
         pass
 
     if approval["run_id"]:

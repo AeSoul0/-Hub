@@ -3,7 +3,7 @@
 @description Native A.U.R.O.R.A. Agent Execution Runtime.
 
 This module implements the deterministic Worker -> ToolGateway -> Checker
-execution loop without using LangGraph as an execution authority.
+execution loop; no agent framework has authority over it.
 
 Security invariants enforced here include:
 
@@ -1027,7 +1027,8 @@ class AgentRuntime:
                         "Worker execution exceeded configured timeout."
                     ) from exc
 
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 - the run fails with the worker's error recorded
+                    logger.warning("Worker failed in run %s: %s", run_id, exc)
                     agent_run.status = AgentRunStatus.FAILED
                     agent_run.errors.append(
                         f"Worker failed: {exc}"
@@ -1656,7 +1657,8 @@ class AgentRuntime:
         except ApprovalRequiredError:
             raise
 
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - a tool error becomes an observation for the model
+            logger.warning("Tool %s failed: %s", proposal.tool_name, exc)
             content = f"Tool execution failed: {exc}"
 
         return Observation(
@@ -2136,7 +2138,8 @@ class AgentRuntime:
 
         try:
             month_spent = SpendLedger.spent(principal_id)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - fail closed: without the ledger no model call runs
+            logger.error("Spend ledger unavailable, model calls blocked: %s", exc)
             return BudgetExceededError(
                 "Spend ledger unavailable: model calls are blocked."
             )
@@ -2219,7 +2222,8 @@ class AgentRuntime:
 
         try:
             month_spent = SpendLedger.add(principal_id, cost)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - fail closed: without the ledger no model call runs
+            logger.error("Spend ledger unavailable, model calls blocked: %s", exc)
             return BudgetExceededError(
                 "Spend ledger unavailable: model calls are blocked."
             )
@@ -2360,7 +2364,8 @@ class AgentRuntime:
                 ),
                 timeout=NOTIFY_TIMEOUT_SECONDS,
             )
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - realtime events are best effort and never affect a run
+            logger.debug("Realtime event %s not delivered: %s", event_type, exc)
             pass
 
     # ==========================================================================
@@ -2409,7 +2414,7 @@ class AgentRuntime:
 
         try:
             return await asyncio.to_thread(load)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - memory recall is optional for a run
             logger.warning("Memory recall skipped: %s", exc)
             return [], []
 
@@ -2445,7 +2450,7 @@ class AgentRuntime:
 
         try:
             await asyncio.to_thread(store)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - memory indexing is optional for a run
             logger.warning("Memory indexing skipped for run %s: %s", run_id, exc)
 
     @staticmethod

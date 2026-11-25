@@ -260,7 +260,7 @@ def main(argv: Optional[list] = None) -> int:
 
     try:
         return run(args)
-    except Exception as error:  # reported to the shell, which shows it
+    except Exception as error:  # noqa: BLE001 - reported to the desktop shell, which shows it
         emit("error", message=str(error))
         return 1
 

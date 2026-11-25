@@ -1,9 +1,6 @@
 """
 @file backend/app/domain/models/audit.py
-@description Implements audit.py. Core components: AuditLog, ApprovalRecord.
-
-This module manages the internal business logic for AuditLog, ApprovalRecord.
-It provides specialized functionality to handle: utility operations.
+@description Audit models: the audit log, its hash chain and the approval records of HIGH tool calls.
 """
 import uuid
 from datetime import datetime
@@ -12,9 +9,6 @@ from sqlalchemy import Column, String, Boolean, DateTime, Integer, Text
 from app.domain.models.identity import Base
 
 class AuditLog(Base):
-    """
-    Represents the AuditLog entity and its core operations.
-    """
     """
     Immutable audit record for tool executions and system actions.
     Enforces M2 observability requirement.
@@ -54,9 +48,7 @@ class AuditChainLink(Base):
     record_hash = Column(String(64), nullable=False)
 
 class ApprovalRecord(Base):
-    """
-    Represents the ApprovalRecord entity and its core operations.
-    """
+    """One approval request of a HIGH tool call, bound to its arguments' hash, and its decision."""
     __tablename__ = "approvals"
     
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))

@@ -41,7 +41,7 @@ def stored_devices() -> Dict[str, Device]:
         with SessionLocal() as db:
             row = db.get(AppSetting, STORE_KEY)
             raw = row.value if row is not None else None
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - unreadable devices fall back to none, logged
         logger.warning("Home devices of the Control Plane not readable: %s", exc)
         return {}
 

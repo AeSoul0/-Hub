@@ -1,5 +1,6 @@
 """
-The engine pushes every run event live (F1): the Nucleo draws the engine at
+@file tests/agent_engine/test_live_events.py
+@description The engine pushes every run event live (F1): the Nucleo draws the engine at
 work from these. Delivery is best effort and never affects the run.
 """
 

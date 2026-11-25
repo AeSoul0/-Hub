@@ -1,3 +1,7 @@
+/**
+ * @file frontend/tests/memory.test.tsx
+ * @description Tests of Memoria and Documenti: memory helpers, CitedText and MemoryList.
+ */
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import React from "react";
 import { describe, expect, it, vi } from "vitest";

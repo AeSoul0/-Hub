@@ -48,7 +48,6 @@ MANAGEMENT = {
     # F4: the models a provider offers, for the role editor; read only.
     ("GET", "/api/settings/provider-models/{provider}"),
     ("GET", "/api/memory"),
-    ("POST", "/api/memory/preferences"),
     ("DELETE", "/api/memory/{memory_id}"),
     # F6: the user writes, edits, vouches for and forgets memories; vectors
     # are recomputed after an embedder change. No tool runs.

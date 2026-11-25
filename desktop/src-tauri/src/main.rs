@@ -1,4 +1,5 @@
-//! ÆHub desktop shell (roadmap M14, ADR-020).
+//! @file desktop/src-tauri/src/main.rs
+//! @description ÆHub desktop shell (roadmap M14, ADR-020).
 //!
 //! The window is a plain web page over the local engine: this process starts
 //! `backend/desktop.py` (bundled Python, Postgres and frontend), waits for its

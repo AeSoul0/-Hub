@@ -1,3 +1,7 @@
+/**
+ * @file frontend/tests/components.test.tsx
+ * @description Tests of shared components: ApprovalCard, LoginForm and AuthGate, RunDetailView.
+ */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { describe, expect, it, vi } from "vitest";

@@ -14,6 +14,7 @@ the release gate; without it (the desktop bundle) it only reports.
 """
 
 from __future__ import annotations
+import logging
 
 import asyncio
 import json
@@ -50,6 +51,9 @@ _OFFLINE_ENV = {
     "AEHUB_EVENT_BUS": "memory",
     "REDIS_URL": "memory://",
 }
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -192,7 +196,8 @@ async def start(principal_id: str) -> Dict[str, Any]:
     async def work() -> None:
         try:
             outcome = await asyncio.to_thread(run_suite_in_child)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - any failure of the eval child is shown on SISTEMA
+            logger.exception("Evaluation from SISTEMA failed")
             outcome = EvalRun(status="error", error=f"{type(exc).__name__}: {exc}")
 
         _finish(outcome, started)

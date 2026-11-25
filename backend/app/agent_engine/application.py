@@ -23,6 +23,7 @@ facade and must not reimplement engine behavior.
 """
 
 from __future__ import annotations
+import logging
 
 from datetime import datetime
 from types import SimpleNamespace
@@ -48,6 +49,9 @@ from app.core.security import Permission, Principal
 # ==============================================================================
 # NATIVE WORKER
 # ==============================================================================
+
+
+logger = logging.getLogger(__name__)
 
 
 class NativeAgentWorker:
@@ -544,7 +548,8 @@ class AgentEngine:
             else:
                 answer = str(result)
 
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - a failed subagent is reported to its parent as data
+            logger.warning("Subagent %s failed: %s", child_run_id, exc)
             status = "FAILED"
             error = str(exc)
 

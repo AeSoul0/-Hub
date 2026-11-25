@@ -1,3 +1,7 @@
+/**
+ * @file frontend/tests/desktop.test.tsx
+ * @description Tests of the desktop helpers: DesktopKeys and runHref.
+ */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";

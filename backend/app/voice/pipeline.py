@@ -67,7 +67,7 @@ async def speak(text: str) -> Tuple[str, str]:
         )
     except VoiceUnavailable:
         return "", ""
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - speech is optional: the text answer stays
         logger.warning("Speech synthesis failed: %s", exc)
         return "", ""
 

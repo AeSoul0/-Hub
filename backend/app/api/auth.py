@@ -1,9 +1,6 @@
 """
 @file backend/app/api/auth.py
-@description Implements auth.py. Core components: general logic modules.
-
-This module manages the internal business logic for general logic modules.
-It provides specialized functionality to handle: login, logout, verify_auth.
+@description Login with the access key, logout and session check; the session lives only in an HttpOnly cookie.
 """
 import hmac
 import os

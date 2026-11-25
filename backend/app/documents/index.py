@@ -416,7 +416,8 @@ class DocumentIndex:
 
             try:
                 pieces = extract_chunks(path, data)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - an unreadable file is listed with its error
+                logger.warning("Document not indexed: %s", exc)
                 error = f"could not be read: {exc}"[:500]
 
             if len(pieces) > MAX_CHUNKS_PER_FILE:

@@ -1,9 +1,6 @@
 """
 @file backend/app/skills/mcp_bridge.py
-@description Implements mcp_bridge.py. Core components: MCPSkillWrapper.
-
-This module manages the internal business logic for MCPSkillWrapper.
-It provides specialized functionality to handle: _initialize_mcp_tools, metadata, tools, get_tool_metadata, system_prompt_extension.
+@description Bridge to MCP servers: only allowlisted servers (AEHUB_MCP_ALLOWED_SERVERS), every tool through the Tool Gateway, every output untrusted.
 """
 from typing import Callable, Dict, List, Optional, Set
 from urllib.parse import urlsplit
@@ -47,17 +44,13 @@ def is_mcp_server_allowed(server_url: str) -> bool:
 
 class MCPSkillWrapper(BaseSkill):
     """
-    Represents the MCPSkillWrapper entity and its core operations.
-    """
-    """
     Dynamically wraps an MCP (Model Context Protocol) Server into an A.U.R.O.R.A. Skill.
-    It fetches available tools from the MCP server and exposes them as Langchain tools.
+    The connection is a stub (after V1): today the server is checked against
+    the allowlist and exposes no tool; its output will be untrusted.
     """
     
     def __init__(self, server_name: str, server_url: str, description: str):
-        """
-        Executes __init__ logic.
-        """
+        """Refuse a server outside AEHUB_MCP_ALLOWED_SERVERS, then list its tools."""
         # Fail closed: only explicitly allowlisted servers are bridged.
         if not is_mcp_server_allowed(server_url):
             raise PermissionError(
@@ -71,34 +64,19 @@ class MCPSkillWrapper(BaseSkill):
         self._tools: List[Callable] = []
         self._tool_metadata: Dict[str, ToolMetadata] = {}
         
-        # Note: In a production environment, you would use `mcp.Client` (SSE or Stdio)
-        # to connect to the server, call `list_tools()`, and map them to StructuredTool.
-        # This is the Phase 6 bridge architecture.
+        # The real client (`mcp` over SSE or stdio: `list_tools()`, then one
+        # tool per entry, through the Tool Gateway) comes after V1.
         self._initialize_mcp_tools()
         
     def _initialize_mcp_tools(self):
         """
-        Executes _initialize_mcp_tools logic.
+        Map the server's tools to this skill: not connected yet (after V1),
+        so the skill exposes no tool.
         """
-        """
-        Placeholder for MCP `list_tools` mapping.
-        Iterates through tools exposed by the MCP server and binds them to LangChain.
-        """
-        # Example dynamic tool generation logic:
-        # async with sse_client(self._server_url) as streams:
-        #     async with ClientSession(streams[0], streams[1]) as session:
-        #         await session.initialize()
-        #         mcp_tools = await session.list_tools()
-        #         for t in mcp_tools.tools:
-        #             lc_tool = self._create_langchain_tool(t, session)
-        #             self._tools.append(lc_tool)
-        pass
 
     @property
     def metadata(self) -> SkillMetadata:
-        """
-        Executes metadata logic.
-        """
+        """The skill's name and description, derived from the server name."""
         return SkillMetadata(
             name=f"mcp_{self._server_name.lower().replace(' ', '_')}",
             description=f"MCP Integration: {self._description}",
@@ -108,9 +86,7 @@ class MCPSkillWrapper(BaseSkill):
         
     @property
     def tools(self) -> List[Callable]:
-        """
-        Executes tools logic.
-        """
+        """The tools listed by the MCP server and bound with register_tool."""
         return self._tools
         
     def register_tool(self, tool: Callable, metadata: ToolMetadata) -> None:
@@ -126,14 +102,10 @@ class MCPSkillWrapper(BaseSkill):
         )
 
     def get_tool_metadata(self) -> Dict[str, ToolMetadata]:
-        """
-        Executes get_tool_metadata logic.
-        """
+        """Risk and schema of each bound tool; their output is always untrusted."""
         return self._tool_metadata
         
     @property
     def system_prompt_extension(self) -> Optional[str]:
-        """
-        Executes system_prompt_extension logic.
-        """
+        """One line telling the model that this server's tools exist."""
         return f"You have access to the '{self._server_name}' MCP server tools. Use them when interacting with this external service."

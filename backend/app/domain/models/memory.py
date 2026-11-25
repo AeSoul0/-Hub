@@ -1,9 +1,6 @@
 """
 @file backend/app/domain/models/memory.py
-@description Implements memory.py. Core components: MemoryType, VectorMemory.
-
-This module manages the internal business logic for MemoryType, VectorMemory.
-It provides specialized functionality to handle: utility operations.
+@description Memory models: the long-term memory chunks of the agent (M6) and the legacy vector records.
 """
 import uuid
 from datetime import datetime
@@ -14,7 +11,7 @@ from app.domain.models.identity import Base
 
 class DataClassification(str, enum.Enum):
     """
-    Represents the DataClassification entity.
+    How sensitive a legacy memory record is.
     """
     PUBLIC = "public"
     INTERNAL = "internal"
@@ -23,18 +20,13 @@ class DataClassification(str, enum.Enum):
     CREDENTIAL = "credential-like"
 
 class MemoryType(str, enum.Enum):
-    """
-    Represents the MemoryType entity and its core operations.
-    """
+    """The kind of a legacy vector memory record."""
     SEMANTIC = "semantic"
     EPISODIC = "episodic"
     PROCEDURAL = "procedural"
     EXECUTION = "execution"
 
 class VectorMemory(Base):
-    """
-    Represents the VectorMemory entity and its core operations.
-    """
     """
     Long-Term Memory Record (M4).
     Stores agent memories with vector embeddings for semantic retrieval.

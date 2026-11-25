@@ -1,3 +1,7 @@
+/**
+ * @file frontend/tests/tools.test.tsx
+ * @description Tests of Strumenti, Skill and Sicurezza, and of the tool settings helpers.
+ */
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import React from "react";
 import { describe, expect, it } from "vitest";
@@ -327,7 +331,14 @@ describe("Sicurezza", () => {
         expect(within(log).queryByText("impostazioni cambiate", { selector: "span" })).not.toBeInTheDocument();
         expect(within(log).getByText("perform_web_search", { selector: "span" })).toBeInTheDocument();
 
-        fireEvent.change(screen.getByLabelText("Tool"), { target: { value: "perform_web_search" } });
+        // The filter offers a tool once the list has shown it (after a tick).
+        const toolFilter = screen.getByLabelText("Tool");
+        await waitFor(() =>
+            expect(within(toolFilter).getAllByRole("option").map((option) => option.getAttribute("value"))).toContain(
+                "perform_web_search",
+            ),
+        );
+        fireEvent.change(toolFilter, { target: { value: "perform_web_search" } });
         await waitFor(() =>
             expect(fetchMock.mock.calls.some(([input]) => String(input).includes("tool=perform_web_search"))).toBe(true),
         );

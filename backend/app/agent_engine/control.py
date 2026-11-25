@@ -105,7 +105,7 @@ async def run_interruptible(awaitable: Awaitable[T], token: Any) -> T:
 
     try:
         await asyncio.wait_for(step, timeout=CANCEL_GRACE_SECONDS)
-    except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
+    except (asyncio.CancelledError, asyncio.TimeoutError, Exception):  # noqa: BLE001 - the cancelled step may end with any error; cancellation wins
         pass
 
     raise RunCancelledError(token.reason or "Run cancelled.")

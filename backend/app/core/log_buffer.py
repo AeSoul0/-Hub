@@ -31,7 +31,7 @@ class RecentLogHandler(logging.Handler):
             message = record.getMessage()
             if record.exc_info and record.exc_info[1] is not None:
                 message = f"{message} ({type(record.exc_info[1]).__name__}: {record.exc_info[1]})"
-        except Exception:
+        except Exception:  # noqa: BLE001 - a logging handler must never raise
             message = str(record.msg)
 
         with self._records_lock:

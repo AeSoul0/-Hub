@@ -102,9 +102,11 @@ class PackageStore:
         self._keyring.set_password(SERVICE, key, value)
 
     def delete(self, key: str) -> None:
+        from keyring.errors import PasswordDeleteError
+
         try:
             self._keyring.delete_password(SERVICE, key)
-        except Exception:  # keyring raises PasswordDeleteError when absent
+        except PasswordDeleteError:  # the key was not there
             pass
 
 
