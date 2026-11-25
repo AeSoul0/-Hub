@@ -27,7 +27,7 @@ paho-mqtt>=2.1.0
 duckduckgo-search>=3.9.3
 playwright==1.65.2
 beautifulsoup4>=4.12.2
-mcp>=1.0.0
+mcp>=2.3.0
 
 SQLAlchemy>=2.0.23
 # The schema: every change is an Alembic revision (D1, ADR-031).

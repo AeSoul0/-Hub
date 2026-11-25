@@ -47,7 +47,7 @@ duckduckgo-search>=3.9.3
 # Must match the tag of the backend image (backend/dockerfile).
 playwright==1.65.2
 beautifulsoup4>=4.12.2
-mcp>=1.0.0
+mcp>=2.3.0
 
 
 # ==============================================================================
