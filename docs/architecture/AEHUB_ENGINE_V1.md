@@ -10,6 +10,18 @@ The engine runs inside the backend process (`backend/app/agent_engine/`).
 `AgentEngine` (`application.py`) is the entry point; `runtime/aurora.py` is a
 thin compatibility facade over it.
 
+`AgentRuntime` (`runtime.py`) holds the loop: start or resume a run, the
+worker's turns, the Critic's verdict and the retry. Since Q1 its other parts
+are mixins in their own modules:
+
+| Module | What it does |
+| --- | --- |
+| `runtime_tools.py` | the tools a run sees, and each proposal through the Tool Gateway |
+| `runtime_limits.py` | capabilities, run limits, spend, the stop of a run, live usage |
+| `runtime_resume.py` | parking a run on an approval and resuming it |
+| `runtime_state.py` | live state events, long-term memory, saving the run |
+| `runtime_subagents.py` | starting a subagent (`spawn_agent`) |
+
 ## 2. Core tenets
 - **The model is untrusted**: it suggests; the Tool Gateway authorizes.
 - **The engine is the authority** over the loop, persistence and state.

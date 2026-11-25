@@ -267,7 +267,9 @@ def eval_environment(
                 return_value=PROFILES[TaskClass.STANDARD],
             )
         )
-        stack.enter_context(patch("app.agent_engine.runtime.skill_registry", registry))
+        # The loop picks the run's tools, the tools part resolves them (Q1).
+        for module in ("runtime", "runtime_tools"):
+            stack.enter_context(patch(f"app.agent_engine.{module}.skill_registry", registry))
 
         yield SimpleNamespace(
             published=published,

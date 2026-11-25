@@ -1,9 +1,21 @@
 """
 @file backend/app/agent_engine/runtime.py
-@description Native A.U.R.O.R.A. Agent Execution Runtime.
+@description Native A.U.R.O.R.A. Agent Execution Runtime: the loop.
 
-This module implements the deterministic Worker -> ToolGateway -> Checker
-execution loop; no agent framework has authority over it.
+`AgentRuntime` runs the deterministic Worker -> ToolGateway -> Checker loop;
+no agent framework has authority over it. Since Q1 its parts live in their
+own modules and the class inherits them:
+
+- runtime_tools.py: the tools a run sees and the execution of a proposal
+  through the Tool Gateway;
+- runtime_limits.py: capabilities, run limits, spend and the stop of a run,
+  plus the live usage the Runs page reads;
+- runtime_resume.py: parking a run on an approval and resuming it;
+- runtime_state.py: live state events, long-term memory and saving the run;
+- runtime_subagents.py: starting a subagent (`spawn_agent`).
+
+This module keeps the loop itself: start or resume a run, the worker's
+turns, the Critic's verdict and the retry.
 
 Security invariants enforced here include:
 
@@ -22,37 +34,23 @@ Security invariants enforced here include:
 from __future__ import annotations
 
 import asyncio
-import dataclasses
-import inspect
 import logging
-import math
 import time
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
-from app.agent_engine.adapters.base import ModelProvider
-from app.agent_engine.approval.manager import ApprovalManager
 from app.agent_engine.context import ContextManager
 from app.agent_engine.delegation import (
-    DELEGATE_TOOL,
-    DelegationScope,
     Delegator,
-    clear_delegation_scope,
-    set_delegation_scope,
 )
 from app.agent_engine.control import (
-    RunLimits,
-    SpendLedger,
     run_interruptible,
     run_registry,
-    usage_view,
 )
 from app.agent_engine.errors import (
-    BudgetExceededError,
     RunCancelledError,
     RunInterrupted,
-    RunLimitExceededError,
     ApprovalRequiredError,
     MaxTurnsReachedError,
     TaskTimeoutError,
@@ -65,29 +63,30 @@ from app.agent_engine.models import (
     CheckerDecisionEnum,
     Observation,
     ToolProposal,
-    ToolSpec,
 )
-from app.agent_engine.resources import ResourceManager
-from app.agent_engine.routing import IMPLEMENTER_ROLES, Role
+from app.agent_engine.routing import Role
 from app.agent_engine.state.manager import AgentStateManager
 from app.agent_engine.tool_selection import select_tools
-from app.agents.subagents.base import SubagentFactory
 from app.core.security import (
-    ROLE_PERMISSIONS,
-    BudgetState,
-    PolicyEngine,
     Principal,
     SubagentCapabilitySet,
-    TaskExecutionContext,
-    workspace_policy,
 )
-from app.memory.store import MemoryKind, MemoryStore, memory_enabled
-from app.runtime.tool_gateway import ToolGateway, ToolInvocation
-from app.skills.memory_skill import (
-    clear_memory_context,
-    set_memory_context,
-)
+from app.runtime.tool_gateway import ToolGateway
 from app.skills.registry import skill_registry
+from app.agent_engine.runtime_limits import (
+    _ACTIVE_SEGMENTS,
+    _LIVE_USAGE,
+    LimitsMixin,
+    _active_seconds,
+    _usd,  # noqa: F401 - re-exported, imported from here before Q1
+    live_active_seconds,  # noqa: F401 - re-exported, imported from here before Q1
+    live_usage,  # noqa: F401 - re-exported (api/runs.py)
+)
+from app.agent_engine.resources import ResourceManager  # noqa: F401 - patched as runtime.ResourceManager by tests and evals
+from app.agent_engine.runtime_resume import ResumeMixin
+from app.agent_engine.runtime_state import StateMixin
+from app.agent_engine.runtime_subagents import SubagentsMixin
+from app.agent_engine.runtime_tools import ToolsMixin
 
 
 logger = logging.getLogger(__name__)
@@ -100,76 +99,21 @@ DEFAULT_MAX_ATTEMPTS = 3
 DEFAULT_MAX_TURNS = 10
 DEFAULT_MAX_TOOL_CALLS = 5
 DEFAULT_MAX_TOTAL_TOOL_CALLS = 20
-DEFAULT_TOOL_RUNTIME = 30
-DEFAULT_MAX_OUTPUT = 4000
-
-# Long-term memory recalled into L5 and preferences loaded into L2 at the
-# start of a run.
-RECALL_LIMIT = 8
-PREFERENCE_LIMIT = 30
-DEFAULT_TOOL_COST = 0.0
 # How much of a Critic's instruction the timeline shows (F8).
 VERDICT_CHARS = 500
-NOTIFY_TIMEOUT_SECONDS = 0.5
 
 
-def _usd(amount: float) -> str:
-    """
-    A spending cap as configured: 2 -> "2", 0.001 -> "0.001" (not "0.00").
-    """
-    return f"{amount:.6f}".rstrip("0").rstrip(".")
 
 
-# Active execution time per run in this process: (seconds already recorded,
-# start of the current segment). A run parked in WAITING_APPROVAL is not
-# executing, so the wait never counts toward AEHUB_RUN_TIMEOUT_SECONDS.
-_ACTIVE_SEGMENTS: Dict[str, Tuple[float, float]] = {}
-
-# The usage totals of the runs executing in this process, kept by reference:
-# the live view reads them between saves (F2).
-_LIVE_USAGE: Dict[str, Dict[str, Any]] = {}
 
 
-def live_active_seconds(run_id: str, recorded: float = 0.0) -> float:
-    """
-    Seconds a run has spent executing, across resumes; `recorded` when it
-    is not executing in this process.
-    """
-    segment = _ACTIVE_SEGMENTS.get(run_id)
-
-    if segment is None:
-        return recorded
-
-    before, started = segment
-
-    return before + (time.monotonic() - started)
 
 
-def live_usage(run_id: str, recorded: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    The current totals of a run executing in this process, else `recorded`
-    (its last saved totals).
-    """
-    usage = _LIVE_USAGE.get(run_id, recorded)
-
-    return usage_view(
-        usage,
-        live_active_seconds(run_id, float(usage.get("active_seconds") or 0.0)),
-    )
 
 
-def _active_seconds(agent_run: AgentRun) -> float:
-    return live_active_seconds(
-        agent_run.run_id,
-        float(agent_run.usage.get("active_seconds", 0.0)),
-    )
 
 
-def _usage_now(agent_run: AgentRun) -> Dict[str, Any]:
-    """
-    Run totals for the live events, so the interface follows the limits.
-    """
-    return usage_view(agent_run.usage, _active_seconds(agent_run))
+
 
 
 # ==============================================================================
@@ -177,7 +121,7 @@ def _usage_now(agent_run: AgentRun) -> Dict[str, Any]:
 # ==============================================================================
 
 
-class AgentRuntime:
+class AgentRuntime(ToolsMixin, LimitsMixin, ResumeMixin, StateMixin, SubagentsMixin):
     """
     Native deterministic execution kernel.
 
@@ -204,279 +148,6 @@ class AgentRuntime:
             self._context_manager = ContextManager()
 
         return self._context_manager
-
-    # ==========================================================================
-    # TOOL RESOLUTION
-    # ==========================================================================
-
-    @staticmethod
-    def _resolve_tool(tool_name: str) -> Tuple[Any, Any]:
-        """
-        Resolve a registered executable tool through the public SkillRegistry API.
-
-        Unknown tools fail closed before execution.
-        """
-        try:
-            tool = skill_registry.get_tool(tool_name)
-            metadata = skill_registry.get_tool_metadata(tool_name)
-        except Exception as exc:
-            raise ValueError(
-                f"Tool '{tool_name}' is not registered in SkillRegistry."
-            ) from exc
-
-        if tool is None:
-            raise ValueError(
-                f"Tool '{tool_name}' has no executable implementation."
-            )
-
-        if metadata is None:
-            raise ValueError(
-                f"Tool '{tool_name}' has no security metadata."
-            )
-
-        return tool, metadata
-
-    @classmethod
-    def _build_tool_spec(
-        cls,
-        tool_name: str,
-    ) -> ToolSpec:
-        """
-        Convert SkillRegistry metadata into the canonical ToolSpec contract.
-        """
-        _, metadata = cls._resolve_tool(tool_name)
-
-        risk_level = getattr(
-            metadata.risk_level,
-            "value",
-            metadata.risk_level,
-        )
-
-        input_schema = getattr(
-            metadata,
-            "input_schema",
-            {},
-        ) or {}
-
-        output_schema = getattr(
-            metadata,
-            "output_schema",
-            {},
-        ) or {}
-
-        permissions = list(
-            getattr(
-                metadata,
-                "permissions_required",
-                [],
-            )
-            or []
-        )
-
-        return ToolSpec(
-            name=metadata.name,
-            version=str(
-                getattr(
-                    metadata,
-                    "version",
-                    "1.0.0",
-                )
-            ),
-            description=metadata.description,
-            input_schema=input_schema,
-            output_schema=output_schema,
-            risk_level=str(risk_level).upper(),
-            permissions=permissions,
-            network_access=bool(
-                getattr(
-                    metadata,
-                    "network_access",
-                    False,
-                )
-            ),
-            filesystem_access=bool(
-                getattr(
-                    metadata,
-                    "filesystem_access",
-                    False,
-                )
-            ),
-            max_runtime=int(
-                getattr(
-                    metadata,
-                    "max_runtime",
-                    DEFAULT_TOOL_RUNTIME,
-                )
-            ),
-            max_output=int(
-                getattr(
-                    metadata,
-                    "max_output",
-                    DEFAULT_MAX_OUTPUT,
-                )
-            ),
-            max_cost=float(
-                getattr(
-                    metadata,
-                    "max_cost",
-                    DEFAULT_TOOL_COST,
-                )
-            ),
-            idempotent=bool(
-                getattr(
-                    metadata,
-                    "idempotent",
-                    False,
-                )
-            ),
-            requires_approval=bool(
-                getattr(
-                    metadata,
-                    "requires_approval",
-                    False,
-                )
-            ),
-            sandbox_profile=str(
-                getattr(
-                    metadata,
-                    "sandbox_profile",
-                    "default",
-                )
-            ),
-            audit_policy=str(
-                getattr(
-                    metadata,
-                    "audit_policy",
-                    "standard",
-                )
-            ),
-            untrusted_output=cls._is_untrusted_output(metadata),
-            modifies_files=bool(
-                getattr(
-                    metadata,
-                    "modifies_files",
-                    False,
-                )
-            ),
-        )
-
-    @staticmethod
-    def _is_untrusted_output(metadata: Any) -> bool:
-        """
-        Provenance of a tool's output: explicit metadata wins, otherwise
-        anything read from the network or the filesystem is untrusted.
-        """
-        declared = getattr(metadata, "untrusted_output", None)
-
-        if declared is not None:
-            return bool(declared)
-
-        return bool(
-            getattr(metadata, "network_access", False)
-            or getattr(metadata, "filesystem_access", False)
-        )
-
-    @classmethod
-    def _build_model_tools(
-        cls,
-        principal: Principal,
-        capabilities: Optional[SubagentCapabilitySet] = None,
-        exposed_tools: Optional[List[str]] = None,
-    ) -> List[Dict[str, Any]]:
-        """
-        Build the function-tool definitions the Worker model may call.
-
-        Only registered tools that the PolicyEngine does not deny for this
-        Principal (tools disabled in the Control Plane are denied) (and, for a subagent, its delegated capability set) are
-        exposed, and only those the skill index picked for the run when it
-        picked any. Exposure is not authorization: every call still goes
-        through the ToolGateway pipeline.
-        """
-        model_tools: List[Dict[str, Any]] = []
-        delegation_off = RunLimits.from_env().max_subagents <= 0
-
-        for tool_name in skill_registry.get_registered_tool_names():
-            if exposed_tools is not None and tool_name not in exposed_tools:
-                continue
-
-            # Delegation is one level deep (F8): a subagent never sees it.
-            if tool_name == DELEGATE_TOOL and (capabilities is not None or delegation_off):
-                continue
-
-            try:
-                spec = cls._build_tool_spec(tool_name)
-            except ValueError:
-                continue
-
-            decision = PolicyEngine.authorize_tool(
-                principal=principal,
-                tool_spec=spec,
-                tool_proposal=ToolProposal(
-                    tool_call_id="exposure-check",
-                    tool_name=tool_name,
-                    arguments={},
-                    run_id="exposure-check",
-                ),
-                workspace_policy=workspace_policy(),
-                budget_state=BudgetState(),
-                task_context=TaskExecutionContext(
-                    is_subagent=capabilities is not None,
-                    subagent_capabilities=capabilities,
-                ),
-            )
-
-            if getattr(decision.decision, "value", decision.decision) == "DENY":
-                continue
-
-            model_tools.append(
-                {
-                    "type": "function",
-                    "name": spec.name,
-                    "description": spec.description,
-                    "parameters": spec.input_schema
-                    or {"type": "object", "properties": {}},
-                }
-            )
-
-        return model_tools
-
-    @staticmethod
-    async def _execute_registered_tool(
-        tool: Any,
-        arguments: Dict[str, Any],
-        session_id: str,
-        workspace_id: str,
-        principal_id: Optional[str] = None,
-        trusted: bool = True,
-    ) -> Any:
-        """
-        Execute a registered tool while exposing a trusted memory context.
-
-        Memory context is installed only for the duration of the concrete tool
-        execution and is always cleared afterwards. trusted is False once the
-        run context holds untrusted content, so memories written from then on
-        are stored as untrusted.
-        """
-        set_memory_context(
-            session_id=session_id,
-            workspace_id=workspace_id,
-            principal_id=principal_id,
-            trusted=trusted,
-        )
-
-        try:
-            if hasattr(tool, "ainvoke"):
-                return await tool.ainvoke(arguments)
-
-            if inspect.iscoroutinefunction(tool):
-                return await tool(**arguments)
-
-            return await asyncio.to_thread(
-                tool,
-                **arguments,
-            )
-        finally:
-            clear_memory_context()
 
     # ==========================================================================
     # MAIN EXECUTION LOOP
@@ -603,55 +274,15 @@ class AgentRuntime:
         """
         del orchestrator
 
-        if principal is None:
-            raise PermissionError(
-                "Authenticated Principal is required for agent execution."
-            )
-
-        if not isinstance(principal, Principal):
-            raise PermissionError(
-                "Execution Principal is invalid."
-            )
-
-        if not principal.id:
-            raise PermissionError(
-                "Execution Principal is missing an identity."
-            )
-
-        if not session_id:
-            raise ValueError(
-                "session_id is required."
-            )
-
-        if not workspace_id:
-            raise ValueError(
-                "workspace_id is required."
-            )
-
-        if principal.workspace_id != workspace_id:
-            raise PermissionError(
-                "Principal workspace does not match execution workspace."
-            )
-
-        if max_attempts <= 0:
-            raise ValueError(
-                "max_attempts must be greater than zero."
-            )
-
-        if max_turns <= 0:
-            raise ValueError(
-                "max_turns must be greater than zero."
-            )
-
-        if max_tool_calls <= 0:
-            raise ValueError(
-                "max_tool_calls must be greater than zero."
-            )
-
-        if max_total_tool_calls <= 0:
-            raise ValueError(
-                "max_total_tool_calls must be greater than zero."
-            )
+        self._check_execution_arguments(
+            principal=principal,
+            session_id=session_id,
+            workspace_id=workspace_id,
+            max_attempts=max_attempts,
+            max_turns=max_turns,
+            max_tool_calls=max_tool_calls,
+            max_total_tool_calls=max_total_tool_calls,
+        )
 
         run_id = run_id or str(uuid.uuid4())
 
@@ -663,100 +294,25 @@ class AgentRuntime:
         )
 
         if agent_run is None:
-            start_time = datetime.utcnow()
-            current_attempt = 1
-            turn = 0
-
-            validated_description = InputGuardrail.validate(
-                str(
-                    task.get(
-                        "description",
-                        task,
-                    )
-                )
-            )
-
-            task = {
-                **task,
-                "description": validated_description,
-            }
-
-            preferences, recalled = await self._recall(
-                workspace_id=workspace_id,
-                principal_id=principal.id,
-                query=validated_description,
-            )
-
-            worker_context: Dict[str, Any] = {
-                "run_id": run_id,
-                "session_id": session_id,
-                "workspace_id": workspace_id,
-                "principal_id": principal.id,
-                "principal_role": principal.role.value,
-                "task": task,
-                "feedback": None,
-                "observations": [],
-                "resuming": False,
-                "preferences": preferences,
-                "recalled": recalled,
-                "subagent_capabilities": (
-                    capabilities.model_dump()
-                    if capabilities is not None
-                    else None
-                ),
-                "max_cost": max_cost,
-                # A subagent starts tainted when its parent has read
-                # untrusted content, and so does a run that recalls an
-                # untrusted memory: an injection read in an earlier session
-                # (a web page, a document) is back in the prompt.
-                "untrusted_context": bool(inherit_untrusted)
-                or any(not item.get("trusted", False) for item in recalled),
-                # The tools this run may see and call, picked from the
-                # user's task alone (never from content read later); None
-                # means all of them (M15, ADR-021).
-                "exposed_tools": select_tools(
-                    skill_registry,
-                    validated_description,
-                ),
-            }
-
-            last_feedback: Optional[str] = None
-
-            agent_run = AgentRun(
-                run_id=run_id,
-                # The run tree (F8): a subagent keeps its parent.
-                parent_run_id=parent_run_id,
-                session_id=session_id,
-                workspace_id=workspace_id,
-                principal_id=principal.id,
-                role=principal.role.value,
-                status=AgentRunStatus.RUNNING,
-                task_attempts=current_attempt,
-                current_state={
-                    "turn": turn,
-                    "worker_context": worker_context,
-                    "last_feedback": last_feedback,
-                },
-                created_at=start_time,
-            )
-
-            AgentStateManager.save_agent_run(
-                agent_run
-            )
-
-            EventDispatcher().dispatch(
-                "run.started",
+            (
+                agent_run,
+                task,
+                worker_context,
+                current_attempt,
+                turn,
+                last_feedback,
+            ) = await self._start_run(
+                task=task,
                 run_id=run_id,
                 parent_run_id=parent_run_id,
                 session_id=session_id,
                 workspace_id=workspace_id,
-                # Only a role chosen for the command (F8); triage is not shown.
-                role=task.get("role"),
-                details={"max_attempts": max_attempts},
+                principal=principal,
+                capabilities=capabilities,
+                max_cost=max_cost,
+                inherit_untrusted=inherit_untrusted,
+                max_attempts=max_attempts,
             )
-
-            _ACTIVE_SEGMENTS[run_id] = (0.0, time.monotonic())
-            _LIVE_USAGE[run_id] = agent_run.usage
 
         else:
             if agent_run.session_id != session_id:
@@ -774,7 +330,6 @@ class AgentRuntime:
                     "Persisted run principal does not match the authenticated Principal."
                 )
 
-            start_time = agent_run.created_at
             current_attempt = max(
                 1,
                 agent_run.task_attempts,
@@ -1497,31 +1052,15 @@ class AgentRuntime:
             current_attempt += 1
             turn = 0
 
-            worker_context = {
-                "run_id": run_id,
-                "session_id": session_id,
-                "workspace_id": workspace_id,
-                "principal_id": principal.id,
-                "principal_role": principal.role.value,
-                "task": task,
-                "feedback": last_feedback,
-                "observations": [],
-                "resuming": False,
-                "preferences": worker_context.get("preferences") or [],
-                "recalled": worker_context.get("recalled") or [],
-                "subagent_capabilities": worker_context.get(
-                    "subagent_capabilities"
-                ),
-                "max_cost": worker_context.get("max_cost"),
-                # The checker feedback may echo untrusted content, so the
-                # taint survives a retry.
-                "untrusted_context": bool(
-                    worker_context.get(
-                        "untrusted_context"
-                    )
-                ),
-                "exposed_tools": worker_context.get("exposed_tools"),
-            }
+            worker_context = self._retry_context(
+                worker_context,
+                task=task,
+                last_feedback=last_feedback,
+                principal=principal,
+                session_id=session_id,
+                workspace_id=workspace_id,
+                run_id=run_id,
+            )
 
             self._save(
                 agent_run,
@@ -1546,1080 +1085,36 @@ class AgentRuntime:
         )
 
     # ==========================================================================
-    # TOOL PROPOSAL EXECUTION
+    # START OF A RUN
     # ==========================================================================
 
     @staticmethod
-    def _input_channel(worker_context: Dict[str, Any]) -> str:
-        """
-        How the run's task arrived: "voice" for a transcript, else "text".
-        """
-        task = worker_context.get("task")
-        channel = task.get("input_channel") if isinstance(task, dict) else None
-        return "voice" if channel == "voice" else "text"
-
-    async def _execute_proposal(
-        self,
-        proposal: ToolProposal,
-        principal: Principal,
+    def _check_execution_arguments(
+        principal: Optional[Principal],
         session_id: str,
         workspace_id: str,
-        run_id: str,
-        untrusted_context: bool = False,
-        capabilities: Optional[SubagentCapabilitySet] = None,
-        input_channel: str = "text",
-        exposed_tools: Optional[List[str]] = None,
-        delegation: Optional[DelegationScope] = None,
-    ) -> Observation:
-        """
-        Run one proposal through the ToolGateway and return its Observation.
-
-        ApprovalRequiredError propagates to the caller; any other failure
-        becomes an observation the model can react to. `delegation` is
-        installed for the call, so delegate_task can start a subagent.
-        """
-        trusted = True
-        succeeded = False
-        modified_file: Optional[str] = None
-
-        try:
-            tool, _ = self._resolve_tool(
-                proposal.tool_name
-            )
-
-            spec = self._build_tool_spec(
-                proposal.tool_name
-            )
-
-            trusted = not spec.untrusted_output
-
-            invocation = ToolInvocation(
-                tool_name=proposal.tool_name,
-                arguments=dict(
-                    proposal.arguments
-                ),
-                principal=principal,
-                session_id=session_id,
-                spec=spec,
-                tool_call_id=proposal.tool_call_id,
-                run_id=run_id,
-            )
-
-            EventDispatcher().dispatch(
-                "tool.proposed",
-                run_id=run_id,
-                session_id=session_id,
-                workspace_id=workspace_id,
-                tool=proposal.tool_name,
-            )
-
-            async def executor(
-                **arguments: Any,
-            ) -> Any:
-                set_delegation_scope(delegation)
-
-                try:
-                    return await self._execute_registered_tool(
-                        tool=tool,
-                        arguments=arguments,
-                        session_id=session_id,
-                        workspace_id=workspace_id,
-                        principal_id=principal.id,
-                        trusted=not untrusted_context,
-                    )
-                finally:
-                    clear_delegation_scope()
-
-            tool_result = await self.tool_gateway.execute(
-                invocation,
-                executor,
-                task_context=TaskExecutionContext(
-                    workspace_id=workspace_id,
-                    untrusted_context=untrusted_context,
-                    is_subagent=capabilities is not None,
-                    subagent_capabilities=capabilities,
-                    input_channel=input_channel,
-                    exposed_tools=exposed_tools,
-                ),
-            )
-
-            content = (
-                tool_result.output
-                if tool_result.success
-                else tool_result.error
-            )
-
-            succeeded = bool(tool_result.success)
-
-            if succeeded:
-                modified_file = self._file_target(proposal)
-
-        except ApprovalRequiredError:
-            raise
-
-        except Exception as exc:  # noqa: BLE001 - a tool error becomes an observation for the model
-            logger.warning("Tool %s failed: %s", proposal.tool_name, exc)
-            content = f"Tool execution failed: {exc}"
-
-        return Observation(
-            tool_call_id=proposal.tool_call_id,
-            tool_name=proposal.tool_name,
-            arguments=dict(proposal.arguments),
-            content=content,
-            trusted=trusted,
-            succeeded=succeeded,
-            modified_file=modified_file,
-        )
-
-    def _delegation_scope(
-        self,
-        agent_run: AgentRun,
-        principal: Principal,
-        limits: RunLimits,
-        capabilities: Optional[SubagentCapabilitySet],
-    ) -> DelegationScope:
-        """
-        What delegate_task needs of the run calling it (F8).
-        """
-        return DelegationScope(
-            parent_run_id=agent_run.run_id,
-            session_id=agent_run.session_id,
-            workspace_id=agent_run.workspace_id,
-            principal=principal,
-            usage=agent_run.usage,
-            max_run_cost=limits.max_run_cost,
-            max_subagents=limits.max_subagents,
-            delegate=self.delegator,
-            is_subagent=capabilities is not None,
-        )
-
-    @staticmethod
-    def _record_observation(
-        worker_context: Dict[str, Any],
-        observation: Observation,
+        max_attempts: int,
+        max_turns: int,
+        max_tool_calls: int,
+        max_total_tool_calls: int,
     ) -> None:
         """
-        Append an observation and taint the run once untrusted content
-        has entered the model context.
-        """
-        worker_context["observations"].append(
-            observation
-        )
-
-        if not observation.trusted:
-            worker_context["untrusted_context"] = True
-
-    @staticmethod
-    def _capabilities(
-        worker_context: Dict[str, Any],
-    ) -> Optional[SubagentCapabilitySet]:
-        """
-        The delegated capability set of a subagent run, None for a top-level run.
-        """
-        data = worker_context.get("subagent_capabilities")
-
-        return SubagentCapabilitySet(**data) if data else None
-
-    @staticmethod
-    def _run_limits(
-        worker_context: Dict[str, Any],
-    ) -> RunLimits:
-        """
-        Limits from the environment, with a subagent's run budget capped by
-        what its parent had left. With no run cost cap (0) the subagent's
-        own budget is its cap.
-        """
-        limits = RunLimits.from_env()
-        max_cost = worker_context.get("max_cost")
-
-        if max_cost is not None:
-            limits = dataclasses.replace(
-                limits,
-                max_run_cost=(
-                    min(limits.max_run_cost, float(max_cost))
-                    if limits.max_run_cost > 0
-                    else float(max_cost)
-                ),
-            )
-
-        return limits
-
-    @classmethod
-    def _file_target(
-        cls,
-        proposal: ToolProposal,
-    ) -> Optional[str]:
-        """
-        The file a call would change, for tools that modify files.
-        """
-        try:
-            spec = cls._build_tool_spec(proposal.tool_name)
-        except ValueError:
-            return None
-
-        if not spec.modifies_files:
-            return None
-
-        arguments = proposal.arguments or {}
-
-        return str(
-            arguments.get("path")
-            or arguments.get("file_path")
-            or f"{proposal.tool_name}:{proposal.tool_call_id}"
-        )
-
-    @classmethod
-    def _check_before_tool(
-        cls,
-        agent_run: AgentRun,
-        proposal: ToolProposal,
-        limits: RunLimits,
-    ) -> Optional[RunLimitExceededError]:
-        """
-        Refuse a call that would change one file more than the run allows.
-        """
-        target = cls._file_target(proposal)
-        modified = list(agent_run.usage.get("files_modified") or [])
-
-        if (
-            target is not None
-            and target not in modified
-            and limits.max_files_modified > 0
-            and len(modified) >= limits.max_files_modified
-        ):
-            return RunLimitExceededError(
-                f"Modified files limit reached: {len(modified)} of "
-                f"{limits.max_files_modified}; '{proposal.tool_name}' was not run."
-            )
-
-        return None
-
-    @staticmethod
-    def _record_effects(
-        agent_run: AgentRun,
-        observation: Observation,
-        limits: RunLimits,
-    ) -> Optional[RunLimitExceededError]:
-        """
-        Count failed calls and modified files; stop the run once failures
-        reach the per-run limit (a run stuck on failing tools or tests).
-        """
-        if observation.modified_file:
-            modified = list(agent_run.usage.get("files_modified") or [])
-
-            if observation.modified_file not in modified:
-                modified.append(observation.modified_file)
-
-            agent_run.usage["files_modified"] = modified
-
-        stop: Optional[RunLimitExceededError] = None
-
-        if not observation.succeeded:
-            failed = int(agent_run.usage.get("failed_tool_calls", 0)) + 1
-            agent_run.usage["failed_tool_calls"] = failed
-
-            if 0 < limits.max_failed_tool_calls <= failed:
-                stop = RunLimitExceededError(
-                    f"Failed tool calls limit reached: {failed} of "
-                    f"{limits.max_failed_tool_calls}."
-                )
-
-        EventDispatcher().dispatch(
-            "tool.completed",
-            run_id=agent_run.run_id,
-            session_id=agent_run.session_id,
-            workspace_id=agent_run.workspace_id,
-            tool=observation.tool_name,
-            details={
-                "succeeded": bool(observation.succeeded),
-                "usage": _usage_now(agent_run),
-            },
-        )
-
-        return stop
-
-    async def _park(
-        self,
-        agent_run: AgentRun,
-        worker_context: Dict[str, Any],
-        proposal: ToolProposal,
-        approval_id: Optional[str],
-        queued: List[ToolProposal],
-        current_attempt: int,
-        turn: int,
-        last_feedback: Optional[str],
-    ) -> Dict[str, Any]:
-        """
-        Park a call that needs approval, with the calls of the same turn that
-        come after it.
-
-        The parked call is replayed through the ToolGateway on resume and the
-        queued ones run after it; the model never sees a placeholder
-        observation.
-        """
-        agent_run.status = AgentRunStatus.WAITING_APPROVAL
-
-        worker_context["pending_tool_call"] = {
-            "tool_call_id": proposal.tool_call_id,
-            "tool_name": proposal.tool_name,
-            "arguments": dict(proposal.arguments),
-            "approval_id": approval_id,
-        }
-        worker_context["queued_tool_calls"] = [
-            {
-                "tool_call_id": queued_proposal.tool_call_id,
-                "tool_name": queued_proposal.tool_name,
-                "arguments": dict(queued_proposal.arguments),
-            }
-            for queued_proposal in queued
-        ]
-
-        EventDispatcher().dispatch(
-            "tool.approval_required",
-            run_id=agent_run.run_id,
-            session_id=agent_run.session_id,
-            workspace_id=agent_run.workspace_id,
-            tool=proposal.tool_name,
-            details={
-                "approval_id": approval_id,
-            },
-        )
-
-        # Saved first: whoever reacts to the event reads the parked call.
-        self._save(
-            agent_run,
-            current_attempt,
-            turn,
-            worker_context,
-            last_feedback,
-        )
-
-        await self._notify(
-            agent_run.session_id,
-            "approval.requested",
-            {
-                "approval_id": approval_id,
-                "run_id": agent_run.run_id,
-                "tool": proposal.tool_name,
-            },
-            workspace_id=agent_run.workspace_id,
-        )
-
-        return {
-            "status": "WAITING_APPROVAL",
-            "run_id": agent_run.run_id,
-            "approval_id": approval_id,
-        }
-
-    async def _resume_pending_tool_call(
-        self,
-        agent_run: AgentRun,
-        worker_context: Dict[str, Any],
-        principal: Principal,
-        session_id: str,
-        workspace_id: str,
-        run_id: str,
-        current_attempt: int,
-        turn: int,
-        last_feedback: Optional[str],
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Resolve the call parked by a WAITING_APPROVAL run.
-
-        - still pending: the run keeps waiting;
-        - denied (explicitly or by timeout): the run is closed as CANCELLED
-          and neither the tool nor the calls queued after it execute;
-        - approved: the exact parked call is replayed through the
-          ToolGateway, which re-checks the approval for the same arguments,
-          then the calls queued after it run in order (one of them may park
-          the run again).
-
-        Returns a result to hand back to the caller, or None when the run
-        should continue with the next Worker turn.
-        """
-        pending = worker_context.get(
-            "pending_tool_call"
-        )
-
-        if not pending:
-            agent_run.status = AgentRunStatus.RUNNING
-            AgentStateManager.save_agent_run(
-                agent_run
-            )
-            return None
-
-        status = await ApprovalManager.check_approval_status(
-            session_id=session_id,
-            workspace_id=workspace_id,
-            principal_id=principal.id,
-            run_id=run_id,
-            tool_name=pending["tool_name"],
-            arguments=pending["arguments"],
-        )
-
-        if status == "WAITING_APPROVAL":
-            return {
-                "status": "WAITING_APPROVAL",
-                "run_id": run_id,
-                "approval_id": pending.get("approval_id"),
-            }
-
-        if status != "APPROVED":
-            worker_context["pending_tool_call"] = None
-            worker_context["queued_tool_calls"] = []
-            agent_run.status = AgentRunStatus.CANCELLED
-            agent_run.error = (
-                f"Approval for tool '{pending['tool_name']}' was denied."
-            )
-            agent_run.errors.append(
-                agent_run.error
-            )
-
-            EventDispatcher().dispatch(
-                "run.cancelled",
-                run_id=run_id,
-                session_id=session_id,
-                workspace_id=workspace_id,
-                tool=pending["tool_name"],
-            )
-
-            self._save(
-                agent_run,
-                current_attempt,
-                turn,
-                worker_context,
-                last_feedback,
-            )
-
-            return {
-                "status": "DENIED",
-                "run_id": run_id,
-            }
-
-        agent_run.status = AgentRunStatus.RUNNING
-
-        limits = self._run_limits(worker_context)
-        capability_set = self._capabilities(worker_context)
-
-        queued = [
-            ToolProposal(
-                tool_call_id=call["tool_call_id"],
-                tool_name=call["tool_name"],
-                arguments=call["arguments"],
-                run_id=run_id,
-            )
-            for call in worker_context.get("queued_tool_calls") or []
-        ]
-
-        proposals = [
-            ToolProposal(
-                tool_call_id=pending["tool_call_id"],
-                tool_name=pending["tool_name"],
-                arguments=pending["arguments"],
-                run_id=run_id,
-            ),
-            *queued,
-        ]
-
-        worker_context["pending_tool_call"] = None
-        worker_context["queued_tool_calls"] = []
-
-        for index, proposal in enumerate(proposals):
-            # The approved call was checked when it was proposed.
-            if index > 0:
-                limit_stop = self._check_before_tool(
-                    agent_run,
-                    proposal,
-                    limits,
-                )
-
-                if limit_stop is not None:
-                    return self._stop_run(
-                        agent_run,
-                        limit_stop,
-                        current_attempt,
-                        turn,
-                        worker_context,
-                        last_feedback,
-                    )
-
-            try:
-                observation = await self._execute_proposal(
-                    proposal=proposal,
-                    principal=principal,
-                    session_id=session_id,
-                    workspace_id=workspace_id,
-                    run_id=run_id,
-                    untrusted_context=bool(
-                        worker_context.get(
-                            "untrusted_context"
-                        )
-                    ),
-                    capabilities=capability_set,
-                    input_channel=self._input_channel(worker_context),
-                    exposed_tools=worker_context.get("exposed_tools"),
-                    delegation=self._delegation_scope(
-                        agent_run,
-                        principal,
-                        limits,
-                        capability_set,
-                    ),
-                )
-
-            except ApprovalRequiredError as exc:
-                if index == 0:
-                    raise
-
-                return await self._park(
-                    agent_run,
-                    worker_context,
-                    proposal,
-                    exc.approval_id,
-                    proposals[index + 1:],
-                    current_attempt,
-                    turn,
-                    last_feedback,
-                )
-
-            self._record_observation(
-                worker_context,
-                observation,
-            )
-
-            limit_stop = self._record_effects(
-                agent_run,
-                observation,
-                limits,
-            )
-
-            if limit_stop is not None:
-                return self._stop_run(
-                    agent_run,
-                    limit_stop,
-                    current_attempt,
-                    turn,
-                    worker_context,
-                    last_feedback,
-                )
-
-        self._save(
-            agent_run,
-            current_attempt,
-            turn,
-            worker_context,
-            last_feedback,
-        )
-
-        return None
-
-    # ==========================================================================
-    # RUN CONTROL: SPEND, STOPS AND LIVE STATE
-    # ==========================================================================
-
-    @staticmethod
-    def _check_spend(
-        agent_run: AgentRun,
-        principal_id: str,
-        limits: RunLimits,
-    ) -> Optional[BudgetExceededError]:
-        """
-        Refuse the next model call once the run or the month is out of budget.
-
-        The ledger is part of the budget boundary: if it cannot be read the
-        call is refused (fail closed).
-        """
-        run_cost = float(agent_run.usage.get("cost", 0.0))
-
-        if limits.max_run_cost > 0 and run_cost >= limits.max_run_cost:
-            return BudgetExceededError(
-                f"Run budget exhausted: {run_cost:.4f} USD of "
-                f"{_usd(limits.max_run_cost)} USD."
-            )
-
-        try:
-            month_spent = SpendLedger.spent(principal_id)
-        except Exception as exc:  # noqa: BLE001 - fail closed: without the ledger no model call runs
-            logger.error("Spend ledger unavailable, model calls blocked: %s", exc)
-            return BudgetExceededError(
-                "Spend ledger unavailable: model calls are blocked."
-            )
-
-        if month_spent >= limits.monthly_budget:
-            return BudgetExceededError(
-                f"Monthly budget exhausted: {month_spent:.4f} USD of "
-                f"{_usd(limits.monthly_budget)} USD."
-            )
-
-        return None
-
-    def _record_usage(
-        self,
-        agent_run: AgentRun,
-        usage: Any,
-        role: str,
-        principal_id: str,
-        limits: RunLimits,
-    ) -> Optional[BudgetExceededError]:
-        """
-        Add one model call to the run totals and the monthly ledger, and
-        return a stop when a limit is now reached.
-        """
-        if not isinstance(usage, dict):
-            return None
-
-        totals = agent_run.usage
-        model = str(usage.get("model") or "unknown")
-        tokens = int(usage.get("total_tokens") or 0)
-        cost = float(usage.get("cost") or 0.0)
-
-        totals["model_calls"] = int(totals.get("model_calls", 0)) + 1
-
-        for key in ("input_tokens", "output_tokens", "total_tokens"):
-            totals[key] = int(totals.get(key, 0)) + int(usage.get(key) or 0)
-
-        totals["cost"] = round(float(totals.get("cost", 0.0)) + cost, 8)
-
-        if usage.get("estimated"):
-            totals["cost_estimated"] = True
-
-        per_model = totals.setdefault("by_model", {}).setdefault(
-            model,
-            {"calls": 0, "total_tokens": 0, "cost": 0.0},
-        )
-        per_model["calls"] += 1
-        per_model["total_tokens"] += tokens
-        per_model["cost"] = round(per_model["cost"] + cost, 8)
-
-        per_role = totals.setdefault("by_role", {}).setdefault(
-            role,
-            {"calls": 0, "total_tokens": 0, "cost": 0.0},
-        )
-        per_role["calls"] += 1
-        per_role["total_tokens"] += tokens
-        per_role["cost"] = round(per_role["cost"] + cost, 8)
-
-        totals.setdefault("calls", []).append(
-            {
-                "at": datetime.utcnow().isoformat(),
-                "role": role,
-                "model": model,
-                "total_tokens": tokens,
-                "cost": cost,
-            }
-        )
-
-        EventDispatcher().dispatch(
-            "model.called",
-            run_id=agent_run.run_id,
-            session_id=agent_run.session_id,
-            workspace_id=agent_run.workspace_id,
-            tokens=tokens,
-            cost=cost,
-            model=model,
-            role=role,
-            details={"usage": _usage_now(agent_run)},
-        )
-
-        try:
-            month_spent = SpendLedger.add(principal_id, cost)
-        except Exception as exc:  # noqa: BLE001 - fail closed: without the ledger no model call runs
-            logger.error("Spend ledger unavailable, model calls blocked: %s", exc)
-            return BudgetExceededError(
-                "Spend ledger unavailable: model calls are blocked."
-            )
-
-        if (
-            month_spent >= limits.monthly_budget * limits.warning_ratio
-            and not totals.get("budget_warning")
-        ):
-            totals["budget_warning"] = True
-
-            EventDispatcher().dispatch(
-                "budget.warning",
-                run_id=agent_run.run_id,
-                session_id=agent_run.session_id,
-                workspace_id=agent_run.workspace_id,
-                cost=month_spent,
-                details={"monthly_budget": limits.monthly_budget},
-            )
-
-        if limits.max_run_cost > 0 and totals["cost"] >= limits.max_run_cost:
-            return BudgetExceededError(
-                f"Run budget exhausted: {totals['cost']:.4f} USD of "
-                f"{_usd(limits.max_run_cost)} USD."
-            )
-
-        if month_spent >= limits.monthly_budget:
-            return BudgetExceededError(
-                f"Monthly budget exhausted: {month_spent:.4f} USD of "
-                f"{_usd(limits.monthly_budget)} USD."
-            )
-
-        return None
-
-    def _stop_run(
-        self,
-        agent_run: AgentRun,
-        reason: RunInterrupted,
-        current_attempt: int,
-        turn: int,
-        worker_context: Dict[str, Any],
-        last_feedback: Optional[str],
-    ) -> Dict[str, Any]:
-        """
-        Close a run stopped by the kill switch, a spend limit or a run limit.
-        """
-        cancelled = isinstance(reason, RunCancelledError)
-        limited = isinstance(reason, RunLimitExceededError)
-
-        agent_run.status = (
-            AgentRunStatus.CANCELLED
-            if cancelled
-            else AgentRunStatus.FAILED
-        )
-        agent_run.error = str(reason)
-        agent_run.errors.append(agent_run.error)
-
-        EventDispatcher().dispatch(
-            "run.cancelled"
-            if cancelled
-            else "run.limit_exceeded"
-            if limited
-            else "budget.exceeded",
-            run_id=agent_run.run_id,
-            session_id=agent_run.session_id,
-            workspace_id=agent_run.workspace_id,
-            cost=float(agent_run.usage.get("cost", 0.0)),
-            details={"reason": agent_run.error},
-        )
-
-        self._save(
-            agent_run,
-            current_attempt,
-            turn,
-            worker_context,
-            last_feedback,
-        )
-
-        return {
-            "status": (
-                "CANCELLED"
-                if cancelled
-                else "LIMIT_EXCEEDED"
-                if limited
-                else "BUDGET_EXCEEDED"
-            ),
-            "run_id": agent_run.run_id,
-            "reason": agent_run.error,
-            "usage": {
-                key: agent_run.usage.get(key)
-                for key in ("model_calls", "total_tokens", "cost")
-            },
-        }
-
-    async def _emit_state(
-        self,
-        session_id: str,
-        run_id: str,
-        state: str,
-        workspace_id: str = "",
-        **details: Any,
-    ) -> None:
-        """
-        Publish the live run state (planning / tool_running /
-        awaiting_approval / done) to the session and its workspace.
-        """
-        await self._notify(
-            session_id,
-            "run.state",
-            {
-                "run_id": run_id,
-                "state": state,
-                **details,
-            },
-            workspace_id=workspace_id,
-        )
-
-    @staticmethod
-    async def _notify(
-        session_id: str,
-        event_type: str,
-        data: Dict[str, Any],
-        workspace_id: str = "",
-    ) -> None:
-        """
-        Push a realtime event to the session (and, for control-plane events,
-        to its workspace); delivery is best effort and never affects
-        execution, nor slows it when the bus is unreachable.
-        """
-        try:
-            from app.core.event_bus import event_bus
-
-            await asyncio.wait_for(
-                event_bus.publish(
-                    session_id,
-                    event_type,
-                    data,
-                    workspace_id=workspace_id,
-                ),
-                timeout=NOTIFY_TIMEOUT_SECONDS,
-            )
-        except Exception as exc:  # noqa: BLE001 - realtime events are best effort and never affect a run
-            logger.debug("Realtime event %s not delivered: %s", event_type, exc)
-            pass
-
-    # ==========================================================================
-    # DURABLE STATE
-    # ==========================================================================
-
-    # ==========================================================================
-    # LONG-TERM MEMORY (M6)
-    # ==========================================================================
-
-    @staticmethod
-    async def _recall(
-        workspace_id: str,
-        principal_id: str,
-        query: str,
-    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-        """
-        Load trusted preferences (L2) and memories relevant to the goal (L5).
-
-        Memory improves a run but is not required for it: any failure is
-        logged and the run continues without recall.
-        """
-        if not memory_enabled():
-            return [], []
-
-        def load() -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-            store = MemoryStore(
-                workspace_id=workspace_id,
-                principal_id=principal_id,
-            )
-            preferences = store.preferences(
-                limit=PREFERENCE_LIMIT,
-            )
-            recalled = store.search(
-                query,
-                limit=RECALL_LIMIT,
-                exclude_kinds=[
-                    MemoryKind.PREFERENCE.value,
-                    MemoryKind.RULE.value,
-                ],
-            )
-            return (
-                [hit.to_dict() for hit in preferences],
-                [hit.to_dict() for hit in recalled],
-            )
-
-        try:
-            return await asyncio.to_thread(load)
-        except Exception as exc:  # noqa: BLE001 - memory recall is optional for a run
-            logger.warning("Memory recall skipped: %s", exc)
-            return [], []
-
-    @staticmethod
-    async def _index_episode(
-        workspace_id: str,
-        principal_id: str,
-        session_id: str,
-        run_id: str,
-        goal: str,
-        result: Any,
-        trusted: bool,
-    ) -> None:
-        """
-        Store an accepted run as an episode for later sessions. A run that
-        handled untrusted content is stored as untrusted.
-        """
-        if not memory_enabled():
-            return
-
-        def store() -> None:
-            MemoryStore(
-                workspace_id=workspace_id,
-                principal_id=principal_id,
-            ).add(
-                f"Task: {goal}\nResult: {result}",
-                MemoryKind.EPISODE,
-                trusted=trusted,
-                source="runtime",
-                session_id=session_id,
-                run_id=run_id,
-            )
-
-        try:
-            await asyncio.to_thread(store)
-        except Exception as exc:  # noqa: BLE001 - memory indexing is optional for a run
-            logger.warning("Memory indexing skipped for run %s: %s", run_id, exc)
-
-    @staticmethod
-    def _save(
-        agent_run: AgentRun,
-        current_attempt: int,
-        turn: int,
-        worker_context: Dict[str, Any],
-        last_feedback: Optional[str],
-    ) -> None:
-        """
-        Persist the serializable runtime checkpoint.
-        """
-        observations: List[Any] = []
-
-        for observation in worker_context.get(
-            "observations",
-            [],
-        ):
-            if isinstance(
-                observation,
-                Observation,
-            ):
-                observations.append(
-                    {
-                        "tool_call_id": observation.tool_call_id,
-                        "tool_name": observation.tool_name,
-                        "arguments": observation.arguments,
-                        "content": observation.content,
-                        "trusted": observation.trusted,
-                        "succeeded": observation.succeeded,
-                        "modified_file": observation.modified_file,
-                    }
-                )
-            else:
-                observations.append(
-                    observation
-                )
-
-        persisted_worker_context = {
-            "run_id": worker_context.get(
-                "run_id"
-            ),
-            "session_id": worker_context.get(
-                "session_id"
-            ),
-            "workspace_id": worker_context.get(
-                "workspace_id"
-            ),
-            "principal_id": worker_context.get(
-                "principal_id"
-            ),
-            "principal_role": worker_context.get(
-                "principal_role"
-            ),
-            "task": worker_context.get(
-                "task"
-            ),
-            "feedback": worker_context.get(
-                "feedback"
-            ),
-            "resuming": worker_context.get(
-                "resuming"
-            ),
-            "pending_tool_call": worker_context.get(
-                "pending_tool_call"
-            ),
-            "queued_tool_calls": worker_context.get(
-                "queued_tool_calls"
-            ) or [],
-            "subagent_capabilities": worker_context.get(
-                "subagent_capabilities"
-            ),
-            "max_cost": worker_context.get(
-                "max_cost"
-            ),
-            "untrusted_context": bool(
-                worker_context.get(
-                    "untrusted_context"
-                )
-            ),
-            "exposed_tools": worker_context.get(
-                "exposed_tools"
-            ),
-            "preferences": worker_context.get(
-                "preferences"
-            ) or [],
-            "recalled": worker_context.get(
-                "recalled"
-            ) or [],
-            "observations": observations,
-        }
-
-        agent_run.current_state = {
-            "turn": turn,
-            "worker_context": persisted_worker_context,
-            "last_feedback": last_feedback,
-        }
-
-        agent_run.task_attempts = current_attempt
-        agent_run.updated_at = datetime.utcnow()
-        agent_run.usage["active_seconds"] = round(
-            _active_seconds(agent_run),
-            3,
-        )
-
-        AgentStateManager.save_agent_run(
-            agent_run
-        )
-
-    # ==========================================================================
-    # NATIVE SUBAGENT CREATION
-    # ==========================================================================
-
-    async def spawn_agent(
-        self,
-        parent_run_id: Optional[str],
-        child_run_id: str,
-        task: Dict[str, Any],
-        role: str,
-        budget: float,
-        permissions: List[str],
-        deadline: Optional[datetime],
-        result_schema: Dict[str, Any],
-        worker_provider: ModelProvider,
-        checker: Any,
-        allowed_tools: Optional[List[str]] = None,
-        session_id: str = "",
-        workspace_id: str = "",
-        principal: Optional[Principal] = None,
-    ) -> Any:
-        """
-        Run a native subagent with an explicitly bounded capability set.
-
-        The child inherits the authenticated Principal and workspace rather
-        than an implicit system identity, and can only narrow them:
-        - tools: `allowed_tools` (default all) ∩ workspace policy, and every
-          call still goes through the PolicyEngine and the ToolGateway;
-        - permissions: the requested ones ∩ the Principal's role;
-        - budget: at most what the parent run has left;
-        - provenance: a child of a tainted parent starts tainted, so its HIGH
-          calls need approval too.
-
-        `worker_provider` and `checker` come from the engine routing, so the
-        Critic stays independent from the worker.
+        Refuse a run without an authenticated Principal of the execution
+        workspace, without a session, or with a limit below one.
         """
         if principal is None:
             raise PermissionError(
-                "Authenticated Principal is required for subagent execution."
+                "Authenticated Principal is required for agent execution."
             )
 
         if not isinstance(principal, Principal):
             raise PermissionError(
-                "Subagent Principal is invalid."
+                "Execution Principal is invalid."
             )
 
-        if principal.workspace_id != workspace_id:
+        if not principal.id:
             raise PermissionError(
-                "Principal workspace does not match subagent workspace."
-            )
-
-        if budget <= 0:
-            raise ValueError(
-                "Subagent budget must be greater than zero."
-            )
-
-        if not workspace_id:
-            raise ValueError(
-                "workspace_id is required."
+                "Execution Principal is missing an identity."
             )
 
         if not session_id:
@@ -2627,181 +1122,204 @@ class AgentRuntime:
                 "session_id is required."
             )
 
-        if not child_run_id:
+        if not workspace_id:
             raise ValueError(
-                "child_run_id is required."
+                "workspace_id is required."
             )
 
-        limits = RunLimits.from_env()
-        # A run cost cap of 0 is no cap: the subagent gets what it asks for.
-        parent_remaining = (
-            limits.max_run_cost if limits.max_run_cost > 0 else math.inf
-        )
-        inherit_untrusted = False
-
-        if parent_run_id:
-            parent_run = AgentStateManager.load_agent_run(
-                parent_run_id,
-                session_id=session_id,
-                workspace_id=workspace_id,
-                principal_id=principal.id,
+        if principal.workspace_id != workspace_id:
+            raise PermissionError(
+                "Principal workspace does not match execution workspace."
             )
 
-            if parent_run is None or parent_run.principal_id != principal.id:
-                raise PermissionError(
-                    "Parent run does not belong to the authenticated Principal."
-                )
-
-            parent_context = (parent_run.current_state or {}).get(
-                "worker_context"
-            ) or {}
-
-            inherit_untrusted = bool(
-                parent_context.get("untrusted_context")
+        if max_attempts <= 0:
+            raise ValueError(
+                "max_attempts must be greater than zero."
             )
 
-            # A subagent of a spoken task is a spoken task too: its HIGH
-            # actions also wait for a human (ADR-021).
-            if self._input_channel(parent_context) == "voice":
-                task = {**task, "input_channel": "voice"}
-
-            parent_cap = self._run_limits(parent_context).max_run_cost
-            parent_remaining = (
-                parent_cap - float(parent_run.usage.get("cost", 0.0))
-                if parent_cap > 0
-                else math.inf
+        if max_turns <= 0:
+            raise ValueError(
+                "max_turns must be greater than zero."
             )
 
-        child_budget = min(budget, parent_remaining)
-
-        if child_budget <= 0:
-            raise BudgetExceededError(
-                "The parent run has no budget left for a subagent."
+        if max_tool_calls <= 0:
+            raise ValueError(
+                "max_tool_calls must be greater than zero."
             )
 
-        try:
-            resource_profile = ResourceManager.allocate(
+        if max_total_tool_calls <= 0:
+            raise ValueError(
+                "max_total_tool_calls must be greater than zero."
+            )
+
+    async def _start_run(
+        self,
+        task: Dict[str, Any],
+        run_id: str,
+        parent_run_id: Optional[str],
+        session_id: str,
+        workspace_id: str,
+        principal: Principal,
+        capabilities: Optional[SubagentCapabilitySet],
+        max_cost: Optional[float],
+        inherit_untrusted: bool,
+        max_attempts: int,
+    ) -> Tuple[AgentRun, Dict[str, Any], Dict[str, Any], int, int, Optional[str]]:
+        """
+        A new run: the task through the input guardrail, preferences and
+        memories recalled, the tools picked from the task, the run saved and
+        announced. Returns the loop's starting state.
+        """
+
+        start_time = datetime.utcnow()
+        current_attempt = 1
+        turn = 0
+
+        validated_description = InputGuardrail.validate(
+            str(
                 task.get(
                     "description",
-                    str(task),
+                    task,
                 )
             )
-        except Exception as exc:
-            raise RuntimeError(
-                "Unable to allocate resources for subagent execution."
-            ) from exc
-
-        runtime_seconds = resource_profile.max_runtime
-
-        if deadline is not None:
-            remaining = (
-                deadline - datetime.utcnow()
-            ).total_seconds()
-
-            runtime_seconds = min(
-                runtime_seconds,
-                max(
-                    0.0,
-                    remaining,
-                ),
-            )
-
-        if runtime_seconds <= 0:
-            raise TaskTimeoutError(
-                "Subagent deadline does not permit execution."
-            )
-
-        role_permissions = [
-            permission.value
-            for permission in ROLE_PERMISSIONS.get(principal.role, [])
-        ]
-
-        capability_set = SubagentCapabilitySet.intersect(
-            parent=SubagentCapabilitySet(
-                allowed_tools=["*"],
-                allowed_scopes=[],
-                max_budget=child_budget,
-                max_runtime=int(runtime_seconds),
-                workspace=workspace_id,
-                permissions=role_permissions,
-            ),
-            delegated=SubagentCapabilitySet(
-                allowed_tools=list(allowed_tools or ["*"]),
-                allowed_scopes=[],
-                max_budget=child_budget,
-                max_runtime=int(runtime_seconds),
-                workspace=workspace_id,
-                permissions=list(permissions),
-            ),
-            policy=workspace_policy(workspace_id),
         )
 
-        # The role is kept with the task, so the run tree shows it and a
-        # resumed subagent goes back to the same worker (F8).
-        if role in {item.value for item in IMPLEMENTER_ROLES}:
-            task = {**task, "role": role}
-
-        worker = SubagentFactory.create_subagent(
-            role_name=role,
-            system_prompt=(
-                f"You are a specialized ÆHub subagent for role '{role}'. "
-                "Operate strictly within the delegated capability set."
-            ),
-            tools=[],
-            adapter=worker_provider,
-            capabilities=capability_set,
-        )
-
-        # The Nucleo draws each subagent as a moon of its parent run (F1).
-        EventDispatcher().dispatch(
-            "subagent.spawned",
-            run_id=child_run_id,
-            parent_run_id=parent_run_id,
-            session_id=session_id,
-            workspace_id=workspace_id,
-            role=role,
-        )
-
-        result = await self.execute_task(
-            task=task,
-            orchestrator=None,
-            worker=worker,
-            checker=checker,
-            timeout=runtime_seconds,
-            run_id=child_run_id,
-            session_id=session_id,
-            workspace_id=workspace_id,
-            principal=principal,
-            capabilities=capability_set,
-            max_cost=child_budget,
-            inherit_untrusted=inherit_untrusted,
-            parent_run_id=parent_run_id,
-        )
-
-        EventDispatcher().dispatch(
-            "subagent.completed",
-            run_id=child_run_id,
-            parent_run_id=parent_run_id,
-            session_id=session_id,
-            workspace_id=workspace_id,
-            role=role,
-            # A finished subagent returns its answer; a stopped one a status.
-            details={
-                "status": (
-                    result.get("status") or "COMPLETED"
-                    if isinstance(result, dict)
-                    else "COMPLETED"
-                ),
-            },
-        )
-
-        return {
-            "parent_run_id": parent_run_id,
-            "child_run_id": child_run_id,
-            "role": role,
-            "result_schema": result_schema,
-            "result": result,
+        task = {
+            **task,
+            "description": validated_description,
         }
+
+        preferences, recalled = await self._recall(
+            workspace_id=workspace_id,
+            principal_id=principal.id,
+            query=validated_description,
+        )
+
+        worker_context: Dict[str, Any] = {
+            "run_id": run_id,
+            "session_id": session_id,
+            "workspace_id": workspace_id,
+            "principal_id": principal.id,
+            "principal_role": principal.role.value,
+            "task": task,
+            "feedback": None,
+            "observations": [],
+            "resuming": False,
+            "preferences": preferences,
+            "recalled": recalled,
+            "subagent_capabilities": (
+                capabilities.model_dump()
+                if capabilities is not None
+                else None
+            ),
+            "max_cost": max_cost,
+            # A subagent starts tainted when its parent has read
+            # untrusted content, and so does a run that recalls an
+            # untrusted memory: an injection read in an earlier session
+            # (a web page, a document) is back in the prompt.
+            "untrusted_context": bool(inherit_untrusted)
+            or any(not item.get("trusted", False) for item in recalled),
+            # The tools this run may see and call, picked from the
+            # user's task alone (never from content read later); None
+            # means all of them (M15, ADR-021).
+            "exposed_tools": select_tools(
+                skill_registry,
+                validated_description,
+            ),
+        }
+
+        last_feedback: Optional[str] = None
+
+        agent_run = AgentRun(
+            run_id=run_id,
+            # The run tree (F8): a subagent keeps its parent.
+            parent_run_id=parent_run_id,
+            session_id=session_id,
+            workspace_id=workspace_id,
+            principal_id=principal.id,
+            role=principal.role.value,
+            status=AgentRunStatus.RUNNING,
+            task_attempts=current_attempt,
+            current_state={
+                "turn": turn,
+                "worker_context": worker_context,
+                "last_feedback": last_feedback,
+            },
+            created_at=start_time,
+        )
+
+        AgentStateManager.save_agent_run(
+            agent_run
+        )
+
+        EventDispatcher().dispatch(
+            "run.started",
+            run_id=run_id,
+            parent_run_id=parent_run_id,
+            session_id=session_id,
+            workspace_id=workspace_id,
+            # Only a role chosen for the command (F8); triage is not shown.
+            role=task.get("role"),
+            details={"max_attempts": max_attempts},
+        )
+
+        _ACTIVE_SEGMENTS[run_id] = (0.0, time.monotonic())
+        _LIVE_USAGE[run_id] = agent_run.usage
+
+        return (
+            agent_run,
+            task,
+            worker_context,
+            current_attempt,
+            turn,
+            last_feedback,
+        )
+
+    # ==========================================================================
+    # RETRY AFTER THE CRITIC
+    # ==========================================================================
+
+    @staticmethod
+    def _retry_context(
+        worker_context: Dict[str, Any],
+        task: Dict[str, Any],
+        last_feedback: Optional[str],
+        principal: Principal,
+        session_id: str,
+        workspace_id: str,
+        run_id: str,
+    ) -> Dict[str, Any]:
+        """
+        The worker context of the next attempt after a Critic rejection:
+        no observations, the Critic's feedback, and what the run keeps
+        (preferences, recalled memories, limits, taint, exposed tools).
+        """
+        return {
+            "run_id": run_id,
+            "session_id": session_id,
+            "workspace_id": workspace_id,
+            "principal_id": principal.id,
+            "principal_role": principal.role.value,
+            "task": task,
+            "feedback": last_feedback,
+            "observations": [],
+            "resuming": False,
+            "preferences": worker_context.get("preferences") or [],
+            "recalled": worker_context.get("recalled") or [],
+            "subagent_capabilities": worker_context.get(
+                "subagent_capabilities"
+            ),
+            "max_cost": worker_context.get("max_cost"),
+            # The checker feedback may echo untrusted content, so the
+            # taint survives a retry.
+            "untrusted_context": bool(
+                worker_context.get(
+                    "untrusted_context"
+                )
+            ),
+            "exposed_tools": worker_context.get("exposed_tools"),
+        }
+
 
 
 __all__ = [

@@ -301,9 +301,11 @@ def agent_infrastructure(db_session_factory, tmp_path):
             registry = SkillRegistry()
             for skill in skills:
                 registry.register_skill(skill)
-            stack.enter_context(
-                patch("app.agent_engine.runtime.skill_registry", registry)
-            )
+            # The loop picks the run's tools, the tools part resolves them (Q1).
+            for module in ("runtime", "runtime_tools"):
+                stack.enter_context(
+                    patch(f"app.agent_engine.{module}.skill_registry", registry)
+                )
             return registry
 
         yield SimpleNamespace(

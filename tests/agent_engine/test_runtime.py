@@ -41,7 +41,7 @@ def spend_ledger():
     These unit tests run without a database: fake the monthly spend ledger,
     which otherwise fails closed and blocks every model call.
     """
-    with patch("app.agent_engine.runtime.SpendLedger") as ledger:
+    with patch("app.agent_engine.runtime_limits.SpendLedger") as ledger:
         ledger.spent.return_value = 0.0
         ledger.add.return_value = 0.0
         yield ledger
