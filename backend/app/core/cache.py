@@ -1,9 +1,6 @@
 """
 @file backend/app/core/cache.py
-@description Implements cache.py. Core components: CacheService.
-
-This module manages the internal business logic for CacheService.
-It provides specialized functionality to handle: get_pool, get_client, get, set, delete, check_rate_limit.
+@description Cache and rate limits on Redis, or in process when the desktop app runs without Redis.
 """
 import json
 import time
@@ -55,9 +52,6 @@ class LocalCache:
 
 class CacheService:
     """
-    Represents the CacheService entity and its core operations.
-    """
-    """
     Distributed Caching Layer (M4).
     Manages Redis connections for Session caching, Rate Limiting, and LLM Response caching.
     """
@@ -66,10 +60,7 @@ class CacheService:
 
     @classmethod
     def get_pool(cls) -> redis.ConnectionPool:
-        """
-        Executes get_pool logic.
-        """
-        # Initialize the Redis connection pool if it doesn't exist
+        """The shared Redis connection pool, created on first use from REDIS_URL."""
         # Initialize the Redis connection pool if it doesn't exist
         if cls._pool is None:
             cls._pool = redis.ConnectionPool.from_url(
@@ -79,24 +70,18 @@ class CacheService:
 
     @classmethod
     async def get_client(cls) -> Any:
-        """
-        Executes get_client logic.
-        """
+        """A Redis client, or the in-process cache when the desktop app runs without Redis."""
         if in_process():
             if cls._local is None:
                 cls._local = LocalCache()
             return cls._local
 
         # Retrieve a new Redis client instance from the connection pool
-        # Retrieve a new Redis client instance from the connection pool
         return redis.Redis(connection_pool=cls.get_pool())
 
     @classmethod
     async def get(cls, key: str) -> Optional[Any]:
-        """
-        Executes get logic.
-        """
-        # Fetch data from Redis and attempt to parse it as JSON
+        """The value at `key`, decoded from JSON when it is JSON; None when missing."""
         # Fetch data from Redis and attempt to parse it as JSON
         client = await cls.get_client()
         data = await client.get(key)
@@ -109,10 +94,7 @@ class CacheService:
 
     @classmethod
     async def set(cls, key: str, value: Any, expire_seconds: int = 3600):
-        """
-        Executes set logic.
-        """
-        # Serialize dictionaries or lists to JSON strings and store in Redis with expiration
+        """Store `value` at `key` for `expire_seconds`; dicts and lists are stored as JSON."""
         # Serialize dictionaries or lists to JSON strings and store in Redis with expiration
         client = await cls.get_client()
         if isinstance(value, (dict, list)):
@@ -121,19 +103,13 @@ class CacheService:
 
     @classmethod
     async def delete(cls, key: str):
-        """
-        Executes delete logic.
-        """
-        # Remove a specific key from the Redis cache
+        """Remove `key` from the cache."""
         # Remove a specific key from the Redis cache
         client = await cls.get_client()
         await client.delete(key)
 
     @classmethod
     async def check_rate_limit(cls, identifier: str, limit: int, window_seconds: int) -> bool:
-        """
-        Executes check_rate_limit logic.
-        """
         """
         Token bucket / sliding window rate limiting.
         Returns True if request is allowed, False if rate limited.

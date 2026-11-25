@@ -15,6 +15,7 @@ import React, { useCallback, useEffect, useState } from "react";
 
 import ApprovalCard, { type ApprovalRequest, type Decision } from "@/components/control-plane/ApprovalCard";
 import LiveBadge from "@/components/control-plane/LiveBadge";
+import styles from "@/components/control-plane/control.module.css";
 import { getJson, postJson } from "@/lib/api/client";
 import { useLiveRefresh } from "@/lib/api/events";
 
@@ -61,18 +62,23 @@ export default function ApprovalsPage() {
     };
 
     return (
-        <div className="p-8">
-            <div className="flex items-center gap-4 mb-6">
-                <h1 className="text-3xl font-bold text-orange-500">Human Approvals</h1>
+        <div className={styles.page}>
+            <div className={styles.head}>
+                <h1 className={styles.title}>APPROVAZIONI</h1>
                 <LiveBadge state={live} />
             </div>
 
-            {error && <p className="mb-4 text-red-400">{error}</p>}
+            <p className={styles.muted}>
+                Ogni decisione vale per una sola chiamata, con gli argomenti mostrati: non esiste un consenso permanente. Senza
+                risposta, alla scadenza la chiamata viene negata.
+            </p>
+
+            {error && <p className={styles.error}>{error}</p>}
 
             {approvals.length === 0 ? (
-                <p className="text-gray-400">No pending approvals.</p>
+                <p className={styles.muted}>Nessuna approvazione in attesa.</p>
             ) : (
-                <div className="space-y-4">
+                <div className={styles.stack}>
                     {approvals.map((item) => (
                         <ApprovalCard
                             key={item.id}

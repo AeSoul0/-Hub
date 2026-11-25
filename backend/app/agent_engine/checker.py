@@ -15,6 +15,7 @@ fails closed rather than accepting an unverified worker result.
 """
 
 from __future__ import annotations
+import logging
 
 import json
 from typing import Any, Dict, List, Optional
@@ -24,6 +25,9 @@ from app.agent_engine.models import (
     CheckerDecision,
     CheckerDecisionEnum,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class AgentChecker:
@@ -86,7 +90,8 @@ class AgentChecker:
                     ),
                 }
             )
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - fail closed: any provider error rejects the result
+            logger.warning("Critic provider failed (%s): the result is not accepted.", type(exc).__name__)
             return self._failure(
                 code="CHECKER_PROVIDER_ERROR",
                 instruction=(

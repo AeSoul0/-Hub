@@ -19,8 +19,8 @@ from types import SimpleNamespace
 from typing import Any, Dict, List
 
 from app.agent_engine.adapters.base import ModelProvider
-from app.agent_engine.adapters.openai_adapter import OpenAIAdapter
 from app.agent_engine.context import estimate_tokens
+from app.agent_engine.model_input import build_input
 from app.agent_engine.models import ToolProposal
 from app.agent_engine.pricing import usage_from_response
 
@@ -69,7 +69,7 @@ class ScriptedModel(ModelProvider):
             {
                 "instructions": context.get("system_prompt", ""),
                 "tools": context.get("tools") or [],
-                "input": OpenAIAdapter._build_input(context),
+                "input": build_input(context),
             },
             ensure_ascii=False,
             default=str,

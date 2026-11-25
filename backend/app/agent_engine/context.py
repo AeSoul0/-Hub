@@ -33,6 +33,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from app.agent_engine.models import Observation
+from app.core.runtime_config import config_value
 
 
 LEVELS = ("L0", "L1", "L2", "L3", "L4", "L5")
@@ -109,8 +110,9 @@ def truncate_to_tokens(text: str, max_tokens: int) -> str:
 
 
 def _env_int(name: str, default: int) -> int:
+    # Control Plane value first (F4), then the environment.
     try:
-        return int(os.getenv(name, default))
+        return int(config_value(name) or default)
     except ValueError:
         return default
 
@@ -226,9 +228,9 @@ def observation_tokens(observation: Observation) -> int:
     Tokens of one observation as the adapters render it (function call plus
     its output, untrusted fence included).
     """
-    from app.agent_engine.adapters.openai_adapter import OpenAIAdapter
+    from app.agent_engine.model_input import observation_to_input
 
-    items = OpenAIAdapter._observation_to_input(observation)
+    items = observation_to_input(observation)
 
     return estimate_tokens(json.dumps(items, ensure_ascii=False, default=str))
 

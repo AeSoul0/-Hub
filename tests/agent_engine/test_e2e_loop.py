@@ -3,8 +3,8 @@
 @description End-to-end agent loop with a fake model provider (roadmap M1 exit).
 
 Shared fixtures live in conftest.py. The only fake boundary on the model
-side is the OpenAI client; everything between it and the database is real: AgentEngine -> AgentRuntime -> OpenAIAdapter (worker) ->
-ToolGateway -> registered skill tool -> OpenAIAdapter (checker) -> durable
+side is the OpenAI client; everything between it and the database is real: AgentEngine -> AgentRuntime -> PydanticAIAdapter (worker) ->
+ToolGateway -> registered skill tool -> PydanticAIAdapter (checker) -> durable
 AgentRun and AuditLog rows.
 
 Flow under test:

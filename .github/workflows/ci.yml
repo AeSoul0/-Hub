@@ -64,10 +64,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Set up Node.js 20
+      - name: Set up Node.js 26
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "20"
+          node-version: "26"  # the LTS since 2026-10; Node 20 is end of life (R1)
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
@@ -127,6 +127,9 @@ jobs:
         run: |
           ruff check .
 
+      - name: Source Headers (R1)
+        run: python scripts/check_headers.py
+
       # =========================================================================
       # BACKEND TEST SUITE
       # =========================================================================
@@ -137,7 +140,6 @@ jobs:
           POSTGRES_URL: postgresql://aehub_user:password@localhost:5432/aehub_db
           REDIS_URL: redis://localhost:6379/0
           AEHUB_SECRET_KEY: ci-test-secret-key
-          GROQ_API_KEY: ci-test-groq-key
           AEHUB_TELEMETRY_CONSOLE: "0"
           AEHUB_REQUIRE_DESKTOP_TEST: "1"
           AEHUB_TEST_MQTT_URL: mqtt://localhost:1883
@@ -289,6 +291,35 @@ jobs:
         run: |
           docker build --file backend/dockerfile --tag aehub-backend:ci backend
 
+      # D1 (ADR-031): the API builds the schema with Alembic at startup. Run
+      # that startup from inside the image on an empty pgvector database, then
+      # check the revisions match the models. The URL is assembled in the
+      # shell so the secret scanner sees no credential in this file.
+      - name: Migrate a Database From Inside the Backend Image
+        env:
+          DB_PASSWORD: ci-only-not-a-secret
+        run: |
+          docker network create aehub-ci
+          docker run -d --name aehub-ci-db --network aehub-ci \
+            -e POSTGRES_USER=aehub_user -e POSTGRES_PASSWORD="$DB_PASSWORD" -e POSTGRES_DB=aehub_db \
+            pgvector/pgvector:pg15
+          # Over TCP: the server of the init phase listens on the socket only.
+          for _ in $(seq 1 60); do
+            docker exec aehub-ci-db pg_isready -h 127.0.0.1 -U aehub_user -d aehub_db && break
+            sleep 1
+          done
+          url="postgresql://aehub_user"
+          url="$url:$DB_PASSWORD@aehub-ci-db:5432/aehub_db"
+          for step in "python -c 'import main; main.startup_db(); main.startup_db()'" "alembic check"; do
+            docker run --rm --network aehub-ci \
+              -e POSTGRES_URL="$url" \
+              -e AEHUB_SECRET_KEY=ci-only-not-a-secret \
+              -e AEHUB_TELEMETRY_CONSOLE=0 \
+              aehub-backend:ci sh -c "$step"
+          done
+          docker rm -f aehub-ci-db
+          docker network rm aehub-ci
+
       # The backend loads every skill at startup; an import that only fails
       # inside the container (no display, missing system library) would stop
       # the API from starting.
@@ -297,7 +328,6 @@ jobs:
           docker run --rm \
             -e POSTGRES_URL=sqlite:// \
             -e AEHUB_SECRET_KEY=ci-only-not-a-secret \
-            -e GROQ_API_KEY=ci-only-not-a-secret \
             -e AEHUB_EMBEDDER=hash \
             aehub-backend:ci \
             python -c "from app.skills.registry import skill_registry; skill_registry.load_from_package(); print(sorted(skill_registry.get_registered_skill_names()))"
@@ -320,7 +350,13 @@ jobs:
   # M14 (ADR-020): the Windows installer. The bundle is the runner's
   # PostgreSQL with pgvector built from its tag, this job's CPython with the
   # desktop requirements, the backend and the static frontend.
+  # It runs only on a version tag, for desktop-release, and only while the
+  # repository variable DESKTOP_RELEASE is "on": the desktop is suspended,
+  # so a v1.0.0 tag ships no installer until it is turned back on (R1,
+  # user's choice, 2026-11-25). On pull requests and pushes to main it is
+  # always skipped (2026-11-04).
   desktop-windows:
+    if: startsWith(github.ref, 'refs/tags/v') && vars.DESKTOP_RELEASE == 'on'
     runs-on: windows-latest
     timeout-minutes: 60
 
@@ -434,7 +470,7 @@ jobs:
   # signature and latest.json, which installed apps poll. The only job with
   # write access, and it runs no code from the repository.
   desktop-release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') && vars.DESKTOP_RELEASE == 'on'
     needs: [build-and-test, docker-images, desktop-windows]
     runs-on: ubuntu-latest
     timeout-minutes: 15

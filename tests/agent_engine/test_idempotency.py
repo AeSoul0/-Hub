@@ -1,5 +1,5 @@
 """
-@file backend/tests/agent_engine/test_idempotency.py
+@file tests/agent_engine/test_idempotency.py
 @description Unit tests for IdempotencyManager.
 """
 import pytest

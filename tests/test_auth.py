@@ -1,6 +1,6 @@
 """
 @file tests/test_auth.py
-@description Core module for A.U.R.O.R.A. System.
+@description Login, logout and session checks of the access key.
 """
 
 import os

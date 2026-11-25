@@ -121,6 +121,8 @@ def desktop_environment(
     env.setdefault("AEHUB_EMBEDDER", "hash")
 
     if data_dir is not None:
+        # The SISTEMA page reads the embedded cluster's pid from here (F9).
+        env.setdefault("AEHUB_DATA_DIR", str(data_dir))
         # Speech models are downloaded once, next to the database.
         env.setdefault("AEHUB_VOICE_MODELS_DIR", str(data_dir / "voice"))
         env.setdefault("AEHUB_SKILL_INDEX_PATH", str(data_dir / "skill_index.sqlite3"))
@@ -258,7 +260,7 @@ def main(argv: Optional[list] = None) -> int:
 
     try:
         return run(args)
-    except Exception as error:  # reported to the shell, which shows it
+    except Exception as error:  # noqa: BLE001 - reported to the desktop shell, which shows it
         emit("error", message=str(error))
         return 1
 

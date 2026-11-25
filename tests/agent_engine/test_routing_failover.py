@@ -15,7 +15,10 @@ from typing import Any, Dict, List
 
 import pytest
 
-from app.agent_engine.adapters.chat_completions_adapter import ChatCompletionsAdapter
+from openai import AsyncOpenAI
+from openai.types.chat import ChatCompletion
+
+from app.agent_engine.adapters.pydantic_ai_adapter import PydanticAIAdapter
 from app.agent_engine.application import AgentEngine
 from app.agent_engine.errors import MaxTurnsReachedError
 from app.agent_engine.routing import (
@@ -106,23 +109,24 @@ class FakeChatCompletions:
         return self.scripted.pop(0)
 
 
-def chat_text(text: str, usage=(1, 1)) -> Any:
-    return SimpleNamespace(
-        id="chat_1",
-        choices=[SimpleNamespace(message=SimpleNamespace(content=text, tool_calls=None))],
-        usage=SimpleNamespace(prompt_tokens=usage[0], completion_tokens=usage[1]),
+def chat_text(text: str, usage=(1, 1)) -> ChatCompletion:
+    return ChatCompletion.model_validate(
+        {
+            "id": "chat_1",
+            "object": "chat.completion",
+            "created": 0,
+            "model": "fake",
+            "choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": text}}],
+            "usage": {"prompt_tokens": usage[0], "completion_tokens": usage[1], "total_tokens": sum(usage)},
+        }
     )
 
 
-def chat_adapter(model: str, scripted: List[Any]) -> ChatCompletionsAdapter:
-    adapter = ChatCompletionsAdapter(
-        model_name=model,
-        base_url="http://chat.invalid/v1",
-        api_key="test-only",
-        provider="openrouter",
-    )
-    adapter._client = SimpleNamespace(chat=SimpleNamespace(completions=FakeChatCompletions(scripted)))
-    return adapter
+def chat_adapter(model: str, scripted: List[Any]) -> PydanticAIAdapter:
+    # A real client (Pydantic AI reads its options, P1) with a fake endpoint.
+    client = AsyncOpenAI(api_key="test-only", base_url="http://chat.invalid/v1", max_retries=0)
+    client.chat = SimpleNamespace(completions=FakeChatCompletions(scripted))
+    return PydanticAIAdapter(model_name=model, provider="openrouter", api_key="test-only", client=client)
 
 
 # ==============================================================================
@@ -177,7 +181,7 @@ async def test_failover_mid_run_finishes_on_b_without_repeating_tools(
         model_name="model-a",
     )
     flaky = FlakyResponses(provider_a._client.responses.scripted)
-    provider_a._client = SimpleNamespace(responses=flaky)
+    provider_a._client.responses = flaky
 
     provider_b = chat_adapter("model-b", [chat_text("Pinged a.")])
     critic = fake_model.checker([fake_model.accept()])
@@ -235,7 +239,7 @@ async def test_failover_mid_run_finishes_on_b_without_repeating_tools(
 async def test_run_fails_closed_when_every_provider_is_down(pinger, user, fake_model):
     down = FlakyResponses([])
     provider_a = fake_model.adapter([], model_name="model-a")
-    provider_a._client = SimpleNamespace(responses=down)
+    provider_a._client.responses = down
 
     router = ModelRouter(
         routing(architect=["openai:model-a"], critic=["local:fake-critic"]),
@@ -286,7 +290,7 @@ async def test_open_breaker_skips_the_provider(fake_model, monkeypatch):
 
     down = FlakyResponses([])
     provider_a = fake_model.adapter([], model_name="model-a")
-    provider_a._client = SimpleNamespace(responses=down)
+    provider_a._client.responses = down
     provider_b = chat_adapter("model-b", [chat_text("one"), chat_text("two")])
 
     failover = FailoverProvider(
@@ -306,7 +310,7 @@ async def test_open_breaker_skips_the_provider(fake_model, monkeypatch):
 async def test_failover_raises_when_the_chain_is_exhausted(fake_model):
     down = FlakyResponses([])
     provider_a = fake_model.adapter([], model_name="model-a")
-    provider_a._client = SimpleNamespace(responses=down)
+    provider_a._client.responses = down
 
     failover = FailoverProvider(Role.TRIAGE, [("openai:model-a", provider_a)])
 
