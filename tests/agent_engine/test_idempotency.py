@@ -2,8 +2,6 @@
 @file tests/agent_engine/test_idempotency.py
 @description Unit tests for IdempotencyManager.
 """
-import pytest
-import json
 from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock
 from app.agent_engine.state.idempotency import IdempotencyManager

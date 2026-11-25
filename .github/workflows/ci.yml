@@ -125,7 +125,7 @@ jobs:
       - name: Run Ruff Linter & Formatter Check
         working-directory: backend
         run: |
-          ruff check .
+          ruff check . ../tests ../scripts ../evals
 
       - name: Source Headers (R1)
         run: python scripts/check_headers.py

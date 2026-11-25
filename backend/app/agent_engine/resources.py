@@ -4,7 +4,7 @@
 """
 import psutil
 from enum import Enum
-from typing import Dict, Any, Optional
+from typing import Optional
 
 class TaskClass(str, Enum):
     """The kind of resources a task needs, guessed from its text."""

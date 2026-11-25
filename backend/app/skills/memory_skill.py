@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import contextvars
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional
 
 from app.memory.store import MemoryKind, MemoryStore
 

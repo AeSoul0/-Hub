@@ -296,7 +296,6 @@ class ScriptedOpenAI:
         self.api_keys: List[str] = []
 
     def __call__(self, **kwargs: Any) -> Any:
-        from openai import AsyncOpenAI
 
         self.api_keys.append(kwargs.get("api_key"))
         # A real client (Pydantic AI reads its options, P1) with this

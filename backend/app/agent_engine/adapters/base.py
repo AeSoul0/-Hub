@@ -3,7 +3,7 @@
 @description The interface every model adapter implements: one generate() per turn.
 """
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 class ModelProvider(ABC):
     """

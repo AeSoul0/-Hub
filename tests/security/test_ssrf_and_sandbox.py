@@ -2,8 +2,9 @@
 @file tests/security/test_ssrf_and_sandbox.py
 @description SSRF protection of fetched URLs and the limits of the shell and Python sandbox.
 """
+import socket
+
 import pytest
-import asyncio
 from app.core.ssrf_protector import SSRFProtector, SSRFError
 from app.workers.sandbox import EphemeralSandboxManager
 
@@ -29,10 +30,26 @@ def test_ssrf_protector_rejects_metadata():
     with pytest.raises(SSRFError):
         SSRFProtector.validate_url("http://169.254.169.254/latest/meta-data")
         
-def test_ssrf_protector_allows_safe_urls():
-    parsed, ip = SSRFProtector.validate_url("https://www.google.com")
-    assert parsed.hostname == "www.google.com"
-    assert ip != "127.0.0.1"
+def _resolves_to(monkeypatch, *addresses):
+    # DNS answered without the network, so the test runs offline too.
+    def getaddrinfo(host, port, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (address, 0)) for address in addresses]
+
+    monkeypatch.setattr("app.core.ssrf_protector.socket.getaddrinfo", getaddrinfo)
+
+
+def test_ssrf_protector_allows_safe_urls(monkeypatch):
+    _resolves_to(monkeypatch, "93.184.215.14")
+    parsed, ip = SSRFProtector.validate_url("https://www.example.com")
+    assert parsed.hostname == "www.example.com"
+    assert ip == "93.184.215.14"
+
+
+def test_ssrf_protector_refuses_a_name_with_one_private_record(monkeypatch):
+    # DNS rebinding: one public and one private answer for the same name.
+    _resolves_to(monkeypatch, "93.184.215.14", "10.0.0.5")
+    with pytest.raises(SSRFError):
+        SSRFProtector.validate_url("https://www.example.com")
 
 @pytest.mark.anyio
 async def test_sandbox_python_timeout():
