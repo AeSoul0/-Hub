@@ -21,7 +21,7 @@ openai>=3.50,<4
 httpx>=0.25.0
 
 # Native embedding provider used by AuroraMemoryManager.
-sentence-transformers>=3.0.0
+sentence-transformers>=6.2.0
 
 
 # ==============================================================================
