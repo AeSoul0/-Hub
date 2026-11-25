@@ -14,8 +14,12 @@ own modules and the class inherits them:
 - runtime_state.py: live state events, long-term memory and saving the run;
 - runtime_subagents.py: starting a subagent (`spawn_agent`).
 
-This module keeps the loop itself: start or resume a run, the worker's
-turns, the Critic's verdict and the retry.
+This module keeps the loop itself. `_execute_task` reads as the run's
+outline, and each step is a method over one `_RunLoop` state:
+`_start_run` or `_resume_run`, then for each attempt `_run_attempt` (the
+worker's turns, with `_run_proposals` for the tool calls of a turn),
+`_end_incomplete_attempt` and `_critic_verdict` (accept, fail, or retry
+with `_retry_context`). A step that ends the run returns `_Ended`.
 
 Security invariants enforced here include:
 
@@ -34,17 +38,19 @@ Security invariants enforced here include:
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import logging
 import time
 import uuid
 from datetime import datetime
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.agent_engine.context import ContextManager
 from app.agent_engine.delegation import (
     Delegator,
 )
 from app.agent_engine.control import (
+    RunLimits,
     run_interruptible,
     run_registry,
 )
@@ -113,6 +119,33 @@ VERDICT_CHARS = 500
 
 
 
+
+
+
+@dataclasses.dataclass
+class _RunLoop:
+    """
+    What changes while one run executes, shared by the parts of
+    `_execute_task`: the persisted run, its task and worker context, the
+    attempt and turn, the Critic's last feedback, and the current attempt's
+    answer.
+    """
+
+    agent_run: AgentRun
+    task: Dict[str, Any]
+    worker_context: Dict[str, Any] = dataclasses.field(default_factory=dict)
+    current_attempt: int = 1
+    turn: int = 0
+    last_feedback: Optional[str] = None
+    worker_completed: bool = False
+    worker_result: Any = None
+
+
+@dataclasses.dataclass
+class _Ended:
+    """A part of the run ended it: `_execute_task` returns `value`."""
+
+    value: Any
 
 
 
@@ -294,14 +327,7 @@ class AgentRuntime(ToolsMixin, LimitsMixin, ResumeMixin, StateMixin, SubagentsMi
         )
 
         if agent_run is None:
-            (
-                agent_run,
-                task,
-                worker_context,
-                current_attempt,
-                turn,
-                last_feedback,
-            ) = await self._start_run(
+            started = await self._start_run(
                 task=task,
                 run_id=run_id,
                 parent_run_id=parent_run_id,
@@ -313,776 +339,951 @@ class AgentRuntime(ToolsMixin, LimitsMixin, ResumeMixin, StateMixin, SubagentsMi
                 inherit_untrusted=inherit_untrusted,
                 max_attempts=max_attempts,
             )
+            loop = _RunLoop(*started)
 
         else:
-            if agent_run.session_id != session_id:
-                raise PermissionError(
-                    "Persisted run session does not match the authenticated session."
-                )
+            loop = _RunLoop(agent_run=agent_run, task=task)
 
-            if agent_run.workspace_id != workspace_id:
-                raise PermissionError(
-                    "Persisted run workspace does not match the execution workspace."
-                )
-
-            if agent_run.principal_id != principal.id:
-                raise PermissionError(
-                    "Persisted run principal does not match the authenticated Principal."
-                )
-
-            current_attempt = max(
-                1,
-                agent_run.task_attempts,
+            ended = await self._resume_run(
+                loop,
+                principal=principal,
+                run_id=run_id,
+                session_id=session_id,
+                workspace_id=workspace_id,
             )
 
-            current_state = agent_run.current_state or {}
+            if ended is not None:
+                return ended.value
 
-            turn = int(
-                current_state.get(
-                    "turn",
-                    0,
-                )
-            )
-
-            worker_context = current_state.get(
-                "worker_context"
-            ) or {
-                "run_id": run_id,
-                "session_id": session_id,
-                "workspace_id": workspace_id,
-                "principal_id": principal.id,
-                "principal_role": principal.role.value,
-                "task": task,
-                "feedback": None,
-                "observations": [],
-                "resuming": True,
-            }
-
-            worker_context["observations"] = [
-                observation
-                if isinstance(observation, Observation)
-                else Observation(**observation)
-                for observation in worker_context.get(
-                    "observations",
-                    [],
-                )
-            ]
-
-            worker_context["run_id"] = run_id
-            worker_context["session_id"] = session_id
-            worker_context["workspace_id"] = workspace_id
-            worker_context["principal_id"] = principal.id
-            worker_context["principal_role"] = principal.role.value
-
-            last_feedback = current_state.get(
-                "last_feedback"
-            )
-
-            if agent_run.status == AgentRunStatus.COMPLETED:
-                return agent_run.result
-
-            if agent_run.status in {
-                AgentRunStatus.FAILED,
-                AgentRunStatus.CANCELLED,
-                AgentRunStatus.EXPIRED,
-            }:
-                raise MaxTurnsReachedError(
-                    f"Task {run_id} cannot resume from terminal state "
-                    f"{agent_run.status.value}."
-                )
-
-            # The persisted task is authoritative on resume: callers that
-            # resume after an approval do not resend the original task.
-            task = worker_context.get("task") or task
-
-            _ACTIVE_SEGMENTS[run_id] = (
-                float(agent_run.usage.get("active_seconds", 0.0)),
-                time.monotonic(),
-            )
-            _LIVE_USAGE[run_id] = agent_run.usage
-
-            if agent_run.status == AgentRunStatus.WAITING_APPROVAL:
-                outcome = await self._resume_pending_tool_call(
-                    agent_run=agent_run,
-                    worker_context=worker_context,
-                    principal=principal,
-                    session_id=session_id,
-                    workspace_id=workspace_id,
-                    run_id=run_id,
-                    current_attempt=current_attempt,
-                    turn=turn,
-                    last_feedback=last_feedback,
-                )
-
-                if outcome is not None:
-                    return outcome
-
-        capability_set = self._capabilities(worker_context)
+        capability_set = self._capabilities(loop.worker_context)
 
         model_tools = self._build_model_tools(
             principal,
             capability_set,
-            worker_context.get("exposed_tools"),
+            loop.worker_context.get("exposed_tools"),
         )
 
-        limits = self._run_limits(worker_context)
+        limits = self._run_limits(loop.worker_context)
 
         # Every run has a time limit on active execution unless the caller
         # set its own (or AEHUB_RUN_TIMEOUT_SECONDS=0).
         if timeout is None and limits.max_run_seconds > 0:
             timeout = limits.max_run_seconds
 
-        while current_attempt <= max_attempts:
-            if (
-                cancellation_token is not None
-                and getattr(
-                    cancellation_token,
-                    "is_cancelled",
-                    False,
-                )
-            ):
-                return self._stop_run(
-                    agent_run,
-                    RunCancelledError(
-                        getattr(cancellation_token, "reason", None)
-                        or "Run cancelled."
-                    ),
-                    current_attempt,
-                    turn,
-                    worker_context,
-                    last_feedback,
-                )
-
-            if timeout is not None:
-                elapsed = _active_seconds(agent_run)
-
-                if elapsed >= timeout:
-                    agent_run.status = AgentRunStatus.FAILED
-
-                    self._save(
-                        agent_run,
-                        current_attempt,
-                        turn,
-                        worker_context,
-                        last_feedback,
-                    )
-
-                    raise TaskTimeoutError(
-                        "Task execution exceeded configured timeout."
-                    )
-
-            worker_completed = False
-            worker_result = None
-
-            while turn < max_turns:
-                turn += 1
-
-                worker_context.update(
-                    {
-                        "run_id": run_id,
-                        "session_id": session_id,
-                        "workspace_id": workspace_id,
-                        "principal_id": principal.id,
-                        "principal_role": principal.role.value,
-                        "tools": model_tools,
-                    }
-                )
-
-                spend_stop = self._check_spend(
-                    agent_run,
-                    principal.id,
-                    limits,
-                )
-
-                if spend_stop is not None:
-                    return self._stop_run(
-                        agent_run,
-                        spend_stop,
-                        current_attempt,
-                        turn,
-                        worker_context,
-                        last_feedback,
-                    )
-
-                await self._emit_state(
-                    session_id,
-                    run_id,
-                    "planning",
-                    workspace_id=workspace_id,
-                )
-
-                model_context, context_report = self.context_manager.build(
-                    worker_context,
-                    system_prompt=str(
-                        getattr(worker, "system_prompt", "") or ""
-                    ),
-                )
-
-                agent_run.usage["context_peak_tokens"] = max(
-                    int(agent_run.usage.get("context_peak_tokens", 0)),
-                    context_report.total_tokens,
-                )
-
-                try:
-                    if timeout is not None:
-                        elapsed = _active_seconds(agent_run)
-
-                        # Time already spent on tools counts too: past the
-                        # limit no further model call starts.
-                        if elapsed >= timeout:
-                            raise asyncio.TimeoutError()
-
-                        remaining = max(
-                            0.1,
-                            timeout - elapsed,
-                        )
-
-                        step_result = await asyncio.wait_for(
-                            run_interruptible(
-                                worker.generate(
-                                    model_context
-                                ),
-                                cancellation_token,
-                            ),
-                            timeout=remaining,
-                        )
-                    else:
-                        step_result = await run_interruptible(
-                            worker.generate(
-                                model_context
-                            ),
-                            cancellation_token,
-                        )
-
-                except RunInterrupted as exc:
-                    return self._stop_run(
-                        agent_run,
-                        exc,
-                        current_attempt,
-                        turn,
-                        worker_context,
-                        last_feedback,
-                    )
-
-                except asyncio.TimeoutError as exc:
-                    agent_run.status = AgentRunStatus.FAILED
-                    agent_run.errors.append(
-                        "TaskTimeoutError"
-                    )
-
-                    self._save(
-                        agent_run,
-                        current_attempt,
-                        turn,
-                        worker_context,
-                        last_feedback,
-                    )
-
-                    raise TaskTimeoutError(
-                        "Worker execution exceeded configured timeout."
-                    ) from exc
-
-                except Exception as exc:  # noqa: BLE001 - the run fails with the worker's error recorded
-                    logger.warning("Worker failed in run %s: %s", run_id, exc)
-                    agent_run.status = AgentRunStatus.FAILED
-                    agent_run.errors.append(
-                        f"Worker failed: {exc}"
-                    )
-
-                    self._save(
-                        agent_run,
-                        current_attempt,
-                        turn,
-                        worker_context,
-                        last_feedback,
-                    )
-
-                    break
-
-                if not isinstance(step_result, dict):
-                    agent_run.status = AgentRunStatus.FAILED
-                    agent_run.errors.append(
-                        "Worker returned an invalid execution payload."
-                    )
-
-                    self._save(
-                        agent_run,
-                        current_attempt,
-                        turn,
-                        worker_context,
-                        last_feedback,
-                    )
-
-                    break
-
-                worker_context["resuming"] = False
-
-                usage_stop = self._record_usage(
-                    agent_run,
-                    step_result.get("usage"),
-                    role=str(step_result.get("role") or "worker"),
-                    principal_id=principal.id,
-                    limits=limits,
-                )
-
-                if usage_stop is not None:
-                    return self._stop_run(
-                        agent_run,
-                        usage_stop,
-                        current_attempt,
-                        turn,
-                        worker_context,
-                        last_feedback,
-                    )
-
-                proposals = step_result.get(
-                    "tool_proposals",
-                    [],
-                )
-
-                if not proposals:
-                    worker_result = step_result.get(
-                        "output"
-                    )
-                    worker_completed = True
-
-                    self._save(
-                        agent_run,
-                        current_attempt,
-                        turn,
-                        worker_context,
-                        last_feedback,
-                    )
-
-                    break
-
-                if len(proposals) > max_tool_calls:
-                    agent_run.status = AgentRunStatus.FAILED
-                    agent_run.errors.append(
-                        "Exceeded max tool calls per worker turn."
-                    )
-
-                    self._save(
-                        agent_run,
-                        current_attempt,
-                        turn,
-                        worker_context,
-                        last_feedback,
-                    )
-
-                    break
-
-                tool_calls_used = int(
-                    agent_run.usage.get(
-                        "tool_calls",
-                        0,
-                    )
-                )
-
-                if tool_calls_used + len(proposals) > max_total_tool_calls:
-                    agent_run.status = AgentRunStatus.FAILED
-                    agent_run.errors.append(
-                        "Exceeded max tool calls per run."
-                    )
-
-                    self._save(
-                        agent_run,
-                        current_attempt,
-                        turn,
-                        worker_context,
-                        last_feedback,
-                    )
-
-                    break
-
-                agent_run.usage["tool_calls"] = (
-                    tool_calls_used + len(proposals)
-                )
-
-                for index, proposal in enumerate(proposals):
-                    if not isinstance(
-                        proposal,
-                        ToolProposal,
-                    ):
-                        raise TypeError(
-                            "Worker returned an invalid ToolProposal instance."
-                        )
-
-                    if proposal.run_id != run_id:
-                        agent_run.status = AgentRunStatus.FAILED
-
-                        self._save(
-                            agent_run,
-                            current_attempt,
-                            turn,
-                            worker_context,
-                            last_feedback,
-                        )
-
-                        raise PermissionError(
-                            "Tool proposal run_id does not match the active execution run."
-                        )
-
-                    limit_stop = self._check_before_tool(
-                        agent_run,
-                        proposal,
-                        limits,
-                    )
-
-                    if limit_stop is not None:
-                        return self._stop_run(
-                            agent_run,
-                            limit_stop,
-                            current_attempt,
-                            turn,
-                            worker_context,
-                            last_feedback,
-                        )
-
-                    await self._emit_state(
-                        session_id,
-                        run_id,
-                        "tool_running",
-                        workspace_id=workspace_id,
-                        tool=proposal.tool_name,
-                    )
-
-                    try:
-                        self._record_observation(
-                            worker_context,
-                            await run_interruptible(
-                                self._execute_proposal(
-                                    proposal=proposal,
-                                    principal=principal,
-                                    session_id=session_id,
-                                    workspace_id=workspace_id,
-                                    run_id=run_id,
-                                    untrusted_context=bool(
-                                        worker_context.get(
-                                            "untrusted_context"
-                                        )
-                                    ),
-                                    capabilities=capability_set,
-                                    input_channel=self._input_channel(worker_context),
-                                    exposed_tools=worker_context.get("exposed_tools"),
-                                    delegation=self._delegation_scope(
-                                        agent_run,
-                                        principal,
-                                        limits,
-                                        capability_set,
-                                    ),
-                                ),
-                                cancellation_token,
-                            ),
-                        )
-
-                    except RunInterrupted as exc:
-                        return self._stop_run(
-                            agent_run,
-                            exc,
-                            current_attempt,
-                            turn,
-                            worker_context,
-                            last_feedback,
-                        )
-
-                    except ApprovalRequiredError as exc:
-                        # The other calls of the same turn wait in the
-                        # durable state and run after the decision.
-                        return await self._park(
-                            agent_run,
-                            worker_context,
-                            proposal,
-                            exc.approval_id,
-                            proposals[index + 1:],
-                            current_attempt,
-                            turn,
-                            last_feedback,
-                        )
-
-                    limit_stop = self._record_effects(
-                        agent_run,
-                        worker_context["observations"][-1],
-                        limits,
-                    )
-
-                    if limit_stop is not None:
-                        return self._stop_run(
-                            agent_run,
-                            limit_stop,
-                            current_attempt,
-                            turn,
-                            worker_context,
-                            last_feedback,
-                        )
-
-                    self._save(
-                        agent_run,
-                        current_attempt,
-                        turn,
-                        worker_context,
-                        last_feedback,
-                    )
-
-            if not worker_completed:
-                if (
-                    agent_run.status
-                    == AgentRunStatus.WAITING_APPROVAL
-                ):
-                    return {
-                        "status": "WAITING_APPROVAL",
-                        "run_id": run_id,
-                    }
-
-                if agent_run.status != AgentRunStatus.FAILED:
-                    agent_run.status = AgentRunStatus.FAILED
-                    agent_run.errors.append(
-                        "Maximum turns reached."
-                    )
-
-                self._save(
-                    agent_run,
-                    current_attempt,
-                    turn,
-                    worker_context,
-                    last_feedback,
-                )
-
-                raise MaxTurnsReachedError(
-                    f"Task {run_id} failed: maximum turns reached."
-                )
-
-            trace = self.context_manager.fit_trace(
-                [
-                    {
-                        "tool_call_id": observation.tool_call_id,
-                        "content": observation.content,
-                    }
-                    for observation in worker_context.get(
-                        "observations",
-                        [],
-                    )
-                ]
-            )
-
-            spend_stop = self._check_spend(
-                agent_run,
-                principal.id,
-                limits,
-            )
-
-            if spend_stop is not None:
-                return self._stop_run(
-                    agent_run,
-                    spend_stop,
-                    current_attempt,
-                    turn,
-                    worker_context,
-                    last_feedback,
-                )
-
-            try:
-                checker_decision = await run_interruptible(
-                    checker.evaluate(
-                        task=task,
-                        result=worker_result,
-                        trace=trace,
-                    ),
-                    cancellation_token,
-                )
-
-            except RunInterrupted as exc:
-                return self._stop_run(
-                    agent_run,
-                    exc,
-                    current_attempt,
-                    turn,
-                    worker_context,
-                    last_feedback,
-                )
-
-            except Exception as exc:
-                agent_run.status = AgentRunStatus.FAILED
-                agent_run.errors.append(
-                    f"Checker failed: {exc}"
-                )
-
-                self._save(
-                    agent_run,
-                    current_attempt,
-                    turn,
-                    worker_context,
-                    last_feedback,
-                )
-
-                raise MaxTurnsReachedError(
-                    f"Task {run_id} failed because the checker "
-                    "could not produce a trusted decision."
-                ) from exc
-
-            usage_stop = self._record_usage(
-                agent_run,
-                getattr(checker_decision, "usage", None),
-                role=Role.CRITIC.value,
-                principal_id=principal.id,
+        while loop.current_attempt <= max_attempts:
+            ended = await self._run_attempt(
+                loop,
+                cancellation_token=cancellation_token,
+                capability_set=capability_set,
                 limits=limits,
-            )
-
-            if usage_stop is not None:
-                return self._stop_run(
-                    agent_run,
-                    usage_stop,
-                    current_attempt,
-                    turn,
-                    worker_context,
-                    last_feedback,
-                )
-
-            if checker_decision.status == CheckerDecisionEnum.ACCEPT:
-                guarded_result = OutputGuardrail.validate(
-                    str(worker_result)
-                )
-
-                agent_run.status = AgentRunStatus.COMPLETED
-                agent_run.result = guarded_result
-                agent_run.error = None
-
-                await self._index_episode(
-                    workspace_id=workspace_id,
-                    principal_id=principal.id,
-                    session_id=session_id,
-                    run_id=run_id,
-                    goal=str(task.get("description", task)),
-                    result=guarded_result,
-                    trusted=not worker_context.get("untrusted_context"),
-                )
-
-                # The Critic's verdicts in the timeline (F8): which attempt
-                # out of how many.
-                EventDispatcher().dispatch(
-                    "checker.accepted",
-                    run_id=run_id,
-                    session_id=session_id,
-                    workspace_id=workspace_id,
-                    attempt=current_attempt,
-                    details={"max_attempts": max_attempts},
-                )
-
-                EventDispatcher().dispatch(
-                    "run.completed",
-                    run_id=run_id,
-                    session_id=session_id,
-                    workspace_id=workspace_id,
-                    tokens=int(agent_run.usage.get("total_tokens", 0)),
-                    cost=float(agent_run.usage.get("cost", 0.0)),
-                )
-
-                self._save(
-                    agent_run,
-                    current_attempt,
-                    turn,
-                    worker_context,
-                    last_feedback,
-                )
-
-                return guarded_result
-
-            if checker_decision.status == CheckerDecisionEnum.FAIL:
-                agent_run.status = AgentRunStatus.FAILED
-                agent_run.error = (
-                    checker_decision.retry_instruction
-                    or "Checker rejected the result as unrecoverable."
-                )
-
-                agent_run.errors.append(
-                    agent_run.error
-                )
-
-                EventDispatcher().dispatch(
-                    "checker.failed",
-                    run_id=run_id,
-                    session_id=session_id,
-                    workspace_id=workspace_id,
-                    attempt=current_attempt,
-                    details={
-                        "max_attempts": max_attempts,
-                        "reason": agent_run.error[:VERDICT_CHARS],
-                    },
-                )
-
-                self._save(
-                    agent_run,
-                    current_attempt,
-                    turn,
-                    worker_context,
-                    last_feedback,
-                )
-
-                return None
-
-            last_feedback = (
-                checker_decision.retry_instruction
-                or (
-                    "The previous result did not satisfy "
-                    "the checker criteria."
-                )
-            )
-
-            EventDispatcher().dispatch(
-                "checker.rejected",
-                run_id=run_id,
-                session_id=session_id,
-                workspace_id=workspace_id,
-                attempt=current_attempt,
-                details={
-                    "max_attempts": max_attempts,
-                    "retry_instruction": last_feedback[:VERDICT_CHARS],
-                },
-            )
-
-            EventDispatcher().dispatch(
-                "retry.requested",
-                run_id=run_id,
-                session_id=session_id,
-                workspace_id=workspace_id,
-                attempt=current_attempt + 1,
-                details={"max_attempts": max_attempts},
-            )
-
-            current_attempt += 1
-            turn = 0
-
-            worker_context = self._retry_context(
-                worker_context,
-                task=task,
-                last_feedback=last_feedback,
+                max_tool_calls=max_tool_calls,
+                max_total_tool_calls=max_total_tool_calls,
+                max_turns=max_turns,
+                model_tools=model_tools,
                 principal=principal,
+                run_id=run_id,
                 session_id=session_id,
+                timeout=timeout,
+                worker=worker,
                 workspace_id=workspace_id,
+            )
+
+            if ended is not None:
+                return ended.value
+
+            ended = self._end_incomplete_attempt(
+                loop,
                 run_id=run_id,
             )
 
-            self._save(
-                agent_run,
-                current_attempt,
-                turn,
-                worker_context,
-                last_feedback,
+            if ended is not None:
+                return ended.value
+
+            ended = await self._critic_verdict(
+                loop,
+                cancellation_token=cancellation_token,
+                checker=checker,
+                limits=limits,
+                max_attempts=max_attempts,
+                principal=principal,
+                run_id=run_id,
+                session_id=session_id,
+                workspace_id=workspace_id,
             )
 
-        agent_run.status = AgentRunStatus.FAILED
+            if ended is not None:
+                return ended.value
+
+        loop.agent_run.status = AgentRunStatus.FAILED
 
         self._save(
-            agent_run,
-            current_attempt,
-            turn,
-            worker_context,
-            last_feedback,
+            loop.agent_run,
+            loop.current_attempt,
+            loop.turn,
+            loop.worker_context,
+            loop.last_feedback,
         )
 
         raise MaxTurnsReachedError(
             f"Task {run_id} failed after {max_attempts} attempts."
         )
+
+    # ==========================================================================
+    # THE PARTS OF ONE RUN (Q1)
+    # ==========================================================================
+
+    async def _resume_run(
+        self,
+        loop: _RunLoop,
+        *,
+        principal: Principal,
+        run_id: str,
+        session_id: str,
+        workspace_id: str,
+    ) -> Optional[_Ended]:
+        """
+        An existing run: the persisted identity checked against the caller, the
+        loop state restored, a terminal run refused, and a run waiting on an
+        approval resumed with the decided call.
+        Returns _Ended when the run ends here.
+        """
+        if loop.agent_run.session_id != session_id:
+            raise PermissionError(
+                "Persisted run session does not match the authenticated session."
+            )
+
+        if loop.agent_run.workspace_id != workspace_id:
+            raise PermissionError(
+                "Persisted run workspace does not match the execution workspace."
+            )
+
+        if loop.agent_run.principal_id != principal.id:
+            raise PermissionError(
+                "Persisted run principal does not match the authenticated Principal."
+            )
+
+        loop.current_attempt = max(
+            1,
+            loop.agent_run.task_attempts,
+        )
+
+        current_state = loop.agent_run.current_state or {}
+
+        loop.turn = int(
+            current_state.get(
+                "turn",
+                0,
+            )
+        )
+
+        loop.worker_context = current_state.get(
+            "worker_context"
+        ) or {
+            "run_id": run_id,
+            "session_id": session_id,
+            "workspace_id": workspace_id,
+            "principal_id": principal.id,
+            "principal_role": principal.role.value,
+            "task": loop.task,
+            "feedback": None,
+            "observations": [],
+            "resuming": True,
+        }
+
+        loop.worker_context["observations"] = [
+            observation
+            if isinstance(observation, Observation)
+            else Observation(**observation)
+            for observation in loop.worker_context.get(
+                "observations",
+                [],
+            )
+        ]
+
+        loop.worker_context["run_id"] = run_id
+        loop.worker_context["session_id"] = session_id
+        loop.worker_context["workspace_id"] = workspace_id
+        loop.worker_context["principal_id"] = principal.id
+        loop.worker_context["principal_role"] = principal.role.value
+
+        loop.last_feedback = current_state.get(
+            "last_feedback"
+        )
+
+        if loop.agent_run.status == AgentRunStatus.COMPLETED:
+            return _Ended(loop.agent_run.result)
+
+        if loop.agent_run.status in {
+            AgentRunStatus.FAILED,
+            AgentRunStatus.CANCELLED,
+            AgentRunStatus.EXPIRED,
+        }:
+            raise MaxTurnsReachedError(
+                f"Task {run_id} cannot resume from terminal state "
+                f"{loop.agent_run.status.value}."
+            )
+
+        # The persisted task is authoritative on resume: callers that
+        # resume after an approval do not resend the original task.
+        loop.task = loop.worker_context.get("task") or loop.task
+
+        _ACTIVE_SEGMENTS[run_id] = (
+            float(loop.agent_run.usage.get("active_seconds", 0.0)),
+            time.monotonic(),
+        )
+        _LIVE_USAGE[run_id] = loop.agent_run.usage
+
+        if loop.agent_run.status == AgentRunStatus.WAITING_APPROVAL:
+            outcome = await self._resume_pending_tool_call(
+                agent_run=loop.agent_run,
+                worker_context=loop.worker_context,
+                principal=principal,
+                session_id=session_id,
+                workspace_id=workspace_id,
+                run_id=run_id,
+                current_attempt=loop.current_attempt,
+                turn=loop.turn,
+                last_feedback=loop.last_feedback,
+            )
+
+            if outcome is not None:
+                return _Ended(outcome)
+
+        return None
+
+    async def _run_attempt(
+        self,
+        loop: _RunLoop,
+        *,
+        cancellation_token: Optional[Any],
+        capability_set: SubagentCapabilitySet,
+        limits: RunLimits,
+        max_tool_calls: int,
+        max_total_tool_calls: int,
+        max_turns: int,
+        model_tools: List[Dict[str, Any]],
+        principal: Principal,
+        run_id: str,
+        session_id: str,
+        timeout: Optional[float],
+        worker: Any,
+        workspace_id: str,
+    ) -> Optional[_Ended]:
+        """
+        One attempt: stop on cancellation or timeout, then the worker's turns,
+        each through the spend check, the Context Manager, the model and the
+        Tool Gateway, until the worker answers without tool calls or a limit
+        ends the attempt.
+        Returns _Ended when the run ends here.
+        """
+        if (
+            cancellation_token is not None
+            and getattr(
+                cancellation_token,
+                "is_cancelled",
+                False,
+            )
+        ):
+            return _Ended(self._stop_run(
+                loop.agent_run,
+                RunCancelledError(
+                    getattr(cancellation_token, "reason", None)
+                    or "Run cancelled."
+                ),
+                loop.current_attempt,
+                loop.turn,
+                loop.worker_context,
+                loop.last_feedback,
+            ))
+
+        if timeout is not None:
+            elapsed = _active_seconds(loop.agent_run)
+
+            if elapsed >= timeout:
+                loop.agent_run.status = AgentRunStatus.FAILED
+
+                self._save(
+                    loop.agent_run,
+                    loop.current_attempt,
+                    loop.turn,
+                    loop.worker_context,
+                    loop.last_feedback,
+                )
+
+                raise TaskTimeoutError(
+                    "Task execution exceeded configured timeout."
+                )
+
+        loop.worker_completed = False
+        loop.worker_result = None
+
+        while loop.turn < max_turns:
+            loop.turn += 1
+
+            loop.worker_context.update(
+                {
+                    "run_id": run_id,
+                    "session_id": session_id,
+                    "workspace_id": workspace_id,
+                    "principal_id": principal.id,
+                    "principal_role": principal.role.value,
+                    "tools": model_tools,
+                }
+            )
+
+            spend_stop = self._check_spend(
+                loop.agent_run,
+                principal.id,
+                limits,
+            )
+
+            if spend_stop is not None:
+                return _Ended(self._stop_run(
+                    loop.agent_run,
+                    spend_stop,
+                    loop.current_attempt,
+                    loop.turn,
+                    loop.worker_context,
+                    loop.last_feedback,
+                ))
+
+            await self._emit_state(
+                session_id,
+                run_id,
+                "planning",
+                workspace_id=workspace_id,
+            )
+
+            model_context, context_report = self.context_manager.build(
+                loop.worker_context,
+                system_prompt=str(
+                    getattr(worker, "system_prompt", "") or ""
+                ),
+            )
+
+            loop.agent_run.usage["context_peak_tokens"] = max(
+                int(loop.agent_run.usage.get("context_peak_tokens", 0)),
+                context_report.total_tokens,
+            )
+
+            try:
+                if timeout is not None:
+                    elapsed = _active_seconds(loop.agent_run)
+
+                    # Time already spent on tools counts too: past the
+                    # limit no further model call starts.
+                    if elapsed >= timeout:
+                        raise asyncio.TimeoutError()
+
+                    remaining = max(
+                        0.1,
+                        timeout - elapsed,
+                    )
+
+                    step_result = await asyncio.wait_for(
+                        run_interruptible(
+                            worker.generate(
+                                model_context
+                            ),
+                            cancellation_token,
+                        ),
+                        timeout=remaining,
+                    )
+                else:
+                    step_result = await run_interruptible(
+                        worker.generate(
+                            model_context
+                        ),
+                        cancellation_token,
+                    )
+
+            except RunInterrupted as exc:
+                return _Ended(self._stop_run(
+                    loop.agent_run,
+                    exc,
+                    loop.current_attempt,
+                    loop.turn,
+                    loop.worker_context,
+                    loop.last_feedback,
+                ))
+
+            except asyncio.TimeoutError as exc:
+                loop.agent_run.status = AgentRunStatus.FAILED
+                loop.agent_run.errors.append(
+                    "TaskTimeoutError"
+                )
+
+                self._save(
+                    loop.agent_run,
+                    loop.current_attempt,
+                    loop.turn,
+                    loop.worker_context,
+                    loop.last_feedback,
+                )
+
+                raise TaskTimeoutError(
+                    "Worker execution exceeded configured timeout."
+                ) from exc
+
+            except Exception as exc:  # noqa: BLE001 - the run fails with the worker's error recorded
+                logger.warning("Worker failed in run %s: %s", run_id, exc)
+                loop.agent_run.status = AgentRunStatus.FAILED
+                loop.agent_run.errors.append(
+                    f"Worker failed: {exc}"
+                )
+
+                self._save(
+                    loop.agent_run,
+                    loop.current_attempt,
+                    loop.turn,
+                    loop.worker_context,
+                    loop.last_feedback,
+                )
+
+                break
+
+            if not isinstance(step_result, dict):
+                loop.agent_run.status = AgentRunStatus.FAILED
+                loop.agent_run.errors.append(
+                    "Worker returned an invalid execution payload."
+                )
+
+                self._save(
+                    loop.agent_run,
+                    loop.current_attempt,
+                    loop.turn,
+                    loop.worker_context,
+                    loop.last_feedback,
+                )
+
+                break
+
+            loop.worker_context["resuming"] = False
+
+            usage_stop = self._record_usage(
+                loop.agent_run,
+                step_result.get("usage"),
+                role=str(step_result.get("role") or "worker"),
+                principal_id=principal.id,
+                limits=limits,
+            )
+
+            if usage_stop is not None:
+                return _Ended(self._stop_run(
+                    loop.agent_run,
+                    usage_stop,
+                    loop.current_attempt,
+                    loop.turn,
+                    loop.worker_context,
+                    loop.last_feedback,
+                ))
+
+            proposals = step_result.get(
+                "tool_proposals",
+                [],
+            )
+
+            if not proposals:
+                loop.worker_result = step_result.get(
+                    "output"
+                )
+                loop.worker_completed = True
+
+                self._save(
+                    loop.agent_run,
+                    loop.current_attempt,
+                    loop.turn,
+                    loop.worker_context,
+                    loop.last_feedback,
+                )
+
+                break
+
+            if len(proposals) > max_tool_calls:
+                loop.agent_run.status = AgentRunStatus.FAILED
+                loop.agent_run.errors.append(
+                    "Exceeded max tool calls per worker turn."
+                )
+
+                self._save(
+                    loop.agent_run,
+                    loop.current_attempt,
+                    loop.turn,
+                    loop.worker_context,
+                    loop.last_feedback,
+                )
+
+                break
+
+            tool_calls_used = int(
+                loop.agent_run.usage.get(
+                    "tool_calls",
+                    0,
+                )
+            )
+
+            if tool_calls_used + len(proposals) > max_total_tool_calls:
+                loop.agent_run.status = AgentRunStatus.FAILED
+                loop.agent_run.errors.append(
+                    "Exceeded max tool calls per run."
+                )
+
+                self._save(
+                    loop.agent_run,
+                    loop.current_attempt,
+                    loop.turn,
+                    loop.worker_context,
+                    loop.last_feedback,
+                )
+
+                break
+
+            loop.agent_run.usage["tool_calls"] = (
+                tool_calls_used + len(proposals)
+            )
+
+            ended = await self._run_proposals(
+                loop,
+                cancellation_token=cancellation_token,
+                capability_set=capability_set,
+                limits=limits,
+                principal=principal,
+                proposals=proposals,
+                run_id=run_id,
+                session_id=session_id,
+                workspace_id=workspace_id,
+            )
+
+            if ended is not None:
+                return ended
+
+        return None
+
+    async def _run_proposals(
+        self,
+        loop: _RunLoop,
+        *,
+        cancellation_token: Optional[Any],
+        capability_set: SubagentCapabilitySet,
+        limits: RunLimits,
+        principal: Principal,
+        proposals: List[ToolProposal],
+        run_id: str,
+        session_id: str,
+        workspace_id: str,
+    ) -> Optional[_Ended]:
+        """
+        The tool calls of one worker turn, in order: limits checked before and
+        after each, each run through the Tool Gateway, the run saved after
+        each. A call that needs an approval parks the run with the rest of
+        the turn. Returns _Ended when the run ends here.
+        """
+        for index, proposal in enumerate(proposals):
+            if not isinstance(
+                proposal,
+                ToolProposal,
+            ):
+                raise TypeError(
+                    "Worker returned an invalid ToolProposal instance."
+                )
+
+            if proposal.run_id != run_id:
+                loop.agent_run.status = AgentRunStatus.FAILED
+
+                self._save(
+                    loop.agent_run,
+                    loop.current_attempt,
+                    loop.turn,
+                    loop.worker_context,
+                    loop.last_feedback,
+                )
+
+                raise PermissionError(
+                    "Tool proposal run_id does not match the active execution run."
+                )
+
+            limit_stop = self._check_before_tool(
+                loop.agent_run,
+                proposal,
+                limits,
+            )
+
+            if limit_stop is not None:
+                return _Ended(self._stop_run(
+                    loop.agent_run,
+                    limit_stop,
+                    loop.current_attempt,
+                    loop.turn,
+                    loop.worker_context,
+                    loop.last_feedback,
+                ))
+
+            await self._emit_state(
+                session_id,
+                run_id,
+                "tool_running",
+                workspace_id=workspace_id,
+                tool=proposal.tool_name,
+            )
+
+            try:
+                self._record_observation(
+                    loop.worker_context,
+                    await run_interruptible(
+                        self._execute_proposal(
+                            proposal=proposal,
+                            principal=principal,
+                            session_id=session_id,
+                            workspace_id=workspace_id,
+                            run_id=run_id,
+                            untrusted_context=bool(
+                                loop.worker_context.get(
+                                    "untrusted_context"
+                                )
+                            ),
+                            capabilities=capability_set,
+                            input_channel=self._input_channel(loop.worker_context),
+                            exposed_tools=loop.worker_context.get("exposed_tools"),
+                            delegation=self._delegation_scope(
+                                loop.agent_run,
+                                principal,
+                                limits,
+                                capability_set,
+                            ),
+                        ),
+                        cancellation_token,
+                    ),
+                )
+
+            except RunInterrupted as exc:
+                return _Ended(self._stop_run(
+                    loop.agent_run,
+                    exc,
+                    loop.current_attempt,
+                    loop.turn,
+                    loop.worker_context,
+                    loop.last_feedback,
+                ))
+
+            except ApprovalRequiredError as exc:
+                # The other calls of the same turn wait in the
+                # durable state and run after the decision.
+                return _Ended(await self._park(
+                    loop.agent_run,
+                    loop.worker_context,
+                    proposal,
+                    exc.approval_id,
+                    proposals[index + 1:],
+                    loop.current_attempt,
+                    loop.turn,
+                    loop.last_feedback,
+                ))
+
+            limit_stop = self._record_effects(
+                loop.agent_run,
+                loop.worker_context["observations"][-1],
+                limits,
+            )
+
+            if limit_stop is not None:
+                return _Ended(self._stop_run(
+                    loop.agent_run,
+                    limit_stop,
+                    loop.current_attempt,
+                    loop.turn,
+                    loop.worker_context,
+                    loop.last_feedback,
+                ))
+
+            self._save(
+                loop.agent_run,
+                loop.current_attempt,
+                loop.turn,
+                loop.worker_context,
+                loop.last_feedback,
+            )
+
+        return None
+
+    def _end_incomplete_attempt(
+        self,
+        loop: _RunLoop,
+        *,
+        run_id: str,
+    ) -> Optional[_Ended]:
+        """
+        An attempt that ended without an answer: the run waits on an approval,
+        or it fails because the turns ran out.
+        Returns _Ended when the run ends here.
+        """
+        if not loop.worker_completed:
+            if (
+                loop.agent_run.status
+                == AgentRunStatus.WAITING_APPROVAL
+            ):
+                return _Ended({
+                    "status": "WAITING_APPROVAL",
+                    "run_id": run_id,
+                })
+
+            if loop.agent_run.status != AgentRunStatus.FAILED:
+                loop.agent_run.status = AgentRunStatus.FAILED
+                loop.agent_run.errors.append(
+                    "Maximum turns reached."
+                )
+
+            self._save(
+                loop.agent_run,
+                loop.current_attempt,
+                loop.turn,
+                loop.worker_context,
+                loop.last_feedback,
+            )
+
+            raise MaxTurnsReachedError(
+                f"Task {run_id} failed: maximum turns reached."
+            )
+
+        return None
+
+    async def _critic_verdict(
+        self,
+        loop: _RunLoop,
+        *,
+        cancellation_token: Optional[Any],
+        checker: Any,
+        limits: RunLimits,
+        max_attempts: int,
+        principal: Principal,
+        run_id: str,
+        session_id: str,
+        workspace_id: str,
+    ) -> Optional[_Ended]:
+        """
+        The Critic's verdict on the worker's answer: accepted (guarded, indexed
+        in memory, announced), failed for good, or rejected with feedback for
+        the next attempt.
+        Returns _Ended when the run ends here.
+        """
+        trace = self.context_manager.fit_trace(
+            [
+                {
+                    "tool_call_id": observation.tool_call_id,
+                    "content": observation.content,
+                }
+                for observation in loop.worker_context.get(
+                    "observations",
+                    [],
+                )
+            ]
+        )
+
+        spend_stop = self._check_spend(
+            loop.agent_run,
+            principal.id,
+            limits,
+        )
+
+        if spend_stop is not None:
+            return _Ended(self._stop_run(
+                loop.agent_run,
+                spend_stop,
+                loop.current_attempt,
+                loop.turn,
+                loop.worker_context,
+                loop.last_feedback,
+            ))
+
+        try:
+            checker_decision = await run_interruptible(
+                checker.evaluate(
+                    task=loop.task,
+                    result=loop.worker_result,
+                    trace=trace,
+                ),
+                cancellation_token,
+            )
+
+        except RunInterrupted as exc:
+            return _Ended(self._stop_run(
+                loop.agent_run,
+                exc,
+                loop.current_attempt,
+                loop.turn,
+                loop.worker_context,
+                loop.last_feedback,
+            ))
+
+        except Exception as exc:
+            loop.agent_run.status = AgentRunStatus.FAILED
+            loop.agent_run.errors.append(
+                f"Checker failed: {exc}"
+            )
+
+            self._save(
+                loop.agent_run,
+                loop.current_attempt,
+                loop.turn,
+                loop.worker_context,
+                loop.last_feedback,
+            )
+
+            raise MaxTurnsReachedError(
+                f"Task {run_id} failed because the checker "
+                "could not produce a trusted decision."
+            ) from exc
+
+        usage_stop = self._record_usage(
+            loop.agent_run,
+            getattr(checker_decision, "usage", None),
+            role=Role.CRITIC.value,
+            principal_id=principal.id,
+            limits=limits,
+        )
+
+        if usage_stop is not None:
+            return _Ended(self._stop_run(
+                loop.agent_run,
+                usage_stop,
+                loop.current_attempt,
+                loop.turn,
+                loop.worker_context,
+                loop.last_feedback,
+            ))
+
+        if checker_decision.status == CheckerDecisionEnum.ACCEPT:
+            guarded_result = OutputGuardrail.validate(
+                str(loop.worker_result)
+            )
+
+            loop.agent_run.status = AgentRunStatus.COMPLETED
+            loop.agent_run.result = guarded_result
+            loop.agent_run.error = None
+
+            await self._index_episode(
+                workspace_id=workspace_id,
+                principal_id=principal.id,
+                session_id=session_id,
+                run_id=run_id,
+                goal=str(loop.task.get("description", loop.task)),
+                result=guarded_result,
+                trusted=not loop.worker_context.get("untrusted_context"),
+            )
+
+            # The Critic's verdicts in the timeline (F8): which attempt
+            # out of how many.
+            EventDispatcher().dispatch(
+                "checker.accepted",
+                run_id=run_id,
+                session_id=session_id,
+                workspace_id=workspace_id,
+                attempt=loop.current_attempt,
+                details={"max_attempts": max_attempts},
+            )
+
+            EventDispatcher().dispatch(
+                "run.completed",
+                run_id=run_id,
+                session_id=session_id,
+                workspace_id=workspace_id,
+                tokens=int(loop.agent_run.usage.get("total_tokens", 0)),
+                cost=float(loop.agent_run.usage.get("cost", 0.0)),
+            )
+
+            self._save(
+                loop.agent_run,
+                loop.current_attempt,
+                loop.turn,
+                loop.worker_context,
+                loop.last_feedback,
+            )
+
+            return _Ended(guarded_result)
+
+        if checker_decision.status == CheckerDecisionEnum.FAIL:
+            loop.agent_run.status = AgentRunStatus.FAILED
+            loop.agent_run.error = (
+                checker_decision.retry_instruction
+                or "Checker rejected the result as unrecoverable."
+            )
+
+            loop.agent_run.errors.append(
+                loop.agent_run.error
+            )
+
+            EventDispatcher().dispatch(
+                "checker.failed",
+                run_id=run_id,
+                session_id=session_id,
+                workspace_id=workspace_id,
+                attempt=loop.current_attempt,
+                details={
+                    "max_attempts": max_attempts,
+                    "reason": loop.agent_run.error[:VERDICT_CHARS],
+                },
+            )
+
+            self._save(
+                loop.agent_run,
+                loop.current_attempt,
+                loop.turn,
+                loop.worker_context,
+                loop.last_feedback,
+            )
+
+            return _Ended(None)
+
+        loop.last_feedback = (
+            checker_decision.retry_instruction
+            or (
+                "The previous result did not satisfy "
+                "the checker criteria."
+            )
+        )
+
+        EventDispatcher().dispatch(
+            "checker.rejected",
+            run_id=run_id,
+            session_id=session_id,
+            workspace_id=workspace_id,
+            attempt=loop.current_attempt,
+            details={
+                "max_attempts": max_attempts,
+                "retry_instruction": loop.last_feedback[:VERDICT_CHARS],
+            },
+        )
+
+        EventDispatcher().dispatch(
+            "retry.requested",
+            run_id=run_id,
+            session_id=session_id,
+            workspace_id=workspace_id,
+            attempt=loop.current_attempt + 1,
+            details={"max_attempts": max_attempts},
+        )
+
+        loop.current_attempt += 1
+        loop.turn = 0
+
+        loop.worker_context = self._retry_context(
+            loop.worker_context,
+            task=loop.task,
+            last_feedback=loop.last_feedback,
+            principal=principal,
+            session_id=session_id,
+            workspace_id=workspace_id,
+            run_id=run_id,
+        )
+
+        self._save(
+            loop.agent_run,
+            loop.current_attempt,
+            loop.turn,
+            loop.worker_context,
+            loop.last_feedback,
+        )
+
+        return None
 
     # ==========================================================================
     # START OF A RUN

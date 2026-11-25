@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import base64
 from types import SimpleNamespace
-from typing import Any, Dict, List, Optional, Self, Tuple
+from typing import Any, Dict, List, Self, Tuple
 from unittest.mock import patch
 
 import pytest

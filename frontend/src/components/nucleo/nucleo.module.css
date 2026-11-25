@@ -172,7 +172,9 @@
 .more { font-family: var(--font-code); font-size: 11px; color: var(--dim); margin-left: auto; }
 
 /* dock */
-.dock { grid-area: dock; display: grid; gap: 10px; justify-items: center; padding-top: 6px; }
+/* One column no wider than the dock: an implicit `auto` column grew to the
+   bar's natural width and pushed INVIA off a phone screen (375 px). */
+.dock { grid-area: dock; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; justify-items: center; padding-top: 6px; }
 .bar { display: flex; align-items: center; gap: 14px; width: min(560px, 100%); }
 .mic {
     flex: none; width: 52px; height: 52px; border-radius: 50%; corner-shape: round; border: 1px solid var(--faint);
