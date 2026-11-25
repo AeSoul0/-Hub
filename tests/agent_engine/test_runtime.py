@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -33,6 +33,27 @@ from app.runtime.tool_gateway import ToolResult
 # ==============================================================================
 # TEST FIXTURES
 # ==============================================================================
+
+
+@pytest.fixture(autouse=True)
+def spend_ledger():
+    """
+    These unit tests run without a database: fake the monthly spend ledger,
+    which otherwise fails closed and blocks every model call.
+    """
+    with patch("app.agent_engine.runtime.SpendLedger") as ledger:
+        ledger.spent.return_value = 0.0
+        ledger.add.return_value = 0.0
+        yield ledger
+
+
+@pytest.fixture(autouse=True)
+def event_bus():
+    """
+    No Redis in unit tests: live-state notifications go to a fake bus.
+    """
+    with patch("app.core.event_bus.event_bus.publish", new=AsyncMock()) as publish:
+        yield publish
 
 
 @pytest.fixture
@@ -648,7 +669,7 @@ def test_cancellation(
         for item in reversed(patches):
             item.stop()
 
-    assert result is None
+    assert result["status"] == "CANCELLED"
     assert worker.call_count == 0
 
 

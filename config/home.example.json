@@ -1,0 +1,23 @@
+{
+  "devices": [
+    {
+      "id": "living_light",
+      "name": "Luce del soggiorno",
+      "type": "light",
+      "topic": "zigbee2mqtt/living_light/set"
+    },
+    {
+      "id": "desk_lamp",
+      "name": "Lampada della scrivania",
+      "type": "light",
+      "topic": "cmnd/desk_lamp/POWER",
+      "format": "tasmota"
+    },
+    {
+      "id": "front_door",
+      "name": "Porta d'ingresso",
+      "type": "lock",
+      "topic": "zigbee2mqtt/front_door/set"
+    }
+  ]
+}

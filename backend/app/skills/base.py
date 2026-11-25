@@ -51,11 +51,20 @@ class ToolMetadata(BaseModel):
     network_access: bool = False
     filesystem_access: bool = False
 
+    # Whether the output carries third-party content (web pages, files, MCP
+    # servers) that may hold injected instructions. None derives it from
+    # network_access / filesystem_access.
+    untrusted_output: Optional[bool] = None
+
     max_runtime: int = 30
     max_output: int = 4000
     max_cost: float = 0.0
 
     idempotent: bool = False
+
+    # Successful calls change a file (the `path` or `file_path` argument);
+    # counted against AEHUB_RUN_MAX_FILES_MODIFIED.
+    modifies_files: bool = False
 
     input_schema: Dict[str, Any] = Field(
         default_factory=dict,
@@ -66,6 +75,13 @@ class ToolMetadata(BaseModel):
 
     sandbox_profile: str = "default"
     audit_policy: str = "standard"
+
+    # Words a user may use to ask for this tool, in Italian and English. Only
+    # the skill index reads them (M15): they pick the tools a run is shown,
+    # they never reach the model.
+    examples: List[str] = Field(
+        default_factory=list,
+    )
 
 
 class SkillMetadata(BaseModel):
@@ -102,8 +118,8 @@ class BaseSkill:
     - additional system instructions;
     - permission requirements.
 
-    The runtime does not assume that the callable is decorated by LangChain
-    or any other external orchestration framework.
+    The callables are plain Python functions: no decorator of an external
+    framework is needed.
     """
 
     @property

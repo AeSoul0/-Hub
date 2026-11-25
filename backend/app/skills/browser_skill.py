@@ -7,6 +7,7 @@ framework-agnostic asynchronous Python callable.
 """
 
 from __future__ import annotations
+import logging
 
 from typing import Callable, Dict, List, Optional
 
@@ -24,6 +25,9 @@ from app.skills.base import (
 # ==============================================================================
 # BROWSER TOOL
 # ==============================================================================
+
+
+logger = logging.getLogger(__name__)
 
 
 async def browse_and_extract(url: str) -> str:
@@ -99,7 +103,8 @@ async def browse_and_extract(url: str) -> str:
     except ImportError:
         return "Browser Error: Playwright is not installed."
 
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - a page error becomes the tool's answer
+        logger.warning("Browser tool failed: %s", exc)
         return f"Browser Error: {exc}"
 
 
@@ -141,6 +146,7 @@ class BrowserSkill(BaseSkill):
         return {
             "browse_and_extract": ToolMetadata(
                 name="browse_and_extract",
+                examples=["apri il sito", "leggi la pagina web", "pagina", "sito", "link", "url", "open the website", "read the web page", "page", "site"],
                 description=(
                     "Navigate to a validated URL and extract visible "
                     "text from the rendered page."

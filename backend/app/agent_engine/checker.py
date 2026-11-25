@@ -15,6 +15,7 @@ fails closed rather than accepting an unverified worker result.
 """
 
 from __future__ import annotations
+import logging
 
 import json
 from typing import Any, Dict, List, Optional
@@ -24,6 +25,9 @@ from app.agent_engine.models import (
     CheckerDecision,
     CheckerDecisionEnum,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class AgentChecker:
@@ -79,14 +83,15 @@ class AgentChecker:
             response = await self.model.generate(
                 {
                     "prompt": prompt,
-                    "system": (
+                    "system_prompt": (
                         "You are an independent security and correctness checker. "
                         "Return JSON only. Never approve an output when the "
                         "evaluation itself is uncertain."
                     ),
                 }
             )
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - fail closed: any provider error rejects the result
+            logger.warning("Critic provider failed (%s): the result is not accepted.", type(exc).__name__)
             return self._failure(
                 code="CHECKER_PROVIDER_ERROR",
                 instruction=(
@@ -101,6 +106,15 @@ class AgentChecker:
                 instruction="The checker provider returned an invalid response object.",
             )
 
+        decision = self._decision_from_response(response)
+        # The checker call is spend too: the runtime adds it to the run usage.
+        decision.usage = response.get("usage")
+        return decision
+
+    def _decision_from_response(self, response: Dict[str, Any]) -> CheckerDecision:
+        """
+        Parse a provider response dictionary into a CheckerDecision.
+        """
         output = response.get("output")
         if not isinstance(output, str) or not output.strip():
             return self._failure(

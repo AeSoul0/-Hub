@@ -5,7 +5,7 @@
 
 [tool.ruff]
 # Set the target Python version to ensure compatibility
-target-version = "py310"
+target-version = "py312"
 
 # Enforce a generous but strict line length for readability
 line-length = 100
@@ -29,5 +29,3 @@ ignore = [
 quote-style = "double"
 # Indent with spaces for absolute cross-editor consistency
 indent-style = "space"
-[tool.pytest.ini_options]
-pythonpath = ['.']

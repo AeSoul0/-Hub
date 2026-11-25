@@ -1,8 +1,10 @@
 # ==============================================================================
 # BACKEND CORE IMAGE (PLAYWRIGHT BASE)
-# Utilizing the official Microsoft Playwright image to guarantee headless Chromium stability
+# Utilizing the official Microsoft Playwright image to guarantee headless Chromium stability.
+# Ubuntu 24.04 (noble) ships Python 3.12. The tag must match the `playwright`
+# pin in requirements.txt, so the package finds the browsers bundled here.
 # ==============================================================================
-FROM mcr.microsoft.com/playwright/python:v1.40.0-jammy
+FROM mcr.microsoft.com/playwright/python:v1.65.2-noble
 
 # PREVENT PYTHON FROM BUFFERING STDOUT/STDERR (Real-time logs)
 ENV PYTHONUNBUFFERED=1
@@ -11,15 +13,28 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # WORKDIR ASSIGNMENT: Establish the execution path within the container
 WORKDIR /app
 
-# SYSTEM DEPENDENCIES: Install FFmpeg for advanced audio transcoding (yt-dlp core requirement)
+# SYSTEM DEPENDENCIES: venv support and curl for the healthcheck. No compiler:
+# every package in requirements.txt ships a manylinux wheel for Python 3.12,
+# and the ~84 MB of build tools made the build hang on a slow apt mirror.
 # Running cleanups immediately to reduce the final image layer size
 RUN apt-get update && \
-    apt-get install -y ffmpeg build-essential python3-dev && \
+    apt-get install -y --no-install-recommends python3-venv curl && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# VIRTUAL ENVIRONMENT: the system Python is externally managed (PEP 668), so
+# the backend packages live in their own environment
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
 # DEPENDENCY INJECTION: Copy requirements first to leverage Docker's aggressive layer caching
 COPY requirements.txt .
+
+# CPU-ONLY TORCH: the default Linux wheel on PyPI pulls the whole CUDA stack
+# (several GB) into a container that has no GPU. Installing the CPU build
+# first, with the requirement line from requirements.txt, leaves torch
+# already satisfied for the step below.
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "$(grep -E '^torch([<>=!~ ]|$)' requirements.txt)"
 
 # PACKAGE INSTALLATION: Install Python modules required by the orchestration nodes
 RUN pip install --no-cache-dir -r requirements.txt

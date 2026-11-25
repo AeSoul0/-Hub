@@ -127,6 +127,13 @@ class ToolSpec(BaseModel):
     sandbox_profile: str
     audit_policy: str
 
+    # True when the tool output is third-party content (provenance).
+    untrusted_output: bool = False
+
+    # True when a successful call changes a file; counted against the
+    # per-run limit on modified files.
+    modifies_files: bool = False
+
 
 class ToolProposal(BaseModel):
     """Tool request emitted by a Worker and evaluated by the ToolGateway."""
@@ -187,10 +194,27 @@ class ToolResult(BaseModel):
 
 
 class Observation(BaseModel):
-    """Observation produced by a tool execution and fed back to the Worker."""
+    """Observation produced by a tool execution and fed back to the Worker.
+
+    tool_name and arguments describe the originating function call, so model
+    adapters can replay the call next to its output on the following turn.
+    """
 
     tool_call_id: str
     content: Any
+    tool_name: Optional[str] = None
+    arguments: Dict[str, Any] = Field(default_factory=dict)
+
+    # Provenance: False when content comes from the web, files or MCP
+    # servers and must be treated as data, never as instructions.
+    trusted: bool = True
+
+    # False when the tool failed or was denied; the State Snapshot lists
+    # these calls separately.
+    succeeded: bool = True
+
+    # The file a successful call changed, for tools that modify files.
+    modified_file: Optional[str] = None
 
 
 class CheckerDecisionEnum(str, Enum):
@@ -225,6 +249,8 @@ class CheckerDecision(BaseModel):
     status: CheckerDecisionEnum
     issues: List[CheckerIssue] = Field(default_factory=list)
     retry_instruction: Optional[str] = None
+    # Normalized usage of the checker model call, when the provider reports it.
+    usage: Optional[Dict[str, Any]] = None
 
 
 class RetryInstruction(BaseModel):

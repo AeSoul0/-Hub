@@ -1,434 +1,185 @@
 # ÆHub — AeSoul Digital Hub
 
-> A full-stack AI orchestration platform for building, running, and extending tool-using agents with persistent memory, web search, sandboxed execution, and multi-agent delegation.
+> A personal, local-first agent operating system: one owner, one machine, an agent that uses real tools under explicit rules — approvals, budgets, audit — with long-term memory, voice and home control.
 
-[![GitHub](https://img.shields.io/badge/GitHub-AeSoul0%2F--Hub-181717?logo=github)](https://github.com/AeSoul0/-Hub)
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688?logo=fastapi)](https://fastapi.tiangolo.com/)
-[![Frontend](https://img.shields.io/badge/frontend-Next.js-000000?logo=next.js)](https://nextjs.org/)
-[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python)](https://www.python.org/)
+[![Frontend](https://img.shields.io/badge/frontend-Next.js%2016-000000?logo=next.js)](https://nextjs.org/)
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python)](https://www.python.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript)](https://www.typescriptlang.org/)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker)](https://www.docker.com/)
 
 ## Overview
-## Architecture: ÆHub Agent Engine v1
 
-The system has been completely rebuilt into a deterministic, enterprise-grade Agent Execution Kernel, replacing legacy black-box frameworks (e.g., LangGraph) with explicit control loops:
+ÆHub runs on your own computer, for one person. You give it a task by text or voice; its engine, **A.U.R.O.R.A.**, asks a model what to do, runs the tools the model proposes through one gateway, has an independent Critic check the answer, and shows every step live.
 
-1. **Agent Kernel**: Operates on a native Orchestration Loop (Worker -> Checker -> Retry), entirely isolating the planner from the executor and the verifier.
-2. **Tool Gateway v2**: Centralizes all side-effects. Before any tool runs, it passes through strict Validation -> Identity -> Permission -> Risk -> Budget -> Approval -> Idempotency -> Sandbox -> Audit layers.
-3. **Policy Engine**: Decouples formal authorization from the LLM, ensuring that subagents only operate within strictly delegated SubagentCapabilitySet bounds.
-4. **Durable Checkpointing**: The AgentStateManager dumps all states to disk, allowing paused executions (Human-in-the-Loop) and instantaneous recovery from fatal process crashes midway through a task.
-5. **Guardrails**: A 3-layer architecture (InputGuardrail -> ToolGuardrail -> OutputGuardrail) defends against prompt injection, blocks catastrophic parameters (e.g., 
-m -rf), and prevents secret exfiltration.
-6. **Memory Engine v1**: Manages partitioned Episodic, Semantic, and Execution memory via pgvector, retrieved dynamically using a hybrid scoring algorithm (Relevance * Importance * Confidence * Recency Decay).
-7. **Resource Management**: The Phase 13 ResourceManager classifies tasks (Light, Heavy, Vision, etc.) and dynamically budgets RAM, concurrency, and timeouts prior to execution.
-8. **Model Adapters & Circuit Breakers**: Completely abstracts LLMs into the ModelProvider interface. Orchestrator, Worker, and Checker can run on completely different providers. If an API fails (e.g., OpenAI 503), the Engine's native **Circuit Breaker** automatically reroutes the task to a fallback provider (e.g., Groq) without dropping the state.
+- **The model proposes, the engine decides.** Every tool call goes through the Tool Gateway: policy, guardrails, schema, idempotency, budget, approval and a hash-chained audit. HIGH-risk actions (a shell command, unlocking a door) wait for your approval.
+- **Runs are durable.** A run waiting for approval, or cut by a crash, resumes with the same id from PostgreSQL, and a tool already executed does not run again.
+- **Any model, per role.** Architect, Research, Critic, Fast Worker and Triage each have a chain of models with fallbacks. Providers: OpenAI, OpenRouter, a local server (Ollama, LM Studio), Groq, Anthropic and Google Gemini, through Pydantic AI (ADR-032). The Critic never uses the same model as a worker.
+- **Limits you set.** Cost per run and per month, active time, failed tool calls, subagents and modified files; a stop button for one run or for all of them.
+- **Memory and documents.** Facts, preferences and rules across sessions; search over the documents of your working folder, with cited sources. Content from the web, files or MCP is untrusted: it never becomes a rule, and after reading it every HIGH-risk action needs an approval.
+- **Voice and home.** Speech recognition and synthesis run on this machine (faster-whisper, Piper); lights and locks through your MQTT broker.
+- **An interface for everything.** The Nucleo (home) and the Control Plane, in Italian, cover every route and setting of the backend (`docs/frontend-coverage.md`).
 
+It is not a multi-user service: there is one owner, and every port listens on `127.0.0.1`.
 
-ÆHub is a full-stack platform for experimenting with and operating **AI agents** that can reason over a task, invoke tools, maintain session context, delegate work to specialized subagents, and interact with external services.
-
-The project combines a **Next.js frontend** with a **FastAPI backend** and an advanced proprietary agent runtime (**ÆHub Agent Engine v1**) featuring dynamic resource management, explicit orchestration, strict security gateways, and unified multi-provider adapters (OpenAI, Groq, Anthropic, etc.).
-
-Rather than treating an LLM as a simple text-generation endpoint, ÆHub models the LLM as a decision-making component inside a broader runtime:
-
-```text
-User
-  ↓
-API / Realtime Interface
-  ↓
-A.U.R.O.R.A. Agent Runtime
-  ↓
-Reasoning + Tool Selection
-  ↓
-Tools / Skills / Subagents
-  ↓
-Observations + Memory
-  ↓
-Next Agent Step
-  ↓
-Final Response
-```
-
-### What problem does it solve?
-
-Traditional LLM integrations usually stop at:
-
-```text
-Prompt → LLM → Text
-```
-
-That model becomes limiting when an application needs to:
-
-* execute real operations;
-* search external information;
-* retain persistent user context;
-* delegate complex tasks;
-* run controlled code;
-* expose capabilities through reusable tools;
-* stream runtime events;
-* enforce security boundaries around agent actions.
-
-ÆHub addresses those requirements by providing an extensible agent architecture in which **skills, tools, memory, workflows, workers, and subagents are separate components**.
-
-### Current use cases
-
-The current codebase supports or provides foundations for:
-
-* conversational AI orchestration;
-* web research;
-* persistent semantic and procedural memory;
-* task and event memory;
-* controlled Python and shell execution;
-* specialized research subagents;
-* supervisor-style delegation;
-* real-time event streaming;
-* scheduled/proactive workloads;
-* voice input and output;
-* browser and automation-oriented workflows;
-* MCP integration as an extensibility layer.
-
----
-
-# Key Features
-
-| Capability                 | Status | Description                                                                                                   |
-| -------------------------- | ------ | ------------------------------------------------------------------------------------------------------------- |
-| Autonomous task execution  | ✅      | LangGraph-based agent loop capable of iterative tool execution                                                |
-| Tool / function calling    | ✅      | LangChain tools are dynamically bound to the LLM                                                              |
-| Planning and reasoning     | ✅      | Agent decisions emerge from the LangGraph execution cycle                                                     |
-| Short-term memory          | ✅      | LangGraph message state                                                                                       |
-| Persistent memory          | ✅      | PostgreSQL-backed semantic, episodic, and procedural memory (with pgvector embedding)                         |
-| RAG                        | ✅      | Semantic Memory integrated with pgvector for contextual retrieval                                             |
-| Multi-agent collaboration  | ✅      | Supervisor skill delegates tasks dynamically using deterministic role-based Llama models                      |
-| Human-in-the-loop          | 🟡     | Risk metadata and approval flags exist; full approval workflow is not yet enforced end-to-end                 |
-| Monitoring / observability | ✅      | JSON Semantic Logging, OpenTelemetry tracing, and Prometheus `/metrics` exporter implemented                  |
-| Extensibility              | ✅      | Skill registry, dynamic discovery, MCP bridge, tool metadata, and modular runtime                             |
-| Security / Identity        | ✅      | RBAC Policy Engine, strict Docker Sandboxing (cpus, pids-limit, read-only), and Tool Gateway                  |
-| Distributed Tasks          | ✅      | Durable Task Runtime with state recovery, idempotency, and Celery / Redis execution backend                   |
+The engine is described in [`docs/architecture/AEHUB_ENGINE_V1.md`](docs/architecture/AEHUB_ENGINE_V1.md), the decisions in [`docs/adr/`](docs/adr/), and the repository in [`docs/architecture/inventory.md`](docs/architecture/inventory.md).
 
 ---
 
 # Architecture
 
-ÆHub follows a decoupled client-server architecture with an agent runtime embedded in the backend.
-
 ```mermaid
 flowchart TD
-    User[User / Browser]
-    Frontend[Next.js Frontend]
+    User[You: browser, desktop window, voice]
+    Frontend[Next.js: Nucleo and Control Plane]
     API[FastAPI API]
-    Agent[A.U.R.O.R.A. Agent]
-    Graph[LangGraph Runtime]
-    LLM[Groq LLM<br/>Llama 3 70B]
-    Registry[Skill Registry]
-    Tools[Tools / Skills]
-    Memory[Aurora Memory Manager]
-    Checkpoint[(PostgreSQL Checkpoints)]
-    DB[(PostgreSQL)]
-    Redis[(Redis)]
-    Search[Web Search]
-    Sandbox[Sandbox Execution]
-    Subagents[Specialized Subagents]
-    Events[EventBus / SSE]
-    External[External Services]
+    Engine[A.U.R.O.R.A. engine<br/>worker, Critic, triage]
+    Models[Pydantic AI<br/>OpenAI, OpenRouter, local,<br/>Groq, Anthropic, Gemini]
+    Gateway[Tool Gateway<br/>policy, approvals, budget, audit]
+    Tools[Skills and tools<br/>web, browser, sandbox, files,<br/>documents, memory, home, subagents]
+    DB[(PostgreSQL + pgvector<br/>runs, approvals, audit,<br/>settings, memory, documents)]
+    Bus[(Redis<br/>live events, cache,<br/>rate limits)]
 
     User --> Frontend
-    Frontend --> API
-    API --> Agent
-    Agent --> Graph
-    Graph --> LLM
-    LLM -->|tool calls| Registry
-    Registry --> Tools
-
-    Tools --> Search
-    Tools --> Sandbox
-    Tools --> Subagents
-    Tools --> External
-
-    Agent --> Memory
-    Memory --> DB
-    Graph --> Checkpoint
-
-    API --> Events
-    Events --> Frontend
-
-    API --> Redis
-    Agent --> Redis
+    Frontend -->|REST, SSE, WebSocket| API
+    API --> Engine
+    Engine -->|one request per turn| Models
+    Models -->|proposed tool calls| Engine
+    Engine --> Gateway
+    Gateway --> Tools
+    Engine --> DB
+    Gateway --> DB
+    Engine --> Bus
+    Bus -->|SSE| Frontend
 ```
 
 ## Core components
 
 ### Frontend
 
-The frontend is a **Next.js application** using React, TypeScript, Tailwind CSS, Zustand, Recharts, and Radix-based UI components.
+The frontend is a **Next.js application** using React, TypeScript and Tailwind CSS. Fonts are bundled from npm, so it loads nothing from third parties.
 
-Its responsibilities include:
+- **The Nucleo** (`/`, ADR-022) is the home:
+  - a dotted sphere in the centre reacts to what the engine does: model calls, tool calls, subagents as small moons, approvals in amber, the microphone, the spoken reply;
+  - the conversation sits on the left and the engine's live events on the right; both panes grow from their top edge and can be hidden;
+  - pending approvals are decided there;
+  - the **RUN** tab of the right pane follows each run of the session (ADR-023): cost, active time, failed tool calls, written files and subagents against the per-run limits, live, with a stop button and the run's timeline; **FERMA TUTTO** in the top bar stops every run (a second click confirms) and **RIPRENDI** lifts the stop;
+  - next to the command field a role can be chosen for the next commands (Architect, Research, Fast Worker, Triage); "auto" leaves it to the triage (ADR-029).
+- **The Control Plane** (`/control-plane`) has runs, approvals, memory, documents, home, tools, skills, security, voice, settings, system and setup, all in the Nucleo's style; the history of the runs filters by text, status, period and subagents, and shows each subagent under its parent. A run's page lists its subagents, and its timeline shows each verdict of the Critic with the attempt and the correction it asked for (ADR-029).
+- **Settings** (ADR-025) choose the LLM of each role (Architect, Research, Critic, Fast Worker, Triage) with its fallbacks, suggesting each provider's models (OpenRouter with prices), and refuse a Critic that shares a model with another role. They also hold keys, default models, the local server, prices, budget and limits, the approval window, the circuit breaker and the context budget, all applied without a restart.
+- **Tools and skills** (ADR-026):
+  - **STRUMENTI** lists every skill and tool with its risk, approval, network and file access, and whether it returns untrusted content. It switches tools off: a disabled tool is never shown to the agent and is refused if proposed. The page also sets the skill index and the allowed MCP servers, and shows the tools' folders, the API host names and the sandbox.
+  - **SKILL** imports skills in the open `SKILL.md` format (Claude Code, Codex, OpenClaw) from an https link (a GitHub page is turned into its raw file) or a file. Only the text is imported, and the skill starts off. The page shows the whole text and flags patterns to check before it can be turned on: download-and-run commands, encoded blobs, instruction overrides, secrets, bundled files and links. The agent reads an enabled skill through the `use_skill` tool as untrusted content, so after reading it every high-risk action waits for an approval.
+  - **SICUREZZA** shows the audit hash chain, the log (Control Plane changes included) filtered by decision and tool, and which entries returned untrusted content.
+- **SISTEMA** (ADR-030), for the owner only:
+  - the state of the database and the event bus, the app's version and uptime;
+  - the RAM of ÆHub's processes (backend with voice, PostgreSQL, the browser's Chromium, the desktop window) and the voice models in memory;
+  - whether a newer desktop version is published;
+  - the startup parameters, read only, with no password shown;
+  - flight recorder search and JSONL export;
+  - the offline evals, run in a separate process (the release gate when `evals/baseline.json` is there);
+  - rotating the access key (desktop app, keyring), which closes every other session;
+  - the backend's recent warnings and errors;
+  - links to the API's own pages: `/docs`, `/redoc`, `/openapi.json`, the Prometheus `/metrics` and the `/health` probe (they need no login and answer on the API's host).
+  - **The run view** also lists the tools the skill index picked for the run.
+- **Home** (ADR-028): the **CASA** page lists your devices with what ÆHub last sent and, on request, what the device says; it adds and edits devices, sets the MQTT broker and tests the connection.
+- **Memory and documents** (ADR-027):
+  - **MEMORIA** turns long-term memory on or off and sets the similarity threshold, the embedder and its model. After an embedder change it recomputes the old vectors.
+  - On the same page you add facts, preferences and rules, search with the engine's hybrid retrieval, and filter by kind and trust. A memory can be edited in place, forgotten, or vouched for ("Mi fido", audited) when it was written from untrusted content. All untrusted memories can be forgotten at once.
+  - **DOCUMENTI** shows the working folder and its index. It syncs, uploads a file into the folder, sets the size limit and searches the index.
+  - **Citations** `[doc: file#lines]` in answers (Nucleo and run view) open the cited passage.
+- **How much of the backend the interface controls** is tracked in `docs/frontend-coverage.md`: 100% since F10. Its index maps every route, setting, startup parameter and secret to the row that covers it, and `tests/security/test_frontend_coverage.py` fails when something new is missing.
 
-* user interaction;
-* dashboard presentation;
-* agent interaction;
-* real-time event consumption;
-* API communication.
+The look is a deep-blue space theme with squircle corners. The visual reference is `docs/design/hud-prototype.html`.
 
 The frontend development server is configured to run on port `2003`.
 
 ### FastAPI backend
 
-The backend exposes the application's HTTP and WebSocket interfaces.
+`backend/main.py` builds the application: routers, the session check on every `/api/` route, the host and origin checks, rate limits, telemetry and, in the desktop app, the static frontend. The API speaks REST, Server-Sent Events (`/api/events`) and a WebSocket (`/ws/orchestrator`) for text and voice commands. The exact list of routes is in `tests/security/test_api_surface.py`.
 
-`backend/main.py` is responsible for application initialization, router registration, authentication middleware, CORS configuration, event streaming, voice processing, and runtime startup.
+### A.U.R.O.R.A. engine
 
-The API includes:
-
-* REST endpoints;
-* WebSocket communication;
-* Server-Sent Events;
-* agent orchestration endpoints;
-* academic and media functionality;
-* voice processing.
-
-### A.U.R.O.R.A. runtime
-
-A.U.R.O.R.A. is the project's main agent runtime:
-
-**Autonomous Uplink & Real-time Operations Robotic Assistant**
-
-The runtime is implemented with **LangGraph** and maintains an explicit state containing messages, session information, and current intent.
-
-The graph follows a loop similar to:
+**Autonomous Uplink & Real-time Operations Robotic Assistant** is the project's own execution loop (`backend/app/agent_engine/`), with no agent framework as the authority:
 
 ```text
-Agent
-  ↓
-LLM Decision
-  ↓
-Tool Call?
- ┌───────────────┐
- │ Yes           │ No
- ↓               ↓
-Tool Execution   END
- ↓
-Observation
- ↓
-Agent
+task → triage picks the role
+     → worker model: text and proposed tool calls
+     → Tool Gateway: each call checked, approved if needed, run, audited
+     → observations stored with the run → next turn
+     → final answer → Critic (different model) → accepted, or feedback and retry
 ```
 
-### LLM
+The input of every turn is rebuilt from the run's durable state, so a run can resume after an approval or a crash, or move to a fallback model, without repeating a tool call. Details in [`docs/architecture/AEHUB_ENGINE_V1.md`](docs/architecture/AEHUB_ENGINE_V1.md).
 
-The current runtime uses **Groq's `llama3-70b-8192`** through `langchain-groq`.
+### Models
 
-The LLM is responsible for:
+One adapter, `PydanticAIAdapter` (`backend/app/agent_engine/adapters/pydantic_ai_adapter.py`, ADR-032), makes exactly one model request per turn with `pydantic_ai.direct.model_request` and returns the text, the proposed tool calls, the token usage and the response id. Pydantic AI runs no tool: the loop stays A.U.R.O.R.A.'s.
 
-* interpreting user intent;
-* generating responses;
-* deciding when to invoke tools;
-* producing tool arguments;
-* synthesizing tool observations into the next action or final response.
+| Provider | Model class | Key |
+| --- | --- | --- |
+| `openai` | OpenAI Responses API | `OPENAI_API_KEY` |
+| `openrouter` | Chat Completions on OpenRouter | `OPENROUTER_API_KEY` |
+| `local` | Chat Completions on an OpenAI-compatible server (`AEHUB_LOCAL_BASE_URL`) | none, or `AEHUB_LOCAL_API_KEY` |
+| `groq` | Groq | `GROQ_API_KEY` |
+| `anthropic` | Anthropic | `ANTHROPIC_API_KEY` |
+| `google` | Gemini | `GEMINI_API_KEY` |
 
-### Skill Registry
+Each role has its chain of `provider:model` (Settings, or `AEHUB_MODEL_ROLES`). When a provider fails, a per-target circuit breaker moves the call to the next model of the chain. A provider appears in the role editor once its key is set. LiteLLM is not used.
 
-Skills are modular capabilities dynamically loaded from `app.skills`.
+### Skills and tools
 
-The registry:
+Skills live in `backend/app/skills/` and expose plain Python functions with metadata: risk (LOW, MEDIUM, HIGH), approval, permissions, network and file access, and whether the output is untrusted. The registry loads every module with a `get_skill()`.
 
-1. discovers skill modules;
-2. loads modules exposing `get_skill()`;
-3. registers tools;
-4. aggregates tool definitions;
-5. aggregates system-prompt extensions;
-6. exposes the resulting capability set to the agent.
-
-This allows new capabilities to be added without modifying the central agent graph.
+At the start of a run the skill index shows the model only the tools the task names (see [Which tools a run sees](#which-tools-a-run-sees)). Skills in the open `SKILL.md` format can be imported from the SKILL page; their text reaches the agent as untrusted content. The MCP bridge checks servers against an allowlist; its client is a stub until after V1.
 
 ### Memory
 
-The memory layer currently provides:
-
-* working memory through LangGraph state;
-* conversational persistence through PostgreSQL checkpoints;
-* semantic memory;
-* episodic memory;
-* procedural memory.
+Long-term memory (`backend/app/memory/store.py`, ADR-027) is scoped to the workspace and the user, not to the login session. Each run recalls what matches its task, by hybrid retrieval (full text and pgvector, fused with Reciprocal Rank Fusion), and runs accepted by the Critic are indexed. See [Memory and RAG](#memory-and-rag).
 
 ### PostgreSQL
 
-PostgreSQL is used for durable state and agent persistence, including LangGraph checkpoints and structured memory records.
+PostgreSQL (with pgvector) holds everything durable: identities and sessions, runs and approvals, the hash-chained audit, settings, long-term memory with its vectors and full-text index, the document index and imported skills. The schema comes from the Alembic revisions in `backend/alembic/versions/`, applied at every start (see [Changing the schema](#changing-the-schema)).
 
 ### Redis
 
-Redis is provisioned by Docker Compose as a cache/event-oriented infrastructure component.
+Redis carries the live events (the Nucleo and the Control Plane follow runs and approvals over SSE), the cache and the API's rate limits. It holds nothing durable. The desktop app runs without it: `AEHUB_EVENT_BUS=memory` (or `REDIS_URL=memory://`) keeps events, cache and limits inside the process.
 
 ### External services
 
-Depending on enabled skills and features, ÆHub can interact with:
-
-* Groq;
-* DuckDuckGo search;
-* external MCP services;
-* browser automation services;
-* other application-specific integrations.
+Only what you turn on: the model providers you give a key to, DuckDuckGo for web search, the pages the browser tool opens, your MQTT broker, ElevenLabs if you choose it for voice, and GitHub Releases for desktop updates. The voice, the embedder and the database run on this machine.
 
 ---
 
-# How It Works
-
-A typical agent execution follows this sequence.
-
-### 1. Input
-
-The user sends a natural-language request through the API or frontend.
-
-Example:
-
-```text
-Find the latest information about a technology and summarize the important changes.
-```
-
-### 2. Security validation
-
-Incoming text is processed by the prompt-injection filter before being forwarded to the main agent runtime.
-
-Known suspicious patterns are rejected.
-
-### 3. Session resolution
-
-The request is associated with a `session_id`.
-
-This allows memory and checkpoints to remain isolated between sessions.
-
-### 4. Context retrieval
-
-The agent runtime retrieves relevant persistent memory:
-
-* known user facts;
-* procedural preferences;
-* previous conversational state.
-
-### 5. Reasoning
-
-The LLM receives:
-
-* system instructions;
-* persistent memory context;
-* active skill instructions;
-* current user messages.
-
-It determines whether the task can be answered directly or requires a tool.
-
-### 6. Tool selection
-
-If a tool is required, LangGraph routes the execution to a `ToolNode`.
-
-Examples include:
-
-* web search;
-* memory operations;
-* Python execution;
-* shell execution;
-* supervisor delegation.
-
-### 7. Tool execution
-
-The selected tool executes outside the LLM.
-
-The result becomes an observation available to the next agent step.
-
-### 8. Next action
-
-The LLM evaluates the observation and decides whether to:
-
-* execute another tool;
-* delegate additional work;
-* continue reasoning;
-* produce the final answer.
-
-### 9. Persistence
-
-Conversation and memory data can be persisted using PostgreSQL.
-
-### 10. Final response
-
-The final agent response is returned through the API and can also be converted to speech.
-
----
-
-# Project Structure
-
-The repository is organized as a frontend/backend monorepo.
+# Project structure
 
 ```text
 -Hub/
 ├── backend/
-│   ├── app/
-│   │   ├── agents/
-│   │   │   ├── orchestrator.py
-│   │   │   └── subagents/
-│   │   │       └── base.py
-│   │   │
-│   │   ├── api/
-│   │   │   ├── academic.py
-│   │   │   ├── media.py
-│   │   │   └── voice.py
-│   │   │
-│   │   ├── core/
-│   │   │   ├── database.py
-│   │   │   ├── event_bus.py
-│   │   │   └── security.py
-│   │   │
-│   │   ├── memory/
-│   │   │   └── manager.py
-│   │   │
-│   │   ├── runtime/
-│   │   │   └── aurora.py
-│   │   │
-│   │   ├── skills/
-│   │   │   ├── base.py
-│   │   │   ├── registry.py
-│   │   │   ├── memory_skill.py
-│   │   │   ├── web_search.py
-│   │   │   ├── sandbox_skill.py
-│   │   │   ├── supervisor_skill.py
-│   │   │   └── mcp_bridge.py
-│   │   │
-│   │   ├── workers/
-│   │   │   └── scheduler.py
-│   │   │
-│   │   └── workflows/
-│   │
-│   ├── main.py
-│   ├── requirements.txt
-│   ├── pyproject.toml
-│   └── dockerfile
-│
-├── frontend/
-│   ├── src/
-│   ├── public/
-│   ├── package.json
-│   ├── package-lock.json
-│   ├── next.config.js
-│   ├── tsconfig.json
-│   └── dockerfile
-│
-├── data/
-├── docker-compose.yaml
-├── .gitignore
-└── README.md
+│   ├── main.py              # the FastAPI application
+│   ├── desktop.py           # desktop sidecar: PostgreSQL and API on 127.0.0.1
+│   ├── alembic/             # schema revisions (ADR-031)
+│   └── app/
+│       ├── agent_engine/    # A.U.R.O.R.A.: loop, Critic, routing, context, budget, adapter
+│       ├── runtime/         # Tool Gateway and audit hash chain
+│       ├── api/             # HTTP, SSE and WebSocket routes
+│       ├── core/            # database, event bus, cache, security, settings, telemetry
+│       ├── skills/          # tools: web, browser, sandbox, files, documents, memory, home, delegation
+│       ├── memory/          # long-term memory
+│       ├── documents/       # index of the working folder
+│       ├── voice/ home/     # local voice; MQTT devices
+│       ├── system/          # the SISTEMA page: status, logs, evals, recorder, updates
+│       ├── evaluation/      # eval suite and release gate
+│       └── domain/models/   # SQLAlchemy models
+├── frontend/                # Next.js: src/app (pages), src/components, src/lib, tests
+├── desktop/                 # Tauri shell of the Windows app (suspended)
+├── tests/                   # backend tests (pytest)
+├── evals/                   # run_evals.py and baseline.json
+├── scripts/                 # aehub.py launcher, demo.py, check_headers.py
+├── docs/                    # ADRs, architecture, configuration, coverage, design
+├── config/                  # home.example.json
+└── docker-compose.yaml
 ```
-
-## Directory responsibilities
-
-| Directory               | Responsibility                                                  |
-| ----------------------- | --------------------------------------------------------------- |
-| `backend/app/agents`    | Main orchestrator and subagent abstractions                     |
-| `backend/app/api`       | FastAPI routers and external API boundaries                     |
-| `backend/app/core`      | Shared infrastructure such as persistence, events, and security |
-| `backend/app/memory`    | Persistent agent memory services                                |
-| `backend/app/runtime`   | LangGraph agent runtime                                         |
-| `backend/app/skills`    | Modular agent capabilities and tools                            |
-| `backend/app/workers`   | Background/proactive execution                                  |
-| `backend/app/workflows` | Higher-level automation workflows                               |
-| `frontend/src`          | Next.js application code                                        |
-| `data`                  | Local persistence volumes used by Docker Compose                |
 
 ---
 
@@ -438,14 +189,14 @@ The repository is organized as a frontend/backend monorepo.
 
 Recommended development environment:
 
-* Python 3.10+
+* Python 3.12 (the version of the backend image and of CI)
 * Node.js compatible with the project's Next.js version
 * npm
 * Docker
 * Docker Compose
 * Git
 
-An LLM provider credential is also required for the current agent runtime.
+A key for at least one model provider (OpenAI, OpenRouter, Groq, Anthropic or Gemini), or a local OpenAI-compatible server such as Ollama.
 
 ### Clone the repository
 
@@ -463,11 +214,43 @@ The repository includes services for:
 * PostgreSQL;
 * Redis.
 
-Start the stack with:
+### First run (about ten minutes)
 
 ```bash
-docker compose up --build
+python scripts/aehub.py setup    # or: make setup
+python scripts/aehub.py up       # or: make up
 ```
+
+Then open http://localhost:3000/control-plane, sign in with the key printed by `python scripts/aehub.py login-key`, and follow the first-run setup: models (Worker and a different Critic), prices, budget, and a final check. Everything it sets can be changed later in **Settings** without a restart.
+
+The launcher (`scripts/aehub.py`, Python standard library only) keeps every secret in the **OS keyring** — Windows Credential Manager, macOS Keychain or the Linux Secret Service — never in a file:
+
+| Command | What it does |
+| --- | --- |
+| `setup` | Creates the database password (`.env`) and the Control Plane login key; asks for the provider keys (hidden input) and the agent's working folder; moves any key found in `backend/.env` into the keyring and removes it from the file. |
+| `up` / `down` | Starts / stops the stack. `up` reads the keys from the keyring and hands them to `docker compose` through its process environment; `docker-compose.yaml` passes them to the backend container. |
+| `secrets` | Which keys are set (never their values). |
+| `login-key` | Prints the Control Plane login key. |
+
+On Windows the launcher talks to Credential Manager directly. Elsewhere it needs the `keyring` package (`pip install keyring`), which it also prefers on Windows when installed; both read the same entries (service `aehub`). `start.ps1` runs `setup` on the first start and `up` afterwards.
+
+Keys passed by the launcher win over `backend/.env`, which now holds only non-secret settings. Running `docker compose up` by hand starts the backend without keys (it exits without a login key); put them in your shell environment or use the launcher.
+
+### One-command demo
+
+```bash
+make demo
+```
+
+`make demo` (or `python scripts/demo.py`, which needs only the Python standard library) runs the whole loop on a clean machine:
+
+1. through the launcher, creates the database password and the login key, and asks once (without echo) for the model API key, which goes to the OS keyring;
+2. starts PostgreSQL, Redis, backend and frontend with Docker Compose and waits for `/health`;
+3. if the Worker and Critic models are not configured, asks for them and saves them through the Settings API; then sends a real command that needs a HIGH-risk tool (a shell command in the sandbox), so the run stops for approval;
+4. waits while you approve or deny it from http://localhost:3000;
+5. prints the outcome and its cost.
+
+The backend container builds its `POSTGRES_URL` from `POSTGRES_PASSWORD` in the root `.env`, so the password lives in one place; the database is reachable only on this machine. The agent's working folder (`./workspace`, or the one chosen with `setup`, stored as `AEHUB_WORKSPACE_DIR` in `.env`) is mounted into the backend container.
 
 The current Compose configuration maps:
 
@@ -478,20 +261,7 @@ PostgreSQL → localhost:5432
 Redis     → localhost:6379
 ```
 
-### Important Docker filename note
-
-The repository currently contains lowercase `dockerfile` files, while `docker-compose.yaml` references `Dockerfile`.
-
-On case-sensitive filesystems, align the filenames before building:
-
-```bash
-mv backend/dockerfile backend/Dockerfile
-mv frontend/dockerfile frontend/Dockerfile
-```
-
-Alternatively, update the corresponding `dockerfile:` entries in `docker-compose.yaml`.
-
-**Healthcheck**: The backend service now includes a Docker `HEALTHCHECK` that probes `http://localhost:3002/health` every 30 seconds. This ensures the container is marked unhealthy if the API does not respond.
+**Healthcheck**: The backend service includes a Docker `HEALTHCHECK` that probes `http://localhost:3002/health` every 30 seconds. This ensures the container is marked unhealthy if the API does not respond.
 
 ## Option B — Local backend development
 
@@ -542,49 +312,51 @@ The frontend development server runs on:
 http://localhost:2003
 ```
 
----
+## Option C — Desktop app (Windows)
+
+The desktop app needs no Docker: one installer holds the engine, its own PostgreSQL with pgvector and the frontend (roadmap M14, `docs/adr/ADR-020-Runtime-desktop.md`).
+
+> **Suspended.** Work on the desktop app is paused, and the CI builds no installer: the `desktop-windows` and `desktop-release` jobs run on a version tag only when the repository variable `DESKTOP_RELEASE` is `on`. What follows describes the app as it was last built; it stays the final goal.
+
+- **Install:** run the `AEHub_*-setup.exe` from the GitHub Release of a version tag, or from the `aehub-windows-installer` artifact of the CI (`desktop-windows` job). It installs for the current user, without administrator rights. Without an Authenticode certificate in the CI secrets it is not code-signed, so Windows SmartScreen asks for confirmation.
+- **Updates:** on start the app looks for a newer release, signed with the updater's key, and installs it only if you say yes. Releases are published by the CI when `TAURI_SIGNING_PRIVATE_KEY` is among its secrets.
+- **First start:** the app creates its database in `%LOCALAPPDATA%\AEHub` and its working folder in `Documents\AEHub`, then opens the Control Plane already logged in. Add a provider key on the setup page: it goes to the Windows Credential Manager, never to a file. Then pick models, prices and budget as with Docker.
+- **How it runs:** the window starts `backend/desktop.py`, which runs Postgres and the API on `127.0.0.1` on ports chosen at every start, with live events in-process instead of Redis. The window logs in with a one-time token. Closing the window stops everything.
+- **Memory:** the desktop app uses the `hash` embedder, which needs no model download and has weaker recall, until the local embedder is decided (ADR-020).
+
+Building the installer locally needs Rust, Node.js 20, Python 3.12, Visual Studio Build Tools and a PostgreSQL install with pgvector:
+
+```bash
+cd frontend && AEHUB_STATIC_EXPORT=1 npm run build && cd ..
+python desktop/scripts/bundle.py --pg-root "C:/Program Files/PostgreSQL/17"
+python desktop/scripts/smoke_sidecar.py
+cd desktop && npm ci && npx tauri build
+```
 
 # Configuration
 
-The repository expects environment-specific configuration to remain outside version control.
+Configuration has three homes:
 
-Create:
+* **Secrets** (provider API keys, the login key) — the OS keyring, through the launcher (see *First run*) or the desktop app. The backend reads them from its environment.
+* **Settings** — model roles, prices, budget and run limits, voice, the tool settings (disabled tools, skill index, MCP servers), memory (on/off, similarity, embedder), the document size limit and the home MQTT broker. Edited in the Control Plane (**Settings**, `GET`/`PUT /api/settings`), stored in the `app_settings` table, applied from the next run without a restart. A setting never edited falls back to the environment variable of the same name, then to its default, so `backend/.env`, CI and tests keep working. Every change is validated as a whole (a Critic equal to a Worker is refused before it is saved) and recorded in the audit log as `settings.update`.
+* **Infrastructure** — database, Redis, CORS, paths: environment only (`backend/.env`, root `.env` for Compose).
 
-```text
-backend/.env
-frontend/.env.local
-```
+At startup the backend logs one line per configuration problem (`[CONFIG ERROR]`, `[CONFIG WARNING]`, …): Critic equal to a Worker, a provider without its key, models without a price, a run limit above the monthly budget, a missing working folder. The Settings page shows the same list. The API starts anyway, so the page can fix what it can; runs are refused while an error remains.
 
-Never commit real credentials.
+**Every variable, with its default, is in [`docs/configuration.md`](docs/configuration.md).**
 
-## Backend `.env`
+## Backend `.env` (local development)
 
-Example:
+Example for running the backend outside Docker:
 
 ```env
-# LLM provider
-GROQ_API_KEY=your_groq_api_key_here
-
-# API authentication
-AEHUB_SECRET_KEY=replace_with_a_long_random_secret
-
-# PostgreSQL
 POSTGRES_URL=postgresql://aehub_user:replace_password@localhost:5432/aehub_db
-
-# Optional Redis infrastructure
 REDIS_URL=redis://localhost:6379/0
-
-# Optional LangSmith configuration
-LANGSMITH_TRACING=false
-LANGSMITH_API_KEY=your_langsmith_key_here
-LANGSMITH_PROJECT=aehub
 ```
 
+Outside Docker, put the keys in your shell environment (for example `AEHUB_SECRET_KEY`, `OPENAI_API_KEY`) rather than in this file. Voice needs no key: it runs on this machine (see Voice).
+
 ## Frontend `.env.local`
-
-Use the variables expected by the frontend implementation in your deployment.
-
-A typical configuration may look like:
 
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:3002
@@ -592,24 +364,17 @@ NEXT_PUBLIC_API_URL=http://localhost:3002
 
 Do not expose private backend secrets through `NEXT_PUBLIC_*` variables.
 
-## Configuration notes
+## Security notes
 
-| Variable              | Purpose                                                     |
-| --------------------- | ----------------------------------------------------------- |
-| `GROQ_API_KEY`        | Authentication for Groq LLM and speech-related integrations |
-| `AEHUB_SECRET_KEY`    | Shared backend API authentication secret                    |
-| `POSTGRES_URL`        | PostgreSQL connection string used by the agent runtime      |
-| `REDIS_URL`           | Redis connection information                                |
-| `LANGSMITH_*`         | Optional LangSmith observability configuration              |
-| `NEXT_PUBLIC_API_URL` | Public frontend endpoint for backend communication          |
+The backend refuses to start without `AEHUB_SECRET_KEY` (or with the old placeholder value). The launcher creates a random one in the keyring.
 
-### Security warning
+The PostgreSQL password is the one secret kept in a file (the root `.env`, ignored by Git), because the database container reads it too. All ports are bound to `127.0.0.1`.
 
-The current backend defines an unsafe fallback for `AEHUB_SECRET_KEY`.
+The API answers only to loopback host names (DNS rebinding) and refuses state-changing requests from pages of other origins. For cookies every `localhost` port is the same site, so a page on another local port would otherwise send requests with the owner's session.
 
-Production deployments should require a strong secret explicitly and should fail closed when it is missing.
+**Pages open without login.** Every `/api/` route except `/api/auth/` needs the session cookie. The API's own pages do not: `/docs`, `/redoc` and `/openapi.json` (the description of the routes, no data), the Prometheus `/metrics` (the default counters of the Python process: memory, CPU, garbage collector) and the `/health` probe. This is deliberate for a single-user app on loopback: they answer only on `127.0.0.1` and loopback host names, and the SISTEMA page links them. If you ever publish the API under another name (`AEHUB_ALLOWED_HOSTS`), put a proxy with authentication in front of them.
 
-The development Compose file also contains example PostgreSQL credentials. Replace them before exposing the database outside a local environment.
+In the desktop app the database password is generated on first start and kept in the OS keyring, and Postgres listens only on `127.0.0.1` without a Unix socket.
 
 ---
 
@@ -627,14 +392,33 @@ The endpoint expects multipart form data.
 
 Example:
 
+Every `/api/` route (except `/api/auth/`) needs the HttpOnly session cookie that `/api/auth/login` sets; it is the only credential (no `Authorization` header, no `X-Session-ID`).
+
 ```bash
-curl -X POST "http://localhost:3002/api/orchestrator/ask" \
-  -H "X-AeHub-Key: replace_with_your_secret" \
-  -H "X-Session-Id: demo-session" \
-  -F "text=Search the web for the latest information about LangGraph and summarize it."
+curl -c cookies.txt -X POST "http://localhost:3002/api/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"key": "replace_with_your_AEHUB_SECRET_KEY"}'
+
+curl -b cookies.txt -X POST "http://localhost:3002/api/orchestrator/ask" \
+  -F "text=Search the web for the latest news about pgvector and summarize it."
 ```
 
-The agent can decide to use the web-search skill when appropriate.
+The reply comes back in the response, and the run shows live in the Nucleo and on the Runs page. The agent may use the web-search tool (DuckDuckGo); its results are untrusted content.
+
+## Asking about your documents
+
+Put text, Markdown or PDF files in the working folder (`./workspace`, or the folder chosen with `setup`) and ask about them:
+
+```text
+When should I water the tomatoes? Check my notes.
+```
+
+The agent calls `search_documents`, which brings the index up to date (only new or changed files are read, deleted ones leave the index) and returns the best excerpts. Every fact in the answer carries its source: `[doc: notes/garden.md#L3-9]` for lines of a text file, `[doc: report.pdf#p3]` for a PDF page.
+
+* Hidden files and folders are skipped, and so is any link that leads outside the working folder.
+* Documents are treated as untrusted data: after a search, any HIGH-risk action needs your approval, even if a document tells the agent otherwise. The same holds in a later session that recalls that conversation.
+* Document excerpts are never stored as preferences or rules, and they are not recalled automatically: only `search_documents` reads them.
+* `GET /api/documents` lists the indexed files (with errors such as an encrypted PDF); `POST /api/documents/sync` re-indexes now, which is useful after copying many files at once. Both need file access (the admin role).
 
 ## Python client example
 
@@ -642,883 +426,266 @@ The agent can decide to use the web-search skill when appropriate.
 import httpx
 
 API_URL = "http://localhost:3002"
-API_KEY = "replace_with_your_secret"
+SECRET_KEY = "replace_with_your_AEHUB_SECRET_KEY"
 
-headers = {
-    "X-AeHub-Key": API_KEY,
-    "X-Session-Id": "demo-session",
-}
+with httpx.Client(base_url=API_URL, timeout=120) as client:
+    # The login sets the session cookie; the client sends it from now on.
+    client.post("/api/auth/login", json={"key": SECRET_KEY}).raise_for_status()
 
-data = {
-    "text": "Search the web for the latest information about LangGraph."
-}
-
-response = httpx.post(
-    f"{API_URL}/api/orchestrator/ask",
-    headers=headers,
-    data=data,
-    timeout=120,
-)
+    response = client.post(
+        "/api/orchestrator/ask",
+        data={"text": "Search the web for the latest news about pgvector."},
+    )
 
 response.raise_for_status()
 print(response.json())
 ```
 
+## Voice
+
+Voice runs on this machine: faster-whisper turns speech into text and Piper speaks the reply, both on the CPU. No audio leaves the computer, and voice works offline once the models are downloaded (about 150 MB and 60 MB, on first use).
+
+- The microphone button of the Nucleo (or the space bar) records and sends the audio to `/api/orchestrator/listen`; the WebSocket accepts the same audio. The sphere follows the real level of your voice and of the reply.
+- The transcript is your instruction, checked like a typed one.
+- **A HIGH-risk action asked by voice always waits for your approval on screen**, also in a clean run: the microphone also hears a TV or another person.
+- `AEHUB_VOICE=off` turns voice off. Without the speech engine the written reply still arrives.
+- **The VOCE page** of the Control Plane (F3, ADR-024) changes the recognition model and language, the voice and its engine without a restart, plays a preview and lists the models already downloaded with their size.
+- **ElevenLabs (optional, off by default).** Choose it on the VOCE page and add `ELEVENLABS_API_KEY` (the desktop app saves it in the OS keyring; with Docker use `python scripts/aehub.py setup`). The text of the replies then goes to ElevenLabs; your voice never does. Piper speaks whenever ElevenLabs cannot: no key or voice, an error, or a reply over 2,500 characters.
+- A run asked by voice answers by voice also when it resumes after an approval.
+
+## Home devices
+
+The agent controls lights and locks through an MQTT broker on your network (Mosquitto, Zigbee2MQTT, Tasmota).
+
+**From the CASA page** (no restart):
+
+1. Set the broker address and, when it needs one, the user. The password goes in the keyring: the desktop app saves it from the page, otherwise use `python scripts/aehub.py setup` and restart. **Prova il collegamento** tests the connection.
+2. Add your devices: name, type (`light` or `lock`), MQTT topic and format (`zigbee2mqtt`, the default, or `tasmota` for lights). The home tools appear on their own.
+
+**From a file**, if you prefer:
+
+1. Copy `config/home.example.json` to `config/home.json` and list your devices.
+2. In `backend/.env` set `AEHUB_HOME_DEVICES=/app/config/home.json` and `AEHUB_MQTT_URL`, plus `AEHUB_MQTT_USERNAME` when the broker needs a user. In the desktop app, `home.json` goes next to the database in `%LOCALAPPDATA%\AEHub`.
+3. Restart. The configuration check reports an invalid file or a missing broker.
+
+Both lists work together and CASA shows the file's devices read only. An id may appear in only one of them.
+
+Each action is its own tool with its own risk: listing devices, a light, and locking a door are LOW; **unlocking a door is HIGH**. From a run it always waits for approval. From CASA it needs a second click, recorded as the approval of that call. Commands sent from the page go through the same Tool Gateway as the agent's, so a tool turned off in STRUMENTI stays off.
+
+The agent names a device you declared, never a topic or a host. The device file must stay outside the agent's working folder: there the agent's file tools could change it. Devices declared on the page live in the database, out of reach of those tools.
+
+CASA shows the last command sent and says plainly that it is not proof the device obeyed. **Leggi lo stato** asks the device: Zigbee2MQTT topics ending in `/set` and Tasmota `cmnd/<name>/POWER` topics are supported.
+
+## Which tools a run sees
+
+At the start of every run the skill index, a SQLite database of its own, picks from your task alone the tools it names (at most `AEHUB_TOOL_TOP_K`). The model is shown only those, and a call to any other tool is refused, so an instruction hidden in a web page or a document cannot reach a tool your task never asked for. When no word of the task matches a tool, every tool is shown, as before. On the evaluation suite this cut the mean cost per case by about a third.
+
 ## Slash commands
 
-The orchestrator also supports a small set of session commands:
-
-```text
-/stop
-/clear
-/precise
-/creative
-/deep
-/fast
-```
-
-For example:
-
-```bash
-curl -X POST "http://localhost:3002/api/orchestrator/ask" \
-  -H "X-AeHub-Key: replace_with_your_secret" \
-  -H "X-Session-Id: demo-session" \
-  -F "text=/deep"
-```
-
-These commands change session-level behavior or clear conversation state.
-
----
-
-# Example
-
-## End-to-end web research
-
-### Input
-
-```text
-Find recent information about LangGraph and give me a concise summary.
-```
-
-### Execution
-
-The runtime follows approximately:
-
-```text
-User Request
-    ↓
-Prompt Injection Filter
-    ↓
-A.U.R.O.R.A.
-    ↓
-LLM
-    ↓
-Need external information?
-    ↓
-Web Search Tool
-    ↓
-DuckDuckGo Results
-    ↓
-Observation returned to Agent
-    ↓
-LLM synthesizes results
-    ↓
-Final answer
-```
-
-### Expected output shape
-
-The exact response depends on the LLM and the search results, but conceptually:
-
-```text
-LangGraph is an orchestration framework for building stateful,
-multi-step agent workflows. Recent developments include improvements
-around graph-based execution, persistence, and tool-driven agent loops.
-```
-
-The important property is that the model does not need to rely exclusively on its static context when the web-search tool is selected.
-
----
-
-# Agents and Tools
-
-## Agent definition
-
-The main runtime is defined in:
-
-```text
-backend/app/runtime/aurora.py
-```
-
-The graph contains an agent node and, when tools are registered, a tool execution node.
-
-Conceptually:
-
-```python
-workflow.add_node("agent", agent_node)
-workflow.add_node("tools", tool_node)
-
-workflow.add_conditional_edges(
-    "agent",
-    should_continue,
-    {
-        "tools": "tools",
-        END: END,
-    },
-)
-
-workflow.add_edge("tools", "agent")
-```
-
-This creates a reusable tool-calling loop.
-
-## Skill-based tool registration
-
-Skills implement the `BaseSkill` abstraction.
-
-Example:
-
-```python
-from typing import Callable, List
-
-from langchain_core.tools import tool
-
-from .base import BaseSkill, SkillMetadata
-
-
-@tool
-def calculate_square(number: int) -> int:
-    """Return the square of an integer."""
-    return number * number
-
-
-class CalculatorSkill(BaseSkill):
-    @property
-    def metadata(self) -> SkillMetadata:
-        return SkillMetadata(
-            name="calculator",
-            description="Provides basic mathematical operations.",
-            version="1.0.0",
-        )
-
-    @property
-    def tools(self) -> List[Callable]:
-        return [calculate_square]
-
-
-def get_skill() -> BaseSkill:
-    return CalculatorSkill()
-```
-
-The registry dynamically discovers modules exposing:
-
-```python
-get_skill()
-```
-
-and aggregates their tools.
-
-## Tool calling lifecycle
-
-```text
-Skill
-  ↓
-Tool registration
-  ↓
-Skill Registry
-  ↓
-LangGraph
-  ↓
-LLM binds available tools
-  ↓
-LLM emits tool call
-  ↓
-ToolNode executes function
-  ↓
-Result returned to LLM
-```
-
-## Tool metadata and risk levels
-
-Tools can expose metadata describing:
-
-* name;
-* description;
-* risk level;
-* approval requirements;
-* required permissions.
-
-The current risk model includes:
-
-```text
-LOW
-MEDIUM
-HIGH
-```
-
-This provides an architectural foundation for policy enforcement and human approval.
+`/stop` is the only command (`/clear`, `/precise`, `/creative`, `/deep` and `/fast` never had an effect and were removed in M15). To stop a running agent, use **Stop** on the Runs page.
 
 ---
 
 # Memory and RAG
 
-## Memory architecture
+## Context Manager and memory retrieval
 
-ÆHub distinguishes several memory layers.
+Every model request of the native engine is assembled by the Context Manager
+(`backend/app/agent_engine/context.py`) inside one token budget
+(`AEHUB_CONTEXT_BUDGET`, ~88k by default):
 
-### Working memory
+| Level | Content |
+| --- | --- |
+| L0 System | system prompt and tool schemas |
+| L1 Task | the goal of the run and the checker feedback |
+| L2 Project | the user's trusted preferences and rules |
+| L3 Working set | the State Snapshot (Goal / Completed / Failed / Pending) of older tool calls |
+| L4 Recent | the latest tool calls and results |
+| L5 Historical | memories from earlier sessions, recalled by hybrid retrieval |
 
-Handled through LangGraph state.
-
-It represents the active execution context, including the current message sequence.
-
-### Conversational memory
-
-LangGraph checkpoints are persisted through PostgreSQL using `AsyncPostgresSaver`.
-
-This allows a session to retain graph state across executions.
-
-### Semantic memory
-
-Persistent facts about the user or environment.
-
-Example:
-
-```text
-User prefers concise responses.
-```
-
-### Episodic memory
-
-Records significant tasks and outcomes.
-
-Example:
-
-```text
-Task: Research topic X
-Outcome: Completed successfully
-```
-
-### Procedural memory
-
-Stores preferences or operational rules that should influence future behavior.
-
-Example:
-
-```text
-Always use concise answers unless explicitly asked for detail.
-```
-
-## Memory retrieval
-
-The current `AuroraMemoryManager` loads semantic and procedural context and injects it into the agent prompt.
-
-Conceptually:
-
-```text
-Session ID
-   ↓
-Memory Manager
-   ↓
-Semantic Memory
-Procedural Memory
-   ↓
-Context Assembly
-   ↓
-Agent System Prompt
-```
+Every `AEHUB_SNAPSHOT_EVERY` tool calls the older calls leave L4 and are
+summarized in the snapshot. The snapshot is deterministic (no model call) and
+never quotes output of untrusted tools. The durable run state keeps every
+observation; only the model input is compacted.
 
 ## RAG
 
-A dedicated vector-database RAG pipeline is **not currently implemented in the repository**.
+Long-term memory lives in the `memory_chunks` table
+(`backend/app/memory/store.py`), scoped to the workspace and the user, not
+to the login session, so a fact saved in one session is recalled in the next.
 
-The architecture is compatible with adding one.
+- Indexing: memory tools (`save_semantic_memory`, `save_procedural_memory`,
+  `save_user_preference`) and every run accepted by the Critic, chunked and
+  embedded.
+- Retrieval: PostgreSQL full-text search (GIN index on `tsvector`) and
+  pgvector cosine distance, fused with Reciprocal Rank Fusion, packed into the
+  L5 budget at the start of each run.
+- Poisoning: anything written while untrusted content (web, files, MCP) is in
+  the run context is stored as untrusted. It never becomes a preference or
+  rule (L2) and is recalled only inside an untrusted-data fence.
+- Control: `GET /api/memory`, `POST /api/memory` (a fact, a preference or a
+  rule), `PUT /api/memory/{id}` and `DELETE /api/memory/{id}` let the user
+  review, add, edit, vouch for and forget memories.
 
-A future RAG implementation could follow:
-
-```text
-Documents
-   ↓
-Chunking
-   ↓
-Embeddings
-   ↓
-Vector Database
-   ↓
-Similarity Search
-   ↓
-Top-K Context
-   ↓
-Agent
-   ↓
-LLM
-```
-
-Candidate technologies include:
-
-* pgvector;
-* Qdrant;
-* Pinecone;
-* Weaviate;
-* another vector store appropriate to the deployment.
-
-RAG should be added as a dedicated retrieval skill rather than tightly coupling document retrieval to the core agent graph.
-
----
-
-# Multi-Agent System
-
-ÆHub already contains a **supervisor-style delegation pattern**.
-
-The supervisor skill can delegate complex research requests to a specialized research subagent.
-
-Current structure:
-
-```text
-                    ┌────────────────────┐
-                    │  A.U.R.O.R.A.      │
-                    │    Supervisor      │
-                    └─────────┬──────────┘
-                              │
-                    delegate_to_researcher
-                              │
-                              ▼
-                    ┌────────────────────┐
-                    │ Research Subagent  │
-                    │                    │
-                    │ Web Search Tool    │
-                    └─────────┬──────────┘
-                              │
-                              ▼
-                       Research Result
-                              │
-                              ▼
-                    Supervisor Synthesis
-                              │
-                              ▼
-                         User Output
-```
-
-## Current pattern
-
-The implemented architecture is closest to:
-
-**Supervisor → Specialized Worker**
-
-The supervisor decides when deep research should be delegated instead of attempting to perform the complete task itself.
 
 ## Subagents
 
-Subagents are created as specialized LangGraph graphs with:
+A run delegates part of its task with the `delegate_task` tool (ADR-029). It goes through the Tool Gateway like any other tool and needs the `agent:invoke` permission, so an admin can delegate and a member cannot. The subagent:
 
-* a role-specific system prompt;
-* an optional tool set;
-* independent execution state;
-* a final result returned to the supervisor.
+* works with the role asked for (Architect, Research, Fast Worker or Triage), otherwise the one the triage picks, and is checked by the same independent Critic;
+* gets at most the tools, permissions and budget of its parent: half of what the parent has left unless it asks for less; when the parent has no run cost cap (`AEHUB_RUN_MAX_COST=0`) it gets the budget it asks for, 1 USD by default;
+* starts tainted when its parent has read untrusted content, and its answer is untrusted for the parent;
+* cannot delegate again, and a run starts at most `AEHUB_RUN_MAX_SUBAGENTS` of them;
+* costs its parent what it spent, even when it fails.
 
-The current repository contains a reusable `SubagentFactory`.
+A subagent that needs an approval waits on its own: the parent is told and goes on.
 
-## Future multi-agent patterns
-
-The architecture can evolve toward:
-
-### Planner / Worker
-
-```text
-Planner
- ├── Worker A
- ├── Worker B
- └── Worker C
-       ↓
-    Aggregator
-```
-
-### Debate
-
-```text
-Agent A ──┐
-          ├── Critic ──> Final Agent
-Agent B ──┘
-```
-
-### Peer-to-peer
-
-```text
-Agent A ↔ Agent B ↔ Agent C
-```
-
-These patterns should only be introduced when they provide measurable improvements in quality, reliability, or task decomposition.
 
 ---
 
-# Observability and Evaluation
+# Observability
 
-## Current observability
+- **Live events.** Every step of a run (model calls, tool calls, approvals, subagents, the Critic's verdicts) is published on the event bus and streamed over SSE:
 
-The application includes an internal EventBus and an SSE endpoint:
+  ```text
+  GET /api/events                    events of the login session
+  GET /api/events?scope=workspace    run states and approvals of the whole workspace
+  ```
 
-```text
-GET /api/events
-```
-
-The frontend can use this stream to receive runtime information such as:
-
-* agent logs;
-* notifications;
-* execution state;
-* security events.
-
-The agent runtime also emits diagnostic events when routing work through A.U.R.O.R.A.
-
-## Logging
-
-Current logging is primarily application-level logging through Python output and EventBus events.
-
-For production deployments, structured logs should be preferred:
-
-```json
-{
-  "timestamp": "2026-08-17T12:00:00Z",
-  "session_id": "demo-session",
-  "agent": "aurora",
-  "event": "tool_call",
-  "tool": "perform_web_search"
-}
-```
-
-## Tracing
-
-`langsmith` is included in the backend dependencies, making LangSmith a potential observability layer.
-
-Full end-to-end production tracing should be treated as an explicit deployment concern rather than assumed to be enabled by the dependency alone.
-
-Recommended trace fields include:
-
-* request ID;
-* session ID;
-* graph node;
-* tool name;
-* model;
-* token usage;
-* latency;
-* retry count;
-* error category;
-* final outcome.
-
-## Evaluation
-
-Agent evaluation should measure at least:
-
-| Metric                  | Goal                                        |
-| ----------------------- | ------------------------------------------- |
-| Task success rate       | Does the agent complete the requested task? |
-| Tool selection accuracy | Does it invoke the right capability?        |
-| Hallucination rate      | Does it invent facts or actions?            |
-| Latency                 | How long does each task take?               |
-| Cost                    | How much does each task consume?            |
-| Reliability             | How often does execution fail?              |
-| Safety                  | Does the agent stay within permissions?     |
-
-The repository currently does not contain a dedicated agent-evaluation suite, so this should be treated as an area for future hardening.
+  The Nucleo draws them live; the Control Plane pages re-read their data when a run changes state or an approval is requested or decided, instead of polling.
+- **Run timeline.** `GET /api/runs/{id}/events` returns the recorded steps of one run, shown on its page.
+- **Flight recorder.** Every event is also written to a JSONL file, searchable and exportable from the SISTEMA page.
+- **Logs.** Structured JSON logs; the latest warnings and errors are on the SISTEMA page.
+- **Tracing and metrics.** OpenTelemetry instruments FastAPI and SQLAlchemy (spans are printed on the console unless `AEHUB_TELEMETRY_CONSOLE=0`); Prometheus metrics are at `/metrics`.
 
 ---
 
 # Security
 
-Agentic systems require stronger controls than ordinary CRUD applications because the LLM can influence real-world actions.
-
-## API key management
-
-Never hard-code:
-
-* `GROQ_API_KEY`;
-* `AEHUB_SECRET_KEY`;
-* database passwords;
-* external service credentials.
-
-Use:
-
-* `.env` files locally;
-* secret managers in production;
-* environment-specific credentials;
-* key rotation policies.
-
-## Prompt injection
-
-The repository includes a `PromptInjectionFilter` that blocks common instruction-override patterns before the prompt reaches the LLM.
-
-This is useful as a first layer, but prompt filtering should never be considered a complete defense.
-
-Production systems should combine:
-
-```text
-Input validation
-+
-Context isolation
-+
-Tool authorization
-+
-Output validation
-+
-Human approval
-```
-
-## Tool permissions
-
-Tools are associated with risk metadata.
-
-Examples:
-
-```text
-LOW    → informational actions
-MEDIUM → controlled computation
-HIGH   → shell or sensitive actions
-```
-
-High-risk tools should require explicit authorization.
-
-## Data isolation
-
-Sessions should remain isolated through:
-
-```text
-session_id
-```
-
-Memory and persisted state should always be scoped to the authenticated principal.
-
-Do not use globally shared default sessions for production workloads.
-
-## Rate limiting
-
-Rate limiting should be added at the API gateway or application boundary.
-
-Recommended controls include:
-
-* per-user rate limits;
-* per-IP limits;
-* per-tool limits;
-* LLM concurrency limits;
-* exponential backoff.
-
-## Sandboxing
-
-The repository includes sandbox tooling for:
-
-* Python execution;
-* shell execution.
-
-The shell tool is classified as high risk and marked as requiring approval.
-
-Sandbox execution should remain isolated, resource-limited, and network-restricted.
-
-## Human approval
-
-Sensitive operations should move through an approval boundary:
-
-```text
-Agent
-  ↓
-Risk Evaluation
-  ↓
-Requires Approval?
- ├── No → Execute
- └── Yes
-       ↓
-   Human Approval
-       ↓
-     Execute
-```
-
-The current repository defines approval-related metadata, but a complete user-facing approval workflow is still an area for further implementation.
-
----
-
-# Performance and Scalability
-
-## Caching
-
-Use caching for:
-
-* repeated web searches;
-* static external responses;
-* expensive model operations where deterministic replay is safe;
-* derived application data.
-
-Redis is already provisioned and can serve as the foundation for distributed caching.
-
-## Parallel execution
-
-Independent tasks should be executed concurrently where safe.
-
-For example:
-
-```text
-                    ┌── Search A ──┐
-Agent → Planner ────┼── Search B ──┼──→ Aggregator
-                    └── Search C ──┘
-```
-
-Avoid parallel execution for actions with ordering or shared-state dependencies.
-
-## Model selection
-
-Not every task needs the largest available model.
-
-A production routing policy can use:
-
-```text
-Simple classification       → lightweight model
-Normal task execution       → standard model
-Complex planning/research   → stronger model
-Specialized worker task     → deterministic model
-```
-
-The current implementation uses Groq-hosted `llama3-70b-8192` for the main agent and a lower-temperature configuration for subagents.
-
-## Cost optimization
-
-Track:
-
-* input tokens;
-* output tokens;
-* tool calls;
-* model latency;
-* retries;
-* external API usage.
-
-Reduce cost through:
-
-* prompt minimization;
-* context trimming;
-* memory summarization;
-* caching;
-* smaller models for deterministic subtasks;
-* bounded agent loops.
-
-## Queues and workers
-
-Long-running workloads should move outside the request-response lifecycle.
-
-The repository already contains a proactive scheduler abstraction.
-
-A scalable deployment can evolve toward:
-
-```text
-API
- ↓
-Queue
- ↓
-Worker Pool
- ├── Agent Worker
- ├── Research Worker
- ├── Automation Worker
- └── Evaluation Worker
-```
-
-## Horizontal scaling
-
-Stateless API replicas can be scaled horizontally when shared state is externalized to:
-
-* PostgreSQL;
-* Redis;
-* object storage;
-* external observability systems.
-
----
-
-# Roadmap
-
-## Implemented
-
-* [x] FastAPI backend
-* [x] Next.js frontend
-* [x] LangGraph-based A.U.R.O.R.A. runtime
-* [x] Groq LLM integration
-* [x] Dynamic skill registry
-* [x] Tool calling
-* [x] PostgreSQL-backed agent checkpoints
-* [x] Semantic memory
-* [x] Procedural memory
-* [x] Episodic memory foundation
-* [x] Web-search skill
-* [x] Supervisor skill
-* [x] Research subagent
-* [x] Sandbox execution skill
-* [x] Prompt-injection filter
-* [x] Risk metadata for tools
-* [x] EventBus and SSE streaming
-* [x] Proactive scheduler foundation
-* [x] Docker Compose environment
-* [x] MCP bridge architecture foundation
-* [x] Voice input/output pipeline
-
-## Next (Now 100% Implemented)
-
-* [x] Production-grade human approval workflow (WorkflowEngine State)
-* [x] Persistent RBAC instead of session-based role placeholders
-* [x] Dedicated vector database and RAG pipeline (pgvector)
-* [x] Retrieval evaluation and citation-aware responses
-* [x] Distributed tracing (OpenTelemetry)
-* [x] Agent evaluation benchmark suite
-* [x] Tool execution policy engine (ToolGateway)
-* [x] Distributed worker queue (Celery)
-* [x] Better model routing and fallback policies (ModelRouter)
-* [x] API rate limiting
-* [x] CI/CD pipeline (GitHub Actions)
-* [x] Comprehensive unit and integration test coverage
-* [x] Production secret management
-* [x] Hardened sandbox isolation
-* [x] Full MCP client implementation (MCPTransportLayer)
-* [x] Multi-agent orchestration patterns beyond supervisor/researcher
-* [x] Production deployment documentation (ADRs)
+The model is treated as untrusted; the engine and the Tool Gateway hold the authority. In short:
+
+| Layer | What it does |
+| --- | --- |
+| Login | One owner, one access key (`AEHUB_SECRET_KEY`); an HttpOnly session cookie is the only credential. The key can be rotated from SISTEMA, which closes every other session. |
+| Network | Every port on `127.0.0.1`; loopback host names only; state-changing requests only from the frontend's origin; rate limits per user (API, model calls, uploads). |
+| Tool Gateway | Policy, argument guardrails (SSRF, paths, dangerous commands), schema, idempotency, budget, approval and audit before every call; secrets redacted from the output. |
+| Approvals | HIGH-risk calls wait for the owner, in the Nucleo or on the Approvals page; undecided ones are denied after `AEHUB_APPROVAL_TTL_SECONDS`. After untrusted content, and for voice commands, every HIGH-risk call needs one. |
+| Untrusted content | Web pages, files, MCP output and imported skills reach the model inside an `<untrusted_tool_output>` fence. Memories written after reading them are untrusted and never become preferences or rules. |
+| Guardrails | Prompt-injection patterns in user text are refused; answers have secrets removed. CI runs a prompt-injection gate. |
+| Sandbox | Python and shell run in Docker with no network, a read-only root, a memory, CPU and process limit, and no capabilities. |
+| Audit | A hash chain in PostgreSQL of every tool call and every Control Plane change; the SICUREZZA page verifies it. |
+| Secrets | In the OS keyring, never in the database or in logs; the interface writes keys but never shows them again. |
+
+The threat model is in [`docs/security/threat-model.md`](docs/security/threat-model.md).
 
 ---
 
 # Contributing
 
-Contributions are welcome.
+ÆHub is a personal project; changes go through pull requests on `main`, one per milestone, merged by hand when CI is green.
 
-## Development workflow
+## Changing the schema
 
-Create a feature branch from `main`:
+Since D1 (ADR-031) Alembic is the only source of the schema. At every start the API runs `alembic upgrade head` (Docker, `make demo` and the desktop app alike), so an update keeps memory, runs and audit. A database built before D1 by the old `create_all` is recognised, gets the tables it lacks and is marked at the baseline, without losing a row.
+
+Every change to a model in `backend/app/domain/models/` is a new revision; no more separate tables to get around `create_all`:
 
 ```bash
-git checkout main
-git pull origin main
-
-git checkout -b feature/<short-description>
+cd backend
+alembic revision --autogenerate -m "memory: add the expiry date"
 ```
 
-Use focused branches such as:
+Read the generated file before committing it: autogenerate does not see everything (data moves, expression indexes, extensions). Then check that the models and the revisions agree:
 
-```text
-feature/rag-retrieval
-feature/tool-permissions
-fix/session-isolation
-docs/agent-architecture
+```bash
+alembic upgrade head
+alembic check
 ```
 
-## Pull requests
-
-A good pull request should include:
-
-* a clear title;
-* a concise explanation of the problem;
-* implementation details;
-* tests or validation steps;
-* security considerations when tools or agent capabilities change;
-* documentation updates when public behavior changes.
+All three commands use `POSTGRES_URL`. In CI, `tests/database/test_migrations.py` builds a database from scratch and one with the old `create_all`, and fails when a model changed without a revision.
 
 ## Code quality
 
-Backend code uses Ruff for linting and formatting.
-
-Run:
+Backend:
 
 ```bash
+cd backend
 ruff check .
-ruff format .
 ```
 
-Frontend code uses ESLint and Prettier.
+Ruff runs with `BLE001` (R1): a blind `except Exception` needs a reason in its `noqa` comment and, unless it re-raises or reports the error, a log line.
 
-Run:
+Frontend:
 
 ```bash
+cd frontend
 npm run lint
 npm run format
 ```
 
-Avoid unrelated refactors in feature pull requests.
+Every source file starts with an `@file <path>` / `@description …` header, checked in CI:
+
+```bash
+python scripts/check_headers.py
+```
 
 ---
 
 # Testing
 
-The repository contains a fully structured **Test Pyramid** spanning Unit, Integration, E2E, Security, and Performance boundaries.
-
-To execute the entire 100/100 infrastructure validation locally, run:
+Run the backend tests and the evaluation gate locally:
 
 ```bash
-python evals/run_all_tests.py
+cd backend && python -m pytest ../tests -q && cd ..
+make eval
 ```
 
-## Unit & Integration Tests
+## Unit and integration tests
 
-The test infrastructure is located in `tests/` and heavily relies on `pytest`. 
-It programmatically covers:
-* **Security Middleware:** SSRF, Path Traversal, and Secret Redaction.
-* **Celery & Redis:** Worker pools routing and Dead Letter Queue logic.
-* **Workflow Engine:** Checkpoint resumption and Human-In-The-Loop pauses.
-* **API Boundaries:** Stubs for Voice, Media, Academic, and Orchestrator layers.
+The backend tests are in `tests/` (pytest; most need PostgreSQL with pgvector at `POSTGRES_URL`). They cover:
+* **Agent engine:** tool loop, human approval and resume, guardrails, budget and limits, routing and failover, the Pydantic AI adapter, Context Manager and memory.
+* **Security:** SSRF, path traversal, secret redaction, the sandbox, the session and origin checks.
+* **API surface:** the exact list of HTTP and WebSocket routes (`tests/security/test_api_surface.py`).
+* **Frontend and backend agree:** every address the frontend calls is a real route with the right method (`tests/security/test_frontend_api_routes.py`), and every route, setting and variable has its row in `docs/frontend-coverage.md` (`tests/security/test_frontend_coverage.py`).
+* **Database:** the Alembic revisions build the schema from scratch and upgrade an old database (`tests/database/`).
+* **Desktop:** the sidecar and, with `AEHUB_BROWSER_SMOKE=1`, a Playwright run of the static frontend in Chromium (`tests/desktop/`).
+
+The frontend has component and hook tests (Vitest, Testing Library, jsdom) in `frontend/tests/`:
+
+```bash
+cd frontend && npm test && npm run lint
+```
 
 ## Agent evaluations
 
-A dedicated evaluation suite should eventually run representative tasks such as:
+`evals/run_evals.py` runs the cases in `backend/app/evaluation/dataset.json` through the real agent engine (planner loop, Tool Gateway, guardrails, approvals, Critic, Context Manager, memory). By default the model is scripted and the tools are deterministic, so the suite runs offline in seconds and costs nothing. `--live` uses the configured models instead.
 
-```text
-Input
-  ↓
-Expected tool selection
-  ↓
-Expected state transitions
-  ↓
-Expected result constraints
+The dataset covers successful tasks, retries after tool failures, tool selection, hallucination (answers must be grounded in tool output), human approval of HIGH-risk tools, prompt injection and secret leaks, cross-session memory, long context (50 tool calls under budget) and budget limits.
+
+Each run reports the metrics of the spec (6.5): `success_rate`, `tool_accuracy`, `hallucination_rate`, `reliability`, `security_pass_rate`, `mean_cost` and latency. The release gate fails when:
+
+* any security case fails (`security_pass_rate` must be 100%);
+* any other metric is worse than `evals/baseline.json`, or mean cost grows by more than 10%.
+
+```bash
+make eval            # check against evals/baseline.json
+make eval-baseline   # re-record the baseline after an intended change
 ```
 
-Evaluation datasets should include:
+CI runs the same gate on every push and pull request and uploads `eval-report.json`. It also runs `pip-audit`, `bandit`, Trivy and TruffleHog, checks the Compose file and builds both images. Third-party actions are pinned to commit SHAs.
 
-* successful tasks;
-* ambiguous requests;
-* tool failures;
-* malicious prompts;
-* prompt injection;
-* long-context tasks;
-* memory-dependent interactions;
-* multi-agent delegation.
 
 ---
 
 # License
 
-No open-source license is currently declared in the repository metadata.
-
-```text
-[LICENSE]
-```
-
-Until a license is explicitly added to the repository, reuse, modification, and redistribution rights should not be assumed.
+No open-source license is declared. Until one is added, reuse, modification and redistribution rights should not be assumed.
 
 ---
 
 # Acknowledgements
 
-ÆHub is built on top of a number of open-source technologies and external services, including:
-
-* [Python](https://www.python.org/)
-* [FastAPI](https://fastapi.tiangolo.com/)
-* [Next.js](https://nextjs.org/)
-* [React](https://react.dev/)
-* [LangChain](https://www.langchain.com/)
-* [LangGraph](https://www.langchain.com/langgraph)
-* [Groq](https://groq.com/)
-* [Llama](https://www.llama.com/)
-* [PostgreSQL](https://www.postgresql.org/)
-* [Redis](https://redis.io/)
-* [Playwright](https://playwright.dev/)
-* [DuckDuckGo Search](https://duckduckgo.com/)
-* [MCP](https://modelcontextprotocol.io/)
-* [LangSmith](https://smith.langchain.com/)
-* [Docker](https://www.docker.com/)
-
----
-
-## Project Status
-
-The architecture has successfully transitioned from an experimental project to a fully production-ready, zero-trust, durable execution platform. 
-
-All core architectural gates—including Security (SSRF/Traversal defense), Durable Execution (Celery/Redis DLQ), Distributed Testing (Pytest Suite), and CI/CD operations—have been strictly enforced.
+ÆHub is built on open-source projects, among them [Python](https://www.python.org/), [FastAPI](https://fastapi.tiangolo.com/), [Pydantic AI](https://ai.pydantic.dev/), [Next.js](https://nextjs.org/), [React](https://react.dev/), [PostgreSQL](https://www.postgresql.org/) and [pgvector](https://github.com/pgvector/pgvector), [Alembic](https://alembic.sqlalchemy.org/), [Redis](https://redis.io/), [faster-whisper](https://github.com/SYSTRAN/faster-whisper), [Piper](https://github.com/rhasspy/piper), [sentence-transformers](https://www.sbert.net/), [Playwright](https://playwright.dev/), [Tauri](https://tauri.app/), [MCP](https://modelcontextprotocol.io/) and [Docker](https://www.docker.com/).
 
 ---
 

@@ -114,6 +114,7 @@ class SandboxSkill(BaseSkill):
         return {
             "execute_python_code": ToolMetadata(
                 name="execute_python_code",
+                examples=["calcola", "codice python", "script", "conto", "calculate", "compute", "python code", "math"],
                 description=(
                     "Execute Python code in an isolated sandbox."
                 ),
@@ -144,6 +145,7 @@ class SandboxSkill(BaseSkill):
             ),
             "execute_shell_script": ToolMetadata(
                 name="execute_shell_script",
+                examples=["comando", "terminale", "shell", "bash", "command", "terminal"],
                 description=(
                     "Execute a shell command in the isolated sandbox."
                 ),

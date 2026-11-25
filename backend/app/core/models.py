@@ -4,7 +4,7 @@
 
 This module contains shared Pydantic contracts used by model routing,
 request validation, capability negotiation, usage accounting, and response
-normalization. It intentionally has no dependency on LangChain or LangGraph.
+normalization. It depends on no agent framework.
 """
 
 from __future__ import annotations

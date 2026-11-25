@@ -16,10 +16,16 @@
 // API CONFIGURATION
 // ============================================================================
 
+// The desktop app serves this frontend from the API's own origin (M14), on
+// a port chosen at every start: there the base is wherever the page is.
+const SAME_ORIGIN = process.env.NEXT_PUBLIC_AEHUB_SAME_ORIGIN === "1";
+
 export const API_BASE_URL =
-    process.env.NEXT_PUBLIC_API_URL ||
-    process.env.API_URL ||
-    "http://127.0.0.1:3002";
+    SAME_ORIGIN && typeof window !== "undefined"
+        ? window.location.origin
+        : process.env.NEXT_PUBLIC_API_URL ||
+          process.env.API_URL ||
+          "http://127.0.0.1:3002";
 
 // ============================================================================
 // REQUEST TYPES
@@ -91,6 +97,56 @@ export async function fetchApi(
 }
 
 // ============================================================================
+// ERRORS
+// ============================================================================
+
+/**
+ * A non-2xx response. `status` lets callers tell an expired session (401)
+ * from other failures; `message` carries the backend's `detail` when present;
+ * `errors` holds per-field messages when the detail is
+ * `{message, errors: {field: message}}` (Settings, M12).
+ */
+export class ApiError extends Error {
+    readonly status: number;
+    readonly errors: Record<string, string>;
+
+    constructor(status: number, message: string, errors: Record<string, string> = {}) {
+        super(message);
+        this.name = "ApiError";
+        this.status = status;
+        this.errors = errors;
+    }
+}
+
+async function raiseForStatus(response: Response): Promise<void> {
+    if (response.ok) {
+        return;
+    }
+
+    let message = `HTTP ${response.status} ${response.statusText}`.trim();
+    let errors: Record<string, string> = {};
+
+    try {
+        const body = await response.json();
+        const detail = body?.detail;
+        if (typeof detail === "string") {
+            message = detail;
+        } else if (detail && typeof detail === "object") {
+            if (typeof detail.message === "string") {
+                message = detail.message;
+            }
+            if (detail.errors && typeof detail.errors === "object") {
+                errors = detail.errors;
+            }
+        }
+    } catch {
+        // Not JSON: keep the status line.
+    }
+
+    throw new ApiError(response.status, message, errors);
+}
+
+// ============================================================================
 // JSON HELPERS
 // ============================================================================
 
@@ -106,11 +162,7 @@ export async function getJson<T>(
         method: "GET",
     });
 
-    if (!response.ok) {
-        throw new Error(
-            `HTTP request failed with status ${response.status}: ${response.statusText}`,
-        );
-    }
+    await raiseForStatus(response);
 
     return response.json() as Promise<T>;
 }
@@ -135,11 +187,69 @@ export async function postJson<T>(
         body: JSON.stringify(body),
     });
 
-    if (!response.ok) {
-        throw new Error(
-            `HTTP request failed with status ${response.status}: ${response.statusText}`,
-        );
+    await raiseForStatus(response);
+
+    return response.json() as Promise<T>;
+}
+
+/**
+ * Executes a multipart POST (a file upload) and parses the JSON response.
+ * The browser sets the multipart boundary.
+ */
+export async function postForm<T>(
+    endpoint: string,
+    form: FormData,
+    options?: ApiClientOptions,
+): Promise<T> {
+    const response = await fetchApi(endpoint, {
+        ...options,
+        method: "POST",
+        body: form,
+    });
+
+    await raiseForStatus(response);
+
+    return response.json() as Promise<T>;
+}
+
+/**
+ * Executes a JSON PUT request and parses the JSON response.
+ */
+export async function putJson<T>(
+    endpoint: string,
+    body: unknown,
+    options?: ApiClientOptions,
+): Promise<T> {
+    const headers = new Headers(options?.headers);
+    if (!headers.has("Content-Type")) {
+        headers.set("Content-Type", "application/json");
     }
+
+    const response = await fetchApi(endpoint, {
+        ...options,
+        method: "PUT",
+        headers,
+        body: JSON.stringify(body),
+    });
+
+    await raiseForStatus(response);
+
+    return response.json() as Promise<T>;
+}
+
+/**
+ * Executes a DELETE request and parses the JSON response.
+ */
+export async function deleteJson<T>(
+    endpoint: string,
+    options?: ApiClientOptions,
+): Promise<T> {
+    const response = await fetchApi(endpoint, {
+        ...options,
+        method: "DELETE",
+    });
+
+    await raiseForStatus(response);
 
     return response.json() as Promise<T>;
 }

@@ -1,9 +1,19 @@
 """
 @file backend/app/core/event_bus.py
-@description Implements event_bus.py. Core components: EventBus.
+@description Realtime event bus on Redis Pub/Sub.
 
-This module manages the internal business logic for EventBus.
-It provides specialized functionality to handle: _listen_to_redis, subscribe, unsubscribe, publish.
+Two kinds of channel:
+- `session:{id}`: everything about one login session (chat log lines, run
+  states, approvals). The chat WebSocket and `/api/events` listen here.
+- `workspace:{id}`: the control-plane events of every session of a workspace
+  (run states, approval requested/decided, run resumed), so the Control
+  Plane updates without polling. Approvals are already workspace-scoped.
+
+Delivery is best effort: durable state lives in PostgreSQL.
+
+The desktop app (ADR-020) runs one process for one user and no Redis: with
+AEHUB_EVENT_BUS=memory, or REDIS_URL=memory://, events go straight to the
+subscriber queues of this process.
 """
 import asyncio
 import json
@@ -13,74 +23,99 @@ import redis.asyncio as redis
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
+
+def in_process() -> bool:
+    """
+    True when events and cache stay inside this process (no Redis).
+    """
+    return (
+        os.getenv("AEHUB_EVENT_BUS", "").strip().lower() == "memory"
+        or os.getenv("REDIS_URL", "").startswith("memory://")
+    )
+
+
+def session_channel(session_id: str) -> str:
+    return f"session:{session_id}"
+
+
+def workspace_channel(workspace_id: str) -> str:
+    return f"workspace:{workspace_id}"
+
+
 class EventBus:
     """
-    Represents the EventBus entity and its core operations.
+    Fan-out of Redis Pub/Sub messages to in-process subscriber queues.
     """
-    """
-    Distributed EventBus using Redis Pub/Sub.
-    """
+
     def __init__(self):
-        """
-        Executes __init__ logic.
-        """
-        self.redis = redis.from_url(REDIS_URL, decode_responses=True)
-        self.pubsub = self.redis.pubsub()
+        self.local = in_process()
+        self.redis = None if self.local else redis.from_url(REDIS_URL, decode_responses=True)
+        self.pubsub = None if self.local else self.redis.pubsub()
         self.listeners: dict[str, list[asyncio.Queue]] = {}
         self._listener_task = None
 
     async def _listen_to_redis(self):
-        """
-        Executes _listen_to_redis logic.
-        """
-        # Listen to Redis Pub/Sub channels matching the pattern 'session:*'
-        # Listen to Redis Pub/Sub channels matching the pattern 'session:*'
-        await self.pubsub.psubscribe("session:*")
+        await self.pubsub.psubscribe("session:*", "workspace:*")
         async for message in self.pubsub.listen():
             if message["type"] == "pmessage":
-                channel = message["channel"]
-                session_id = channel.split(":", 1)[1]
-                data = message["data"]
-                
-                if session_id in self.listeners:
-                    for queue in self.listeners[session_id]:
-                        await queue.put(data)
+                self._deliver(message["channel"], message["data"])
 
-    def subscribe(self, session_id: str) -> asyncio.Queue:
-        """
-        Executes subscribe logic.
-        """
-        # Initialize background listener task if not already running
-        # Initialize background listener task if not already running
-        if not self._listener_task:
+    def _deliver(self, channel: str, message: str) -> None:
+        for queue in list(self.listeners.get(channel, [])):
+            queue.put_nowait(message)
+
+    def _subscribe(self, channel: str) -> asyncio.Queue:
+        if not self.local and not self._listener_task:
             self._listener_task = asyncio.create_task(self._listen_to_redis())
-            
-        if session_id not in self.listeners:
-            self.listeners[session_id] = []
+
         queue = asyncio.Queue()
-        self.listeners[session_id].append(queue)
+        self.listeners.setdefault(channel, []).append(queue)
         return queue
 
-    def unsubscribe(self, session_id: str, queue: asyncio.Queue):
-        """
-        Executes unsubscribe logic.
-        """
-        # Remove a specific listener queue from the session's subscribers
-        # Remove a specific listener queue from the session's subscribers
-        if session_id in self.listeners:
-            if queue in self.listeners[session_id]:
-                self.listeners[session_id].remove(queue)
-            if not self.listeners[session_id]:
-                del self.listeners[session_id]
+    def _unsubscribe(self, channel: str, queue: asyncio.Queue):
+        queues = self.listeners.get(channel)
+        if queues is None:
+            return
+        if queue in queues:
+            queues.remove(queue)
+        if not queues:
+            del self.listeners[channel]
 
-    async def publish(self, session_id: str, event_type: str, data: dict | str):
+    def subscribe(self, session_id: str) -> asyncio.Queue:
+        return self._subscribe(session_channel(session_id))
+
+    def unsubscribe(self, session_id: str, queue: asyncio.Queue):
+        self._unsubscribe(session_channel(session_id), queue)
+
+    def subscribe_workspace(self, workspace_id: str) -> asyncio.Queue:
+        return self._subscribe(workspace_channel(workspace_id))
+
+    def unsubscribe_workspace(self, workspace_id: str, queue: asyncio.Queue):
+        self._unsubscribe(workspace_channel(workspace_id), queue)
+
+    async def publish(
+        self,
+        session_id: str,
+        event_type: str,
+        data: dict | str,
+        workspace_id: str = "",
+    ):
         """
-        Executes publish logic.
+        Publish to the session; with a workspace, also to the workspace
+        channel the Control Plane listens on.
         """
-        # Serialize the event data and publish it to the session's Redis channel
-        # Serialize the event data and publish it to the session's Redis channel
         message = json.dumps({"type": event_type, "data": data})
-        await self.redis.publish(f"session:{session_id}", message)
+
+        if self.local:
+            self._deliver(session_channel(session_id), message)
+            if workspace_id:
+                self._deliver(workspace_channel(workspace_id), message)
+            return
+
+        await self.redis.publish(session_channel(session_id), message)
+        if workspace_id:
+            await self.redis.publish(workspace_channel(workspace_id), message)
+
 
 # Global event bus instance
 event_bus = EventBus()

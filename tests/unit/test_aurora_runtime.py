@@ -58,11 +58,19 @@ async def test_aurora_ainvoke_uses_native_runtime() -> None:
 
     app.runtime.execute_task.assert_awaited_once()
 
-    runtime_kwargs = app.runtime.execute_task.await_args.kwargs
+    runtime_kwargs = (
+        app.runtime.execute_task.await_args.kwargs
+    )
 
     assert runtime_kwargs["principal"] is principal
-    assert runtime_kwargs["workspace_id"] == "workspace-1"
-    assert runtime_kwargs["session_id"] == "session-1"
+    assert (
+        runtime_kwargs["workspace_id"]
+        == "workspace-1"
+    )
+    assert (
+        runtime_kwargs["session_id"]
+        == "session-1"
+    )
 
 
 @pytest.mark.asyncio
@@ -171,8 +179,14 @@ async def test_aurora_legacy_message_shape_is_supported() -> None:
 
     assert result["messages"][0].content == "ok"
 
-    runtime_kwargs = app.runtime.execute_task.await_args.kwargs
-    assert runtime_kwargs["principal"] is principal
+    runtime_kwargs = (
+        app.runtime.execute_task.await_args.kwargs
+    )
+
+    assert (
+        runtime_kwargs["principal"]
+        is principal
+    )
 
 
 @pytest.mark.asyncio
@@ -213,7 +227,15 @@ async def test_run_aurora_agent_preserves_principal_boundary() -> None:
 
     app.ainvoke.assert_awaited_once()
 
-    invocation = app.ainvoke.await_args.args[0]
+    invocation = (
+        app.ainvoke.await_args.args[0]
+    )
 
-    assert invocation["principal"] is principal
-    assert invocation["session_id"] == "voice-session"
+    assert (
+        invocation["principal"]
+        is principal
+    )
+    assert (
+        invocation["session_id"]
+        == "voice-session"
+    )

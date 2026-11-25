@@ -1,0 +1,5 @@
+# Known vulnerabilities that `pip-audit` may skip in CI.
+# One advisory id per line; `#` starts a comment. Every entry needs a reason
+# and the condition that removes it.
+#
+# Empty since M10: the last entries (chromadb) left with the photo memory.

@@ -1,14 +1,23 @@
-name: A.U.R.O.R.A. 100/100 Final CI Gate
+name: ÆHub CI and release gate
 
 on:
   push:
     branches: ["main"]
+    # A version tag also publishes the desktop app (desktop-release).
+    tags: ["v*"]
   pull_request:
     branches: ["main"]
+
+# Third-party actions are pinned to a commit SHA (the tag is in the comment):
+# a moved tag cannot change what runs here.
+
+permissions:
+  contents: read
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     services:
       postgres:
@@ -19,43 +28,95 @@ jobs:
           POSTGRES_DB: aehub_db
         ports:
           - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U aehub_user -d aehub_db"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
 
       redis:
         image: redis:7-alpine
         ports:
           - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
 
     steps:
       # =========================================================================
       # SOURCE CHECKOUT
       # =========================================================================
 
-      - uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
 
       # =========================================================================
       # RUNTIME TOOLCHAINS
       # =========================================================================
 
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v4
+      # Same interpreter as the backend image (Playwright noble base, 3.12).
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: "3.10"
+          python-version: "3.12"
 
-      - name: Set up Node.js 20
-        uses: actions/setup-node@v3
+      - name: Set up Node.js 26
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "20"
+          node-version: "26"  # the LTS since 2026-10; Node 20 is end of life (R1)
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
 
       # =========================================================================
       # BACKEND DEPENDENCIES
       # =========================================================================
 
       - name: Install Backend Dependencies
+        working-directory: backend
         run: |
-          cd backend
-          python -m pip install --upgrade pip
-          pip install ruff pytest httpx
+          python -m pip install --upgrade pip "setuptools>=83"
+          pip install ruff pytest httpx pip-audit bandit
           pip install -r requirements.txt
+
+      # M14 exit test: the desktop sidecar runs its own cluster, so it needs
+      # server binaries with pgvector, not the service container.
+      - name: PostgreSQL Binaries with pgvector (desktop sidecar test)
+        run: |
+          bin_dir=$(ls -d /usr/lib/postgresql/*/bin | sort -V | tail -1)
+          major=$(basename "$(dirname "$bin_dir")")
+          sudo apt-get update -q
+          sudo apt-get install -y -q "postgresql-${major}-pgvector"
+          echo "AEHUB_TEST_PG_BIN=${bin_dir}" >> "$GITHUB_ENV"
+
+      # M15: the home node test publishes to a real broker. The image's
+      # no-auth config listens on every interface (the default is local only).
+      - name: MQTT Broker (home node test)
+        run: |
+          docker run -d --name mqtt -p 1883:1883 eclipse-mosquitto:2 mosquitto -c /mosquitto-no-auth.conf
+          for i in $(seq 1 20); do nc -z localhost 1883 && exit 0; sleep 1; done
+          docker logs mqtt; exit 1
+
+      # =========================================================================
+      # BACKEND SECURITY GATES (M7)
+      # =========================================================================
+
+      # Known vulnerabilities in the installed dependency tree.
+      # Exceptions live in backend/pip-audit-ignore.txt, each with its reason.
+      - name: Dependency Audit (pip-audit)
+        working-directory: backend
+        run: |
+          ignores=$(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' pip-audit-ignore.txt | sed 's/^/--ignore-vuln /' | tr '\n' ' ')
+          pip-audit --progress-spinner off $ignores
+
+      # Static analysis of the backend code, medium severity and above.
+      - name: Static Security Analysis (bandit)
+        working-directory: backend
+        run: |
+          bandit -r app -ll -q
 
       # =========================================================================
       # BACKEND CODE QUALITY
@@ -66,14 +127,11 @@ jobs:
         run: |
           ruff check .
 
+      - name: Source Headers (R1)
+        run: python scripts/check_headers.py
+
       # =========================================================================
       # BACKEND TEST SUITE
-      #
-      # Application code lives under backend/app while tests live at the
-      # repository root. Running pytest from backend ensures the backend
-      # pyproject.toml is discovered and "app.*" imports resolve correctly.
-      # CI-only credentials below are non-production placeholders used solely
-      # to satisfy Settings validation during module import.
       # =========================================================================
 
       - name: Run Unit and E2E Tests (M16 Gates)
@@ -82,50 +140,358 @@ jobs:
           POSTGRES_URL: postgresql://aehub_user:password@localhost:5432/aehub_db
           REDIS_URL: redis://localhost:6379/0
           AEHUB_SECRET_KEY: ci-test-secret-key
-          GROQ_API_KEY: ci-test-groq-key
+          AEHUB_TELEMETRY_CONSOLE: "0"
+          AEHUB_REQUIRE_DESKTOP_TEST: "1"
+          AEHUB_TEST_MQTT_URL: mqtt://localhost:1883
           PYTHONPATH: .
         run: |
-          pytest ../tests/ -v --import-mode=importlib
+          pytest ../tests/ -v -rs --import-mode=importlib
+
+      # Roadmap M3 exit: with a model that always obeys the injection, no HIGH
+      # action may execute. Kept as its own step so a regression is visible.
+      # tests/conftest.py provides the test settings; these tests use an
+      # in-memory database only.
+      - name: Prompt-Injection Gate (M3)
+        working-directory: backend
+        env:
+          AEHUB_TELEMETRY_CONSOLE: "0"
+          PYTHONPATH: .
+        run: |
+          pytest ../tests/agent_engine/test_prompt_injection.py ../tests/agent_engine/test_guardrails.py ../tests/agent_engine/test_audit_chain.py ../tests/security/test_boundary_hardening.py -v --import-mode=importlib
 
       # =========================================================================
-      # FRONTEND
+      # FRONTEND DEPENDENCIES
       # =========================================================================
 
       - name: Install Frontend Dependencies
         working-directory: frontend
         run: |
-          npm install
+          npm ci
+
+      # =========================================================================
+      # FRONTEND CODE QUALITY (M11)
+      # =========================================================================
+
+      - name: Lint Frontend (ESLint)
+        working-directory: frontend
+        run: |
+          npm run lint
+
+      # Component and hook tests (Vitest + Testing Library, jsdom).
+      - name: Frontend Unit Tests (Vitest)
+        working-directory: frontend
+        run: |
+          npm test
+
+      # =========================================================================
+      # FRONTEND SECURITY AUDIT
+      # =========================================================================
+
+      # Blocking gate: everything that ships in the production dependency tree.
+      - name: Audit Frontend Dependencies
+        working-directory: frontend
+        run: |
+          npm audit --audit-level=high --omit=dev
+
+      # Visibility only: dev tooling (eslint, shadcn CLI, ...) can carry advisories
+      # with no patched release yet (e.g. braces GHSA-vfj7-8cjw-p6xm).
+      - name: Audit Frontend Dev Dependencies (report only)
+        working-directory: frontend
+        continue-on-error: true
+        run: |
+          npm audit --audit-level=high
+
+      # =========================================================================
+      # FRONTEND BUILD
+      # =========================================================================
 
       - name: Build Frontend
         working-directory: frontend
         run: |
           npm run build
 
+      # The desktop app serves the frontend as static files (M14, ADR-020).
+      - name: Build Frontend (static export for the desktop app)
+        working-directory: frontend
+        env:
+          AEHUB_STATIC_EXPORT: "1"
+        run: |
+          npm run build
+          test -f out/index.html && test -f out/control-plane/runs/view/index.html
+
+      # M11 leftover, done in M15: a real Chromium on the desktop engine with
+      # the static frontend and a scripted model. Launch URL -> typed command
+      # -> HIGH call allowed from the Approvals page -> run completed.
+      - name: Browser Smoke (Playwright)
+        working-directory: backend
+        env:
+          AEHUB_BROWSER_SMOKE: "1"
+          AEHUB_REQUIRE_DESKTOP_TEST: "1"
+          AEHUB_TELEMETRY_CONSOLE: "0"
+          PYTHONPATH: .
+        run: |
+          python -m playwright install --with-deps chromium
+          pytest ../tests/desktop/test_desktop_sidecar.py -k browser_smoke -v -rs --import-mode=importlib
+
       # =========================================================================
       # SECURITY SCANNING
       # =========================================================================
 
       - name: Container Scanning (Trivy)
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: "fs"
           format: "table"
-          exit-code: "0"
+          exit-code: "1"
           ignore-unfixed: true
           vuln-type: "os,library"
           severity: "CRITICAL,HIGH"
 
       - name: Secret Scanning (TruffleHog)
-        uses: trufflesecurity/trufflehog@main
+        uses: trufflesecurity/trufflehog@e76dff8a7e57d6df0c60ad8cbf5d5cba505a8fc9 # v3.99.2
         with:
-          path: ./
-          base: ${{ github.event.repository.default_branch }}
-          head: HEAD
+          extra_args: --results=verified,unknown
 
       # =========================================================================
-      # FINAL CERTIFICATION
+      # RELEASE GATE (M7)
       # =========================================================================
 
-      - name: 100/100 Certification Script
+      # Spec 6.5: the agent suite must pass every critical security case and
+      # must not regress against the baseline of the previous release.
+      - name: Agent Evaluation Gate
+        env:
+          AEHUB_TELEMETRY_CONSOLE: "0"
         run: |
-          python evals/certify_100_100.py
+          python evals/run_evals.py --baseline evals/baseline.json --report eval-report.json
+
+      - name: Upload Evaluation Report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: eval-report
+          path: eval-report.json
+          if-no-files-found: ignore
+
+  docker-images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      # Catches a broken Compose file before anyone runs `make demo`.
+      - name: Validate Compose Configuration
+        env:
+          POSTGRES_PASSWORD: ci-only-not-a-secret
+        run: |
+          docker compose config --quiet
+
+      - name: Build Backend Image
+        run: |
+          docker build --file backend/dockerfile --tag aehub-backend:ci backend
+
+      # D1 (ADR-031): the API builds the schema with Alembic at startup. Run
+      # that startup from inside the image on an empty pgvector database, then
+      # check the revisions match the models. The URL is assembled in the
+      # shell so the secret scanner sees no credential in this file.
+      - name: Migrate a Database From Inside the Backend Image
+        env:
+          DB_PASSWORD: ci-only-not-a-secret
+        run: |
+          docker network create aehub-ci
+          docker run -d --name aehub-ci-db --network aehub-ci \
+            -e POSTGRES_USER=aehub_user -e POSTGRES_PASSWORD="$DB_PASSWORD" -e POSTGRES_DB=aehub_db \
+            pgvector/pgvector:pg15
+          # Over TCP: the server of the init phase listens on the socket only.
+          for _ in $(seq 1 60); do
+            docker exec aehub-ci-db pg_isready -h 127.0.0.1 -U aehub_user -d aehub_db && break
+            sleep 1
+          done
+          url="postgresql://aehub_user"
+          url="$url:$DB_PASSWORD@aehub-ci-db:5432/aehub_db"
+          for step in "python -c 'import main; main.startup_db(); main.startup_db()'" "alembic check"; do
+            docker run --rm --network aehub-ci \
+              -e POSTGRES_URL="$url" \
+              -e AEHUB_SECRET_KEY=ci-only-not-a-secret \
+              -e AEHUB_TELEMETRY_CONSOLE=0 \
+              aehub-backend:ci sh -c "$step"
+          done
+          docker rm -f aehub-ci-db
+          docker network rm aehub-ci
+
+      # The backend loads every skill at startup; an import that only fails
+      # inside the container (no display, missing system library) would stop
+      # the API from starting.
+      - name: Load Skills Inside the Backend Image
+        run: |
+          docker run --rm \
+            -e POSTGRES_URL=sqlite:// \
+            -e AEHUB_SECRET_KEY=ci-only-not-a-secret \
+            -e AEHUB_EMBEDDER=hash \
+            aehub-backend:ci \
+            python -c "from app.skills.registry import skill_registry; skill_registry.load_from_package(); print(sorted(skill_registry.get_registered_skill_names()))"
+
+      # The container has no GPU, so backend/dockerfile installs the CPU build
+      # of torch. A change that brings back the CUDA libraries fails here.
+      - name: Check the Backend Image Ships CPU-Only Torch
+        run: |
+          docker image ls aehub-backend:ci --format 'Backend image size: {{.Size}}'
+          docker run --rm aehub-backend:ci python -c "import torch; print('torch', torch.__version__, 'cuda', torch.cuda.is_available()); assert torch.__version__.endswith('+cpu')"
+          if docker run --rm aehub-backend:ci pip list 2>/dev/null | grep -i nvidia; then
+            echo "::error::the backend image ships NVIDIA packages"
+            exit 1
+          fi
+
+      - name: Build Frontend Image
+        run: |
+          docker build --file frontend/dockerfile --tag aehub-frontend:ci frontend
+
+  # M14 (ADR-020): the Windows installer. The bundle is the runner's
+  # PostgreSQL with pgvector built from its tag, this job's CPython with the
+  # desktop requirements, the backend and the static frontend.
+  # It runs only on a version tag, for desktop-release, and only while the
+  # repository variable DESKTOP_RELEASE is "on": the desktop is suspended,
+  # so a v1.0.0 tag ships no installer until it is turned back on (R1,
+  # user's choice, 2026-11-25). On pull requests and pushes to main it is
+  # always skipped (2026-11-04).
+  desktop-windows:
+    if: startsWith(github.ref, 'refs/tags/v') && vars.DESKTOP_RELEASE == 'on'
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: |
+            frontend/package-lock.json
+            desktop/package-lock.json
+
+      - name: Build Frontend (static export)
+        working-directory: frontend
+        shell: bash
+        env:
+          AEHUB_STATIC_EXPORT: "1"
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build pgvector for the bundled PostgreSQL
+        shell: pwsh
+        env:
+          PGVECTOR_TAG: v0.8.1
+        run: |
+          if (-not $env:PGROOT) { throw "PGROOT is not set on this runner" }
+          & "$env:PGROOT\bin\postgres.exe" --version
+          git clone --depth 1 --branch $env:PGVECTOR_TAG https://github.com/pgvector/pgvector.git "$env:RUNNER_TEMP\pgvector"
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          cmd /c "`"$vs\VC\Auxiliary\Build\vcvars64.bat`" && cd /d `"$env:RUNNER_TEMP\pgvector`" && nmake /F Makefile.win && nmake /F Makefile.win install"
+          if ($LASTEXITCODE -ne 0) { throw "pgvector build failed" }
+
+      - name: Assemble the App Bundle
+        shell: pwsh
+        run: |
+          python desktop/scripts/bundle.py --pg-root "$env:PGROOT"
+
+      # The engine as the installed app starts it: bundled Python, bundled
+      # Postgres (pgvector loads at startup), static frontend, launch token.
+      - name: Smoke Test the Bundled Engine
+        shell: pwsh
+        run: |
+          python desktop/scripts/smoke_sidecar.py
+
+      # Signatures (M15, ADR-021), each one only when its secret exists, so
+      # a run without them still builds an unsigned installer:
+      # - TAURI_SIGNING_PRIVATE_KEY: the updater's key; the installer gets a
+      #   .sig the installed app checks against tauri.conf.json's pubkey;
+      # - WINDOWS_CERTIFICATE (base64 .pfx) + WINDOWS_CERTIFICATE_PASSWORD:
+      #   Authenticode on the app and the installer (desktop/scripts/sign.ps1).
+      - name: Build the Installer (Tauri)
+        working-directory: desktop
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          npm ci
+          $bundle = @{}
+          if ($env:TAURI_SIGNING_PRIVATE_KEY) {
+            $bundle.createUpdaterArtifacts = $true
+            "Updater signature: on"
+          } else {
+            "Updater signature: off (no TAURI_SIGNING_PRIVATE_KEY secret)"
+          }
+          if ($env:WINDOWS_CERTIFICATE) {
+            $env:AEHUB_SIGNING_PFX = Join-Path $env:RUNNER_TEMP "aehub-signing.pfx"
+            [IO.File]::WriteAllBytes($env:AEHUB_SIGNING_PFX, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+            $sign = (Resolve-Path scripts/sign.ps1).Path
+            $bundle.windows = @{ signCommand = @{ cmd = "powershell"; args = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $sign, "%1") } }
+            "Authenticode: on"
+          } else {
+            "Authenticode: off (no WINDOWS_CERTIFICATE secret)"
+          }
+          $config = Join-Path $env:RUNNER_TEMP "tauri.ci.json"
+          @{ bundle = $bundle } | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 $config
+          npx tauri build --config $config
+          if ($LASTEXITCODE -ne 0) { throw "tauri build failed" }
+          if ($env:AEHUB_SIGNING_PFX) { Remove-Item $env:AEHUB_SIGNING_PFX }
+
+      - name: Updater Manifest (version tags)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          python desktop/scripts/release_manifest.py --tag "${{ github.ref_name }}" --bundle desktop/src-tauri/target/release/bundle/nsis --out desktop/src-tauri/target/release/bundle/nsis/latest.json
+
+      - name: Upload Installer
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: aehub-windows-installer
+          path: |
+            desktop/src-tauri/target/release/bundle/nsis/*.exe
+            desktop/src-tauri/target/release/bundle/nsis/*.sig
+            desktop/src-tauri/target/release/bundle/nsis/latest.json
+            desktop/src-tauri/Cargo.lock
+          if-no-files-found: error
+
+  # Publishes the desktop app on a version tag: installer, its updater
+  # signature and latest.json, which installed apps poll. The only job with
+  # write access, and it runs no code from the repository.
+  desktop-release:
+    if: startsWith(github.ref, 'refs/tags/v') && vars.DESKTOP_RELEASE == 'on'
+    needs: [build-and-test, docker-images, desktop-windows]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download Installer
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: aehub-windows-installer
+          path: release
+
+      - name: Publish to the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          # Artifact paths start at desktop/src-tauri, their common folder.
+          cd release/target/release/bundle/nsis
+          test -f latest.json || { echo "::error::no latest.json: is the TAURI_SIGNING_PRIVATE_KEY secret set?"; exit 1; }
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "ÆHub $TAG" --generate-notes
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber ./*-setup.exe ./*-setup.exe.sig latest.json

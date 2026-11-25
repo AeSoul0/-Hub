@@ -6,23 +6,22 @@ This module handles:
 - speech-oriented response sanitization,
 - slash-command processing,
 - authenticated text orchestration,
-- authenticated voice orchestration,
+- authenticated voice orchestration (local speech engines, app/voice),
 - multimodal input normalization.
 
 The module delegates actual agent execution to the native Aurora facade.
-No LangChain message classes are required by this application boundary.
+A run started from speech is marked input_channel="voice" (ADR-021).
 """
 
 from __future__ import annotations
 
+import logging
+
+import asyncio
 import base64
-import os
 import re
-import tempfile
 from typing import Any, Optional
 
-import edge_tts
-import httpx
 from dotenv import load_dotenv
 from fastapi import (
     APIRouter,
@@ -33,11 +32,11 @@ from fastapi import (
     Request,
     UploadFile,
 )
-from groq import AsyncGroq
 
-from app.core import database
 from app.core.event_bus import event_bus
 from app.runtime.aurora import get_aurora_app
+from app.voice.engines import VoiceUnavailable
+from app.voice.pipeline import AudioTooLarge, MAX_AUDIO_BYTES, speak, transcribe_audio
 
 
 # ==============================================================================
@@ -52,19 +51,7 @@ router = APIRouter(
     tags=["orchestrator"],
 )
 
-GROQ_API_KEY = os.getenv(
-    "GROQ_API_KEY"
-)
-
-if not GROQ_API_KEY:
-    raise RuntimeError(
-        "CRITICAL CORE CONFIGURATION FAULT: "
-        "'GROQ_API_KEY' is missing from the environment."
-    )
-
-groq_client = AsyncGroq(
-    api_key=GROQ_API_KEY
-)
+INPUT_CHANNELS = ("text", "voice")
 
 
 # ==============================================================================
@@ -114,6 +101,9 @@ AESOUL_SYSTEM_PROMPT = (
 # ==============================================================================
 
 
+logger = logging.getLogger(__name__)
+
+
 def clean_text_for_speech(
     text: str,
 ) -> str:
@@ -150,28 +140,6 @@ def clean_text_for_speech(
     ).strip()
 
 
-async def generate_voice_base64(
-    text: str,
-) -> str:
-    """
-    Convert text to speech and return the audio payload as Base64.
-    """
-    communicate = edge_tts.Communicate(
-        text,
-        "it-IT-ElsaNeural",
-    )
-
-    tts_audio_data = b""
-
-    async for chunk in communicate.stream():
-        if chunk["type"] == "audio":
-            tts_audio_data += chunk["data"]
-
-    return base64.b64encode(
-        tts_audio_data
-    ).decode("utf-8")
-
-
 # ==============================================================================
 # SLASH COMMAND PROCESSING
 # ==============================================================================
@@ -182,8 +150,12 @@ async def execute_slash_command(
     session_id: str,
 ) -> dict[str, str]:
     """
-    Execute a supported slash command against the authenticated session state.
+    Execute a slash command. Only /stop exists: /clear, /precise, /creative,
+    /deep and /fast wrote session settings nobody read, so they never had an
+    effect and were removed with the legacy database module (M15). To stop a
+    running agent, use Stop on the Runs page (the kill switch).
     """
+    del session_id
     cmd = cmd.lower().strip()
 
     if cmd == "/stop":
@@ -195,71 +167,9 @@ async def execute_slash_command(
             "audio_base64": "",
         }
 
-    if cmd == "/clear":
-        database.clear_chat(
-            session_id
-        )
-        reply_text = (
-            "Memoria di sistema inizializzata. "
-            "Cronologia cancellata."
-        )
-
-    elif cmd == "/precise":
-        database.update_settings(
-            session_id,
-            temperature=0.1,
-        )
-        reply_text = (
-            "Modalità precisione attivata. "
-            "Varianza logica ridotta al minimo."
-        )
-
-    elif cmd == "/creative":
-        database.update_settings(
-            session_id,
-            temperature=0.9,
-        )
-        reply_text = (
-            "Modalità creativa ingaggiata. "
-            "Reti neurali espanse."
-        )
-
-    elif cmd == "/deep":
-        database.update_settings(
-            session_id,
-            max_tokens=1024,
-            deep_mode=True,
-        )
-        reply_text = (
-            "Analisi profonda abilitata. "
-            "Parametri di sintesi disattivati."
-        )
-
-    elif cmd == "/fast":
-        database.update_settings(
-            session_id,
-            temperature=0.75,
-            max_tokens=300,
-            deep_mode=False,
-        )
-        reply_text = (
-            "Operatività rapida ingaggiata. "
-            "Parametri standard ripristinati."
-        )
-
-    else:
-        reply_text = (
-            "Comando sconosciuto. Direttive accettate: "
-            "stop, clear, precise, creative, deep, fast."
-        )
-
-    base64_audio = await generate_voice_base64(
-        reply_text
-    )
-
     return {
-        "transcription": reply_text,
-        "audio_base64": base64_audio,
+        "transcription": "Comando sconosciuto. Direttive accettate: stop.",
+        "audio_base64": "",
     }
 
 
@@ -274,9 +184,15 @@ async def generate_ai_response(
     ui_context: str,
     session_id: str,
     principal: Optional[Any] = None,
+    input_channel: str = "text",
+    role: Optional[str] = None,
 ) -> dict[str, str]:
     """
     Delegate an authenticated interaction to the native Aurora runtime.
+
+    input_channel is "voice" when the intent is a transcript (ADR-021).
+    role is the worker role chosen for this command (F8); None lets triage
+    pick.
 
     The caller must provide an explicit Principal. The principal is preserved
     unchanged through the compatibility facade and native AgentRuntime.
@@ -321,11 +237,11 @@ async def generate_ai_response(
             "Missing principal. Execution denied."
         )
 
-    session_settings = database.get_settings(
-        session_id
-    )
+    if input_channel not in INPUT_CHANNELS:
+        raise ValueError(
+            f"Unknown input channel '{input_channel}'."
+        )
 
-    del session_settings
     del ui_context
 
     await event_bus.publish(
@@ -349,11 +265,11 @@ async def generate_ai_response(
         "current_intent": intent_str,
         "principal": principal,
         "system_prompt": system_prompt,
+        "input_channel": input_channel,
+        "role": role,
     }
 
     try:
-        import asyncio
-
         app_instance = await get_aurora_app()
 
         final_state = await asyncio.wait_for(
@@ -400,29 +316,23 @@ async def generate_ai_response(
                 )
             )
 
-    except Exception as exc:
-        print(
-            f"Aurora runtime execution error: {exc}"
-        )
+    except Exception:
+        logger.exception("Aurora runtime execution error")
         raise
 
     clean_response = clean_text_for_speech(
         ai_response_text
     )
 
-    base64_audio = await generate_voice_base64(
+    # Best effort: without the speech engine the written reply still arrives.
+    base64_audio, audio_mime = await speak(
         clean_response
-    )
-
-    database.save_chat(
-        session_id,
-        intent_str,
-        clean_response,
     )
 
     return {
         "transcription": clean_response,
         "audio_base64": base64_audio,
+        "audio_mime": audio_mime,
     }
 
 
@@ -441,103 +351,74 @@ async def process_orchestration_voice(
     ),
 ):
     """
-    Authenticate the request, transcribe the audio, and execute Aurora.
+    Authenticate the request, transcribe the audio locally and execute
+    Aurora with the transcript as a voice instruction.
 
     The client-provided X-Session-ID header is intentionally ignored.
     Session identity is derived from the authenticated Principal.
     """
     del x_session_id
 
+    from app.core.db import SessionLocal
+    from app.core.security import resolve_principal
+
+    with SessionLocal() as db:
+        principal = resolve_principal(
+            request,
+            db,
+        )
+
+    audio_bytes = await file.read(
+        MAX_AUDIO_BYTES + 1
+    )
+
     try:
-        from app.core.db import SessionLocal
-        from app.core.security import resolve_principal
+        transcript = await transcribe_audio(
+            audio_bytes
+        )
+    except AudioTooLarge as exc:
+        raise HTTPException(
+            status_code=413,
+            detail=str(exc),
+        ) from exc
+    except VoiceUnavailable as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Transcription failed: {exc}",
+        ) from exc
 
-        with SessionLocal() as db:
-            principal = resolve_principal(
-                request,
-                db,
-            )
+    if not transcript:
+        return {
+            "heard": "",
+            "transcription": "",
+            "audio_base64": "",
+            "audio_mime": "",
+        }
 
-        audio_bytes = await file.read()
-
-        temp_path = None
-
-        try:
-            with tempfile.NamedTemporaryFile(
-                delete=False,
-                suffix=".webm",
-            ) as temp:
-                temp.write(
-                    audio_bytes
-                )
-                temp_path = temp.name
-
-            async with httpx.AsyncClient(
-                timeout=30.0
-            ) as client:
-                with open(
-                    temp_path,
-                    "rb",
-                ) as file_handle:
-                    response = await client.post(
-                        "https://api.groq.com/openai/v1/audio/transcriptions",
-                        files={
-                            "file": (
-                                os.path.basename(
-                                    temp_path
-                                ),
-                                file_handle,
-                                "audio/webm",
-                            )
-                        },
-                        data={
-                            "model": "whisper-large-v3",
-                        },
-                        headers={
-                            "Authorization": (
-                                f"Bearer {GROQ_API_KEY}"
-                            )
-                        },
-                    )
-
-            user_intent = (
-                response.json().get(
-                    "text",
-                    "",
-                )
-                if response.status_code == 200
-                else ""
-            )
-
-        finally:
-            if (
-                temp_path
-                and os.path.exists(temp_path)
-            ):
-                os.remove(temp_path)
-
-        if (
-            not user_intent
-            or user_intent == "Transcription error."
-        ):
-            return {
-                "transcription": "",
-                "audio_base64": "",
-            }
-
-        return await generate_ai_response(
-            user_intent,
+    try:
+        reply = await generate_ai_response(
+            transcript,
             AESOUL_SYSTEM_PROMPT,
             ui_context,
             principal.id,
             principal,
+            input_channel="voice",
         )
-
     except Exception as exc:
         raise HTTPException(
             status_code=500,
             detail=f"Voice node failure: {exc}",
         ) from exc
+
+    return {
+        "heard": transcript,
+        **reply,
+    }
 
 
 # ==============================================================================
@@ -550,6 +431,7 @@ async def process_orchestration_text(
     request: Request,
     text: str = Form(...),
     ui_context: str = Form(default=""),
+    role: str = Form(default=""),
     image: UploadFile = File(default=None),
     x_session_id: str = Header(
         default="default-session"
@@ -559,8 +441,17 @@ async def process_orchestration_text(
     Authenticate the request and execute text or multimodal Aurora input.
 
     The client-provided X-Session-ID header is intentionally ignored.
+    `role` picks the worker role for this command (F8); empty lets triage
+    pick.
     """
     del x_session_id
+
+    from app.agent_engine.routing import command_role
+
+    try:
+        command_role(role)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     try:
         from app.core.db import SessionLocal
@@ -607,6 +498,7 @@ async def process_orchestration_text(
             ui_context,
             principal.id,
             principal,
+            role=role or None,
         )
 
     except Exception as exc:

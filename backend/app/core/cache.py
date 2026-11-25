@@ -1,32 +1,66 @@
 """
 @file backend/app/core/cache.py
-@description Implements cache.py. Core components: CacheService.
-
-This module manages the internal business logic for CacheService.
-It provides specialized functionality to handle: get_pool, get_client, get, set, delete, check_rate_limit.
+@description Cache and rate limits on Redis, or in process when the desktop app runs without Redis.
 """
 import json
-from typing import Any, Optional
+import time
+from typing import Any, Dict, Optional, Tuple
 import redis.asyncio as redis
 
 from app.core.config import settings
+from app.core.event_bus import in_process
+
+
+class LocalCache:
+    """
+    The few Redis commands CacheService uses, inside this process: the
+    desktop app has no Redis (ADR-020). Keys expire lazily, when read.
+    """
+
+    def __init__(self) -> None:
+        self._data: Dict[str, Tuple[Any, Optional[float]]] = {}
+
+    def _live(self, key: str) -> Optional[Any]:
+        item = self._data.get(key)
+        if item is None:
+            return None
+        value, expires_at = item
+        if expires_at is not None and expires_at <= time.monotonic():
+            del self._data[key]
+            return None
+        return value
+
+    async def get(self, key: str) -> Optional[Any]:
+        return self._live(key)
+
+    async def set(self, key: str, value: Any, ex: Optional[int] = None) -> None:
+        self._data[key] = (value, time.monotonic() + ex if ex else None)
+
+    async def delete(self, key: str) -> None:
+        self._data.pop(key, None)
+
+    async def incr(self, key: str) -> int:
+        current = int(self._live(key) or 0) + 1
+        _, expires_at = self._data.get(key, (None, None))
+        self._data[key] = (current, expires_at)
+        return current
+
+    async def expire(self, key: str, seconds: int) -> None:
+        if self._live(key) is not None:
+            self._data[key] = (self._data[key][0], time.monotonic() + seconds)
+
 
 class CacheService:
-    """
-    Represents the CacheService entity and its core operations.
-    """
     """
     Distributed Caching Layer (M4).
     Manages Redis connections for Session caching, Rate Limiting, and LLM Response caching.
     """
     _pool: Optional[redis.ConnectionPool] = None
+    _local: Optional[LocalCache] = None
 
     @classmethod
     def get_pool(cls) -> redis.ConnectionPool:
-        """
-        Executes get_pool logic.
-        """
-        # Initialize the Redis connection pool if it doesn't exist
+        """The shared Redis connection pool, created on first use from REDIS_URL."""
         # Initialize the Redis connection pool if it doesn't exist
         if cls._pool is None:
             cls._pool = redis.ConnectionPool.from_url(
@@ -35,20 +69,19 @@ class CacheService:
         return cls._pool
 
     @classmethod
-    async def get_client(cls) -> redis.Redis:
-        """
-        Executes get_client logic.
-        """
-        # Retrieve a new Redis client instance from the connection pool
+    async def get_client(cls) -> Any:
+        """A Redis client, or the in-process cache when the desktop app runs without Redis."""
+        if in_process():
+            if cls._local is None:
+                cls._local = LocalCache()
+            return cls._local
+
         # Retrieve a new Redis client instance from the connection pool
         return redis.Redis(connection_pool=cls.get_pool())
 
     @classmethod
     async def get(cls, key: str) -> Optional[Any]:
-        """
-        Executes get logic.
-        """
-        # Fetch data from Redis and attempt to parse it as JSON
+        """The value at `key`, decoded from JSON when it is JSON; None when missing."""
         # Fetch data from Redis and attempt to parse it as JSON
         client = await cls.get_client()
         data = await client.get(key)
@@ -61,10 +94,7 @@ class CacheService:
 
     @classmethod
     async def set(cls, key: str, value: Any, expire_seconds: int = 3600):
-        """
-        Executes set logic.
-        """
-        # Serialize dictionaries or lists to JSON strings and store in Redis with expiration
+        """Store `value` at `key` for `expire_seconds`; dicts and lists are stored as JSON."""
         # Serialize dictionaries or lists to JSON strings and store in Redis with expiration
         client = await cls.get_client()
         if isinstance(value, (dict, list)):
@@ -73,19 +103,13 @@ class CacheService:
 
     @classmethod
     async def delete(cls, key: str):
-        """
-        Executes delete logic.
-        """
-        # Remove a specific key from the Redis cache
+        """Remove `key` from the cache."""
         # Remove a specific key from the Redis cache
         client = await cls.get_client()
         await client.delete(key)
 
     @classmethod
     async def check_rate_limit(cls, identifier: str, limit: int, window_seconds: int) -> bool:
-        """
-        Executes check_rate_limit logic.
-        """
         """
         Token bucket / sliding window rate limiting.
         Returns True if request is allowed, False if rate limited.

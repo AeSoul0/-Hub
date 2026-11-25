@@ -21,7 +21,7 @@ from .identity import (
 
 # Audit and memory domain models.
 from .audit import AuditLog
-from .memory import VectorMemory, MemoryType
+from .memory import MemoryChunk, VectorMemory, MemoryType
 
 # Runtime persistence models.
 # Aliasing AgentRun avoids a naming collision with the Pydantic AgentRun model
@@ -30,7 +30,17 @@ from .runtime_state import (
     AgentRun as RuntimeAgentRun,
     IdempotencyKey,
     Budget,
+    MonthlySpend,
 )
+
+# Settings edited from the Control Plane (M12).
+from .settings import AppSetting
+
+# Files of the working folder indexed for document search (M13).
+from .documents import DocumentFile
+
+# Skills imported as SKILL.md files (F5).
+from .skills import ImportedSkill
 
 __all__ = [
     "Base",
@@ -41,9 +51,14 @@ __all__ = [
     "RefreshToken",
     "RoleEnum",
     "AuditLog",
+    "MemoryChunk",
     "VectorMemory",
     "MemoryType",
     "RuntimeAgentRun",
     "IdempotencyKey",
     "Budget",
+    "MonthlySpend",
+    "AppSetting",
+    "DocumentFile",
+    "ImportedSkill",
 ]

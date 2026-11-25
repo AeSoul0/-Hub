@@ -3,8 +3,8 @@
 @description Native subagent worker and factory implementation.
 
 Provides the adapter-backed Worker implementation used by AgentRuntime.
-The worker is deliberately framework-agnostic: no LangGraph graph is created,
-compiled, or invoked at this boundary.
+The worker is deliberately framework-agnostic: it only asks the model adapter
+for one turn; the runtime owns the loop.
 """
 
 from __future__ import annotations
