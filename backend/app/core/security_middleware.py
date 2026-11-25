@@ -1,9 +1,6 @@
 """
 @file backend/app/core/security_middleware.py
-@description Implements security_middleware.py. Core components: AdvancedSecurityMiddleware.
-
-This module manages the internal business logic for AdvancedSecurityMiddleware.
-It provides specialized functionality to handle: dispatch.
+@description HTTP middleware: blocks path traversal in URLs and adds the security headers.
 """
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -26,17 +23,11 @@ PAGE_CSP = (
 
 class AdvancedSecurityMiddleware(BaseHTTPMiddleware):
     """
-    Represents the AdvancedSecurityMiddleware entity and its core operations.
-    """
-    """
     M1 Security & M16 Gates.
     Enforces SSRF defense, Path Traversal defense, and injects strict Security Headers.
     """
     async def dispatch(self, request: Request, call_next):
-        """
-        Executes dispatch logic.
-        """
-        # Inspect raw URL paths to detect and block Path Traversal attempts
+        """Block path traversal in the URL, then add the security headers to the response."""
         # Inspect raw URL paths to detect and block Path Traversal attempts
         
         # 1. Path Traversal Defense

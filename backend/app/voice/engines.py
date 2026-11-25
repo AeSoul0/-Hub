@@ -265,7 +265,7 @@ class ElevenLabsTTS:
     def synthesize(self, text: str) -> Tuple[bytes, str]:
         try:
             return self.synthesize_cloud(text)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - any cloud error falls back to Piper, logged
             logger.warning("ElevenLabs voice unavailable, Piper speaks instead: %s", exc)
             return self.fallback.synthesize(text)
 
@@ -276,7 +276,7 @@ def _cloud_error(response) -> str:
     """
     try:
         detail = response.json().get("detail")
-    except Exception:
+    except (ValueError, AttributeError):  # not JSON, or not an object
         detail = None
 
     if isinstance(detail, dict):

@@ -1,3 +1,7 @@
+/**
+ * @file frontend/tests/home.test.tsx
+ * @description Tests of CASA, the home, and of its plain logic.
+ */
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import React from "react";
 import { describe, expect, it } from "vitest";

@@ -1,3 +1,7 @@
+/**
+ * @file frontend/tests/nucleo.test.tsx
+ * @description Tests of the Nucleo: engine events, the sphere, resumed runs and side panes.
+ */
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";

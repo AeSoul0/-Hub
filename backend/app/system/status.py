@@ -116,7 +116,7 @@ def database_status() -> Dict[str, Any]:
             connection.execute(text("SELECT 1"))
             latency = round((time.perf_counter() - started) * 1000, 1)
             revision = current_revision(connection)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - a status probe reports the error instead of raising
         return {
             "ok": False,
             "dialect": engine.dialect.name,
@@ -144,7 +144,7 @@ async def bus_status() -> Dict[str, Any]:
 
     try:
         await asyncio.wait_for(event_bus.redis.ping(), timeout=BUS_TIMEOUT_SECONDS)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - a status probe reports the error instead of raising
         return {"kind": "redis", "ok": False, "error": _short_error(exc)}
 
     return {"kind": "redis", "ok": True, "error": None}
@@ -284,7 +284,7 @@ async def check_updates(endpoint: str = UPDATE_ENDPOINT) -> Dict[str, Any]:
         response.raise_for_status()
         data = response.json()
         latest = str(data["version"]).lstrip("v")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - a status probe reports the error instead of raising
         return {"current": current, "latest": None, "newer": None, "published_at": None, "notes": None, "error": _short_error(exc)}
 
     newer = _version_key(latest) > _version_key(current) if current else None

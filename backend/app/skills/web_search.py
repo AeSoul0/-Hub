@@ -8,6 +8,7 @@ enforce it before execution.
 """
 
 from __future__ import annotations
+import logging
 
 import json
 from typing import Callable, Dict, List, Optional
@@ -26,6 +27,9 @@ from app.skills.base import (
 # ==============================================================================
 # WEB SEARCH TOOL
 # ==============================================================================
+
+
+logger = logging.getLogger(__name__)
 
 
 def perform_web_search(
@@ -53,7 +57,8 @@ def perform_web_search(
             ensure_ascii=False,
         )
 
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - a search error becomes the tool's answer
+        logger.warning("Web search failed: %s", exc)
         return f"Web search error: {exc}"
 
 

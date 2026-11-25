@@ -393,7 +393,7 @@ class FailoverProvider(ModelProvider):
 
             try:
                 result = await provider.generate(context)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - any provider error moves to the next target of the chain
                 breaker.record_failure()
                 errors.append(f"{label}: {type(exc).__name__}")
                 logger.warning(

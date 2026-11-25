@@ -2,11 +2,15 @@
 @file backend/app/workers/sandbox.py
 @description Secure ephemeral Docker-based execution sandbox.
 """
+import logging
 
 import asyncio
 from typing import Dict, Optional, Sequence
 
 from pydantic import BaseModel
+
+
+logger = logging.getLogger(__name__)
 
 
 class SandboxResult(BaseModel):
@@ -107,13 +111,13 @@ class EphemeralSandboxManager:
                 try:
                     if not communication_task.done():
                         await communication_task
-                except BaseException:
+                except BaseException:  # noqa: BLE001 - cleanup after a kill: the output task may end with anything, cancellation included
                     pass
 
             if process is not None:
                 try:
                     await process.wait()
-                except Exception:
+                except Exception:  # noqa: BLE001 - cleanup after a kill
                     pass
 
                 # Give asyncio one scheduler turn to process the final
@@ -192,7 +196,8 @@ class EphemeralSandboxManager:
                 exit_code=exit_code,
             )
 
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - a sandbox error becomes the command's result
+            logger.warning("Sandbox command failed: %s", exc)
             return SandboxResult(
                 stdout="",
                 stderr=f"Sandbox Error: {exc}",
@@ -269,7 +274,8 @@ class EphemeralSandboxManager:
                 exit_code=exit_code,
             )
 
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - a sandbox error becomes the command's result
+            logger.warning("Sandbox command failed: %s", exc)
             return SandboxResult(
                 stdout="",
                 stderr=f"Sandbox Error: {exc}",

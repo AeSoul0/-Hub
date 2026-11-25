@@ -8,7 +8,6 @@ GET    /api/memory                list memories (by kind, trust, or a search
                                   with counts and the memory's settings
 POST   /api/memory                add a fact, preference or rule written by
                                   the user
-POST   /api/memory/preferences    add a preference written by the user (M11)
 PUT    /api/memory/{memory_id}    edit a memory: text, kind, trust
 DELETE /api/memory/{memory_id}    forget one memory
 DELETE /api/memory?scope=untrusted
@@ -48,14 +47,8 @@ router = APIRouter(
     tags=["memory"],
 )
 
-MAX_PREFERENCE_CHARS = 2000
-
 # Kinds the user writes; episodes come from runs.
 UserKind = Literal["fact", "preference", "rule"]
-
-
-class PreferenceIn(BaseModel):
-    content: str = Field(min_length=1, max_length=MAX_PREFERENCE_CHARS)
 
 
 class MemoryIn(BaseModel):
@@ -155,14 +148,6 @@ async def add_memory(
     principal: Principal = Depends(resolve_principal),
 ) -> Dict[str, Any]:
     return await _add(principal, body.content, MemoryKind(body.kind))
-
-
-@router.post("/preferences", status_code=201)
-async def add_preference(
-    body: PreferenceIn,
-    principal: Principal = Depends(resolve_principal),
-) -> Dict[str, Any]:
-    return await _add(principal, body.content, MemoryKind.PREFERENCE)
 
 
 @router.put("/{memory_id}")

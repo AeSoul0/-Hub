@@ -15,6 +15,7 @@ GET  /api/runs/{run_id}/events   the run timeline from the flight recorder (F2)
 """
 
 from __future__ import annotations
+import logging
 
 import json
 from collections import defaultdict
@@ -48,6 +49,9 @@ RUN_STATUSES = {status.value for status in AgentRunStatus}
 TASK_PREVIEW_CHARS = 200
 # A timeline longer than this keeps its most recent events.
 TIMELINE_LIMIT = 500
+
+
+logger = logging.getLogger(__name__)
 
 
 def _require_admin(principal: Principal) -> None:
@@ -208,11 +212,14 @@ def _live_snapshots(run_ids: List[str]) -> Dict[str, Dict[str, Any]]:
     from app.core.db import SessionLocal
     from app.domain.models.runtime_state import AgentRun as DbAgentRun
 
+    from sqlalchemy.exc import SQLAlchemyError
+
     try:
         with SessionLocal() as db:
             rows = db.query(DbAgentRun).filter(DbAgentRun.id.in_(run_ids)).all()
             found = [(row, _snapshot(row)) for row in rows]
-    except Exception:
+    except SQLAlchemyError as exc:
+        logger.warning("Live runs shown without their saved state: %s", exc)
         return {}
 
     return {
@@ -355,7 +362,8 @@ def build_stats(principal: Principal, days: int) -> Dict[str, Any]:
 
     try:
         month_spent = SpendLedger.spent(principal.id, current_period())
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - the stats show no month total when the ledger is unreadable
+        logger.warning("Spend ledger unreadable for the stats: %s", exc)
         month_spent = None
 
     return {

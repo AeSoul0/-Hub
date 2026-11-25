@@ -64,10 +64,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Set up Node.js 20
+      - name: Set up Node.js 26
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "20"
+          node-version: "26"  # the LTS since 2026-10; Node 20 is end of life (R1)
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
@@ -126,6 +126,9 @@ jobs:
         working-directory: backend
         run: |
           ruff check .
+
+      - name: Source Headers (R1)
+        run: python scripts/check_headers.py
 
       # =========================================================================
       # BACKEND TEST SUITE
@@ -347,10 +350,13 @@ jobs:
   # M14 (ADR-020): the Windows installer. The bundle is the runner's
   # PostgreSQL with pgvector built from its tag, this job's CPython with the
   # desktop requirements, the backend and the static frontend.
-  # For now it runs only on a version tag, for desktop-release: on pull
-  # requests and pushes to main it is skipped (user's choice, 2026-11-04).
+  # It runs only on a version tag, for desktop-release, and only while the
+  # repository variable DESKTOP_RELEASE is "on": the desktop is suspended,
+  # so a v1.0.0 tag ships no installer until it is turned back on (R1,
+  # user's choice, 2026-11-25). On pull requests and pushes to main it is
+  # always skipped (2026-11-04).
   desktop-windows:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') && vars.DESKTOP_RELEASE == 'on'
     runs-on: windows-latest
     timeout-minutes: 60
 
@@ -464,7 +470,7 @@ jobs:
   # signature and latest.json, which installed apps poll. The only job with
   # write access, and it runs no code from the repository.
   desktop-release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') && vars.DESKTOP_RELEASE == 'on'
     needs: [build-and-test, docker-images, desktop-windows]
     runs-on: ubuntu-latest
     timeout-minutes: 15

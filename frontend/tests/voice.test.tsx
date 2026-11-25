@@ -1,3 +1,7 @@
+/**
+ * @file frontend/tests/voice.test.tsx
+ * @description Tests of Voce: the voice helpers and VoicePage.
+ */
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import React from "react";
 import { describe, expect, it } from "vitest";

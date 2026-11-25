@@ -74,7 +74,7 @@ def shutdown_telemetry():
 
     try:
         provider.shutdown()
-    except Exception:
+    except Exception:  # noqa: BLE001 - shutdown must never break teardown
         # Shutdown must never break application/test teardown.
         pass
 

@@ -1,3 +1,7 @@
+/**
+ * @file frontend/tests/setup.ts
+ * @description Vitest setup: jest-dom matchers and cleanup after each test.
+ */
 import "@testing-library/jest-dom/vitest";
 
 import { cleanup } from "@testing-library/react";

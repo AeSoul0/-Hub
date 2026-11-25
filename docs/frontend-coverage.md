@@ -8,7 +8,7 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 - ◐ vuol dire parziale e conta mezzo: per esempio si vede ma non si cambia, o si cambia solo scrivendo JSON.
 - ⏸ vuol dire **sospesa**: riguarda solo l'app desktop (Tauri), sospesa dal 2026-11-24. Non conta né tra le coperte né tra le mancanti.
 
-**Ultimo aggiornamento:** P1, Pydantic AI (2026-11-25): tre provider nuovi (Groq, Anthropic, Google Gemini) nelle righe 19 e 23.
+**Ultimo aggiornamento:** R1, controllo generale (2026-11-25): tolta la route doppia `POST /api/memory/preferences` (la MEMORIA usa `POST /api/memory`). Un test nuovo controlla che ogni indirizzo chiamato dal frontend sia una route vera, con il metodo giusto.
 **Copertura:** 51 righe su 51, cioè **100%**, più 2 righe sospese (⏸). F10 ha confrontato la tabella con tutte le route e tutte le impostazioni del backend: l'[indice](#indice-ogni-route-e-ogni-impostazione) in fondo dice quale riga copre ciascuna, e un test in CI lo tiene allineato al codice.
 
 ## Conversazione e voce
@@ -118,6 +118,7 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 | F10 (confronto con route e impostazioni: due righe nuove, due sospese) | 51 su 51 | 100% |
 | D1 (la revisione dello schema nella riga 43) | 51 su 51 | 100% |
 | P1 (Groq, Anthropic e Gemini nelle righe 19 e 23) | 51 su 51 | 100% |
+| R1 (tolta `POST /api/memory/preferences`, doppione di `POST /api/memory`; nuovo controllo: ogni indirizzo chiamato dal frontend è una route vera, `tests/security/test_frontend_api_routes.py`) | 51 su 51 | 100% |
 
 ## Indice: ogni route e ogni impostazione
 
@@ -149,7 +150,6 @@ F10 (2026-11-24, aggiornato in P1): l'elenco viene dal codice (`tests/security/t
 | `DELETE /api/memory` | 35 |
 | `GET /api/memory` | 35 |
 | `POST /api/memory` | 35 |
-| `POST /api/memory/preferences` | 35 (come `POST /api/memory` con una preferenza) |
 | `POST /api/memory/reembed` | 36 |
 | `DELETE /api/memory/{memory_id}` | 35 |
 | `PUT /api/memory/{memory_id}` | 35 |

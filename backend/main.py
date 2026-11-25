@@ -15,6 +15,7 @@ Security invariants:
 """
 
 from __future__ import annotations
+import logging
 
 import asyncio
 import os
@@ -84,6 +85,9 @@ if (
 # ==============================================================================
 # DATABASE AND RUNTIME STARTUP
 # ==============================================================================
+
+
+logger = logging.getLogger(__name__)
 
 
 def startup_db():
@@ -165,8 +169,8 @@ async def lifespan(
             await asyncio.sleep(VOICE_SWEEP_SECONDS)
             try:
                 await asyncio.to_thread(release_idle_engines)
-            except Exception as exc:
-                print(f"[WARN] Voice release failed: {exc}")
+            except Exception as exc:  # noqa: BLE001 - a failed sweep must not stop the next one
+                logger.warning("Voice release failed: %s", exc)
 
     voice_sweeper = asyncio.create_task(release_idle_voice())
 

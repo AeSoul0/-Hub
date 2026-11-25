@@ -317,7 +317,7 @@ class MemoryStore:
         try:
             embedder = self._get_embedder()
             return embedder.embed(text), embedder.name
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - without an embedder, recall runs on full text only
             logger.warning("Memory embedding unavailable: %s", exc)
             return None, None
 
@@ -509,7 +509,7 @@ class MemoryStore:
         """
         try:
             return self._get_embedder().name
-        except Exception:
+        except ValueError:  # an unknown AEHUB_EMBEDDER
             return None
 
     def stats(self) -> Dict[str, Any]:

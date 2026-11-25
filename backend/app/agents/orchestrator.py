@@ -11,10 +11,11 @@ This module handles:
 
 The module delegates actual agent execution to the native Aurora facade.
 A run started from speech is marked input_channel="voice" (ADR-021).
-No LangChain message classes are required by this application boundary.
 """
 
 from __future__ import annotations
+
+import logging
 
 import asyncio
 import base64
@@ -98,6 +99,9 @@ AESOUL_SYSTEM_PROMPT = (
 # ==============================================================================
 # DATA PROCESSING / SPEECH HELPERS
 # ==============================================================================
+
+
+logger = logging.getLogger(__name__)
 
 
 def clean_text_for_speech(
@@ -312,10 +316,8 @@ async def generate_ai_response(
                 )
             )
 
-    except Exception as exc:
-        print(
-            f"Aurora runtime execution error: {exc}"
-        )
+    except Exception:
+        logger.exception("Aurora runtime execution error")
         raise
 
     clean_response = clean_text_for_speech(

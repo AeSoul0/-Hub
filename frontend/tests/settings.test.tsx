@@ -1,3 +1,7 @@
+/**
+ * @file frontend/tests/settings.test.tsx
+ * @description Tests of IMPOSTAZIONI: SettingsForm, panels, role chains, RoleEditor and SettingsPage.
+ */
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import React from "react";
 import { describe, expect, it, vi } from "vitest";

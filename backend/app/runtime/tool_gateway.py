@@ -176,7 +176,7 @@ class ToolGateway:
                     error=error,
                 )
 
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - audit write failure is logged and fails the call
             # Audit persistence must never leak database internals.
             logger.error(
                 "Audit write failed for tool %s (run %s): %s",
@@ -254,7 +254,7 @@ class ToolGateway:
                 invocation.tool_name,
                 dict(invocation.arguments),
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - any guardrail error denies the call, audited
             return ToolGateway._audit_and_fail(
                 invocation,
                 f"Tool guardrail rejected invocation: {exc}",
@@ -268,7 +268,7 @@ class ToolGateway:
                 invocation.spec,
                 invocation.arguments,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - any guardrail error denies the call, audited
             return ToolGateway._audit_and_fail(
                 invocation,
                 f"Tool guardrail rejected invocation: {exc}",
@@ -286,7 +286,7 @@ class ToolGateway:
                     instance=invocation.arguments,
                     schema=invocation.spec.input_schema,
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - any schema error denies the call, audited
                 return ToolGateway._audit_and_fail(
                     invocation,
                     f"Schema validation failed: {exc}",
@@ -496,7 +496,7 @@ class ToolGateway:
 
             raise
 
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - any tool error fails the call, audited
             duration_ms = int(
                 (time.monotonic() - start_time) * 1000
             )
