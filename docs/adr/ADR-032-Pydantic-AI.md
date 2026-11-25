@@ -46,7 +46,7 @@
 6. **Dipendenze:**
    - `pydantic-ai-slim[openai,groq,anthropic,google]==2.66.0`: versione fissata, la più recente con almeno due settimane; solo gli extra dei provider usati, per tenere leggera l'installazione del desktop;
    - il minimo di `pydantic` sale a `>=2.12`, perché lo richiede Pydantic AI 2;
-   - l'SDK `openai` resta, ma solo dentro Pydantic AI, e non si importa più nel codice di ÆHub.
+   - l'SDK `openai` (`>=3.50,<4`, come vuole l'extra `openai`) resta per Pydantic AI. Nel codice di ÆHub si importa in un solo punto, l'adapter, che crea il client con chiave, indirizzo e timeout.
 
 **Scartata l'opzione B** (l'`Agent` di Pydantic AI con i tool rinviati). Ci sarebbero due loop da tenere d'accordo: approvazioni, ripresa con lo stesso `run_id`, Critic, budget e kill switch dovrebbero agganciarsi a quello di Pydantic AI. In più bisognerebbe dimostrare tool per tool che niente parte senza il Gateway. Con A questa garanzia c'è per costruzione.
 

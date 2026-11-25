@@ -2,10 +2,14 @@
 @file tests/agent_engine/conftest.py
 @description Shared end-to-end fixtures for the native agent engine.
 
-The only fake boundaries are the OpenAI client and the Redis event bus.
-Everything else (AgentEngine, AgentRuntime,
-OpenAIAdapter, ToolGateway, ApprovalManager, AgentStateManager, AuditLog)
-runs for real against an in-memory database.
+The only fake boundaries are the OpenAI endpoint and the Redis event bus.
+Everything else (AgentEngine, AgentRuntime, PydanticAIAdapter and Pydantic AI
+itself, ToolGateway, ApprovalManager, AgentStateManager, AuditLog) runs for
+real against an in-memory database.
+
+The fake endpoint sits where the network would be (P1, ADR-032): a real
+`AsyncOpenAI` client whose `responses.create` records the request Pydantic
+AI built and answers with a real SDK `Response`.
 """
 
 from __future__ import annotations
@@ -21,7 +25,17 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.agent_engine.adapters.openai_adapter import OpenAIAdapter
+from openai import AsyncOpenAI
+from openai.types.responses import (
+    Response,
+    ResponseFunctionToolCall,
+    ResponseOutputMessage,
+    ResponseOutputText,
+    ResponseUsage,
+)
+from openai.types.responses.response_usage import InputTokensDetails, OutputTokensDetails
+
+from app.agent_engine.adapters.pydantic_ai_adapter import PydanticAIAdapter
 from app.domain.models.audit import ApprovalRecord, AuditChainLink, AuditLog
 from app.domain.models.documents import DocumentFile
 from app.domain.models.identity import Base
@@ -53,28 +67,102 @@ class FakeResponses:
         if not self.scripted:
             raise AssertionError("Unexpected extra model call.")
 
-        return self.scripted.pop(0)
+        return as_response(self.scripted.pop(0))
 
 
-def _fake_adapter(scripted: List[Any], model_name: str = "fake-model") -> OpenAIAdapter:
-    adapter = OpenAIAdapter(
+FAKE_BASE_URL = "http://openai.invalid/v1"
+
+
+def as_response(scripted: Any) -> Any:
+    """
+    A scripted answer as the SDK's `Response`. Some test modules still script
+    answers in the plain shape (id, output_text, output, usage) the engine
+    read before Pydantic AI (P1); they keep working unchanged.
+    """
+    if isinstance(scripted, (Response, BaseException)) or not hasattr(scripted, "output"):
+        return scripted
+
+    output: List[Any] = []
+
+    for item in getattr(scripted, "output", None) or []:
+        if getattr(item, "type", None) == "function_call":
+            output.append(
+                ResponseFunctionToolCall(
+                    type="function_call",
+                    call_id=item.call_id,
+                    name=item.name,
+                    arguments=item.arguments,
+                )
+            )
+
+    text = getattr(scripted, "output_text", "") or ""
+
+    if text or not output:
+        output.insert(
+            0,
+            ResponseOutputMessage(
+                id="msg_text",
+                type="message",
+                role="assistant",
+                status="completed",
+                content=[ResponseOutputText(type="output_text", text=text, annotations=[])],
+            ),
+        )
+
+    raw_usage = getattr(scripted, "usage", None)
+    usage = None if raw_usage is None else (raw_usage.input_tokens, raw_usage.output_tokens)
+
+    return _response(getattr(scripted, "id", "resp_scripted"), output, usage)
+
+
+def fake_openai_client(responses: Any) -> AsyncOpenAI:
+    """
+    A real AsyncOpenAI (Pydantic AI reads its address and options) whose
+    Responses endpoint is `responses`. Nothing reaches the network.
+    """
+    client = AsyncOpenAI(api_key="test-only", base_url=FAKE_BASE_URL, max_retries=0)
+    client.responses = responses
+    return client
+
+
+def _fake_adapter(scripted: List[Any], model_name: str = "fake-model") -> PydanticAIAdapter:
+    return PydanticAIAdapter(
         model_name=model_name,
+        provider="openai",
         api_key="test-only",
+        client=fake_openai_client(FakeResponses(scripted)),
     )
-    adapter._client = SimpleNamespace(
-        responses=FakeResponses(scripted),
-    )
-    return adapter
 
 
-def _usage(usage: Optional[Tuple[int, int]]) -> Any:
+def _usage(usage: Optional[Tuple[int, int]]) -> Optional[ResponseUsage]:
     """
     Responses API usage object for (input_tokens, output_tokens).
     """
     if usage is None:
         return None
 
-    return SimpleNamespace(input_tokens=usage[0], output_tokens=usage[1])
+    return ResponseUsage(
+        input_tokens=usage[0],
+        output_tokens=usage[1],
+        total_tokens=usage[0] + usage[1],
+        input_tokens_details=InputTokensDetails(cached_tokens=0, cache_write_tokens=0),
+        output_tokens_details=OutputTokensDetails(reasoning_tokens=0),
+    )
+
+
+def _response(response_id: str, output: List[Any], usage: Optional[Tuple[int, int]]) -> Response:
+    return Response(
+        id=response_id,
+        created_at=0,
+        model="fake",
+        object="response",
+        output=output,
+        parallel_tool_calls=True,
+        tool_choice="auto",
+        tools=[],
+        status="completed",
+        usage=_usage(usage),
+    )
 
 
 def _function_call(
@@ -82,28 +170,34 @@ def _function_call(
     name: str,
     arguments: Dict[str, Any],
     usage: Optional[Tuple[int, int]] = None,
-) -> Any:
-    return SimpleNamespace(
-        id=f"resp_{call_id}",
-        output_text="",
-        output=[
-            SimpleNamespace(
+) -> Response:
+    return _response(
+        f"resp_{call_id}",
+        [
+            ResponseFunctionToolCall(
                 type="function_call",
                 call_id=call_id,
                 name=name,
                 arguments=json.dumps(arguments),
             )
         ],
-        usage=_usage(usage),
+        usage,
     )
 
 
-def _text(text: str, usage: Optional[Tuple[int, int]] = None) -> Any:
-    return SimpleNamespace(
-        id="resp_text",
-        output_text=text,
-        output=[],
-        usage=_usage(usage),
+def _text(text: str, usage: Optional[Tuple[int, int]] = None) -> Response:
+    return _response(
+        "resp_text",
+        [
+            ResponseOutputMessage(
+                id="msg_text",
+                type="message",
+                role="assistant",
+                status="completed",
+                content=[ResponseOutputText(type="output_text", text=text, annotations=[])],
+            )
+        ],
+        usage,
     )
 
 
@@ -114,7 +208,7 @@ def _accept(usage: Optional[Tuple[int, int]] = None) -> Any:
 @pytest.fixture
 def fake_model() -> SimpleNamespace:
     """
-    Builders for a real OpenAIAdapter backed by scripted responses.
+    Builders for a real PydanticAIAdapter backed by scripted responses.
     """
     return SimpleNamespace(
         adapter=_fake_adapter,

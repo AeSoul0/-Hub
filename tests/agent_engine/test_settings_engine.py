@@ -21,7 +21,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.agent_engine import catalog
-from app.agent_engine.adapters.chat_completions_adapter import ChatCompletionsAdapter
+from app.agent_engine.adapters.pydantic_ai_adapter import PydanticAIAdapter
 from app.agent_engine.approval.manager import approval_ttl
 from app.agent_engine.context import ContextBudget
 from app.agent_engine.routing import Role, breaker_for, reset_breakers, triage_role
@@ -130,7 +130,7 @@ def test_engine_settings_apply_without_a_restart():
     assert approval_ttl() == timedelta(seconds=300)
     assert ContextBudget.from_env().total == 88_000
     assert breaker_for("openai:a").threshold == 3
-    assert ChatCompletionsAdapter.local("llama")._base_url == "http://localhost:11434/v1"
+    assert PydanticAIAdapter.for_provider("local", "llama")._base_url == "http://localhost:11434/v1"
 
     replace_stored(
         {
@@ -152,7 +152,7 @@ def test_engine_settings_apply_without_a_restart():
     assert (budget.total, budget.snapshot_every) == (64_000, 12)
     breaker = breaker_for("openai:a")
     assert (breaker.threshold, breaker.cooldown) == (1, 5.0)
-    assert ChatCompletionsAdapter.local("llama")._base_url == "http://127.0.0.1:1234/v1"
+    assert PydanticAIAdapter.for_provider("local", "llama")._base_url == "http://127.0.0.1:1234/v1"
 
 
 def test_role_and_provider_views(monkeypatch):
@@ -269,4 +269,5 @@ def test_local_catalog_uses_the_configured_server(monkeypatch):
 
     assert response.status_code == 503
     assert seen == ["http://127.0.0.1:1234/v1/models"]
-    assert client().get("/api/settings/provider-models/anthropic").status_code == 422
+    # Anthropic is a provider since P1 (ADR-032); an unknown one is refused.
+    assert client().get("/api/settings/provider-models/mistral").status_code == 422

@@ -7,7 +7,7 @@ Exit criteria:
   and never loses its goal;
 - a fact recorded in session A is recalled in session B.
 
-The engine runs for real (AgentRuntime, OpenAIAdapter, ToolGateway, memory
+The engine runs for real (AgentRuntime, PydanticAIAdapter, ToolGateway, memory
 skill, MemoryStore) against the in-memory database; only the OpenAI client
 is scripted.
 """

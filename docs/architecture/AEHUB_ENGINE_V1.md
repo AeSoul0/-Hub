@@ -39,9 +39,9 @@ Strictly isolated by workspace_id.
 3. **OutputGuardrail**: Strips sensitive system variables from user-facing responses.
 
 ### Model Adapters & Circuit Breaking
-LangGraph was removed in favor of the unified ModelProvider layer (e.g., OpenAIAdapter, GroqAdapter).
-The Orchestrator, Worker, and Checker can each operate on different providers.
-If the primary provider crashes (e.g., HTTP 503), the Kernel's native **Circuit Breaker** automatically reroutes the prompt to a fallback adapter.
+Every model call goes through one `ModelProvider`, `PydanticAIAdapter` (ADR-032): Pydantic AI makes exactly one request per turn and returns the proposed tool calls, which run only through the Tool Gateway. Providers: OpenAI (Responses API), OpenRouter, a local OpenAI-compatible server, Groq, Anthropic and Google Gemini.
+Each role (architect, research, critic, fast worker, triage) runs on its own chain of `provider:model`, and the Critic never shares a model with a worker.
+If the primary provider fails (e.g., HTTP 503), a per-target **Circuit Breaker** moves the call to the next model of the chain; the input is rebuilt from the run's durable observations, so no tool runs twice.
 
 ### Observability & Evaluation
 The EventDispatcher creates deterministic Flight Recorder logs (JSONL). The Phase 10 EvaluationEngine leverages an LLM-as-a-Judge to parse these traces against a 140+ test case dataset to certify the Engine's Definition of Done.
