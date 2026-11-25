@@ -6,14 +6,6 @@ class AgentEngineError(Exception):
     """Base exception for all Agent Engine errors."""
     pass
 
-class ToolExecutionError(AgentEngineError):
-    """Raised when a tool execution fails."""
-    pass
-
-class PolicyViolationError(AgentEngineError):
-    """Raised when an action violates the configured policy."""
-    pass
-
 class MaxTurnsReachedError(AgentEngineError):
     """Raised when the maximum number of turns is reached in an orchestration loop."""
     pass
@@ -28,11 +20,6 @@ class ApprovalRequiredError(AgentEngineError):
     def __init__(self, message: str = "", approval_id: str | None = None) -> None:
         super().__init__(message)
         self.approval_id = approval_id
-
-class StateRecoveryError(AgentEngineError):
-    """Raised when the engine fails to recover a durable run state."""
-    pass
-
 
 class RunInterrupted(AgentEngineError):
     """

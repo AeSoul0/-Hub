@@ -455,13 +455,6 @@ class ModelRouter:
             )
         return self._providers[role]
 
-    def describe(self) -> Dict[str, List[str]]:
-        return {
-            role.value: [target.label for target in self.config.chain(role)]
-            for role in Role
-        }
-
-
 def check_routing_at_startup() -> Optional[str]:
     """
     Validate the routing config once at startup. Returns the error message

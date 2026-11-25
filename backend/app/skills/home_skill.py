@@ -188,14 +188,6 @@ class HomeSkill(BaseSkill):
             ),
         }
 
-    @property
-    def system_prompt_extension(self) -> Optional[str]:
-        return (
-            "For the user's lights and doors use the home_* tools with a device id "
-            "from home_list_devices. Unlocking a door always waits for the user's approval."
-        )
-
-
 def get_skill() -> BaseSkill:
     return HomeSkill()
 

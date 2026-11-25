@@ -32,17 +32,13 @@ mcp>=2.3.0
 SQLAlchemy>=2.0.23
 # The schema: every change is an Alembic revision (D1, ADR-031).
 alembic>=1.20.1
-asyncpg>=0.29.0
 psycopg2-binary>=2.9.9
 psycopg[binary]>=3.1.0
-psycopg-pool>=3.2.0
 pgvector>=0.2.4
 
 # Imported by the cache and event bus even when they run in-process.
 redis>=8.1.0
 
-Pillow>=13.0.0
-numpy>=1.26.0
 
 psutil>=5.9.8
 pypdf>=6.0.0
@@ -55,5 +51,4 @@ prometheus-client>=0.19.0
 
 python-dotenv>=1.0.0
 python-multipart>=0.0.32
-aiofiles>=23.2.0
 jsonschema>=4.20.0

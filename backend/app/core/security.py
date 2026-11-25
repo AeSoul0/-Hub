@@ -522,17 +522,6 @@ def resolve_principal(
     )
 
 
-def get_secure_session_id(
-    principal: Principal = Depends(resolve_principal),
-) -> str:
-    """
-    Preserve the existing API contract where callers use this dependency
-    as an authenticated principal identifier.
-    """
-
-    return principal.id
-
-
 class PolicyEngine:
     """
     Central authorization boundary.

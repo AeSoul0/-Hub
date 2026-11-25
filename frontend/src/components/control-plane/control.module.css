@@ -251,6 +251,32 @@
     box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
 }
 
+/* sign-in (AuthGate): one card in the middle of the sky */
+.gate {
+    min-height: 100dvh;
+    display: grid;
+    place-items: center;
+    padding: 16px;
+}
+.gateCard {
+    width: min(100%, 380px);
+    padding: 28px 24px;
+    display: grid;
+    gap: 16px;
+}
+.gateCard .mark {
+    margin: 0 0 4px;
+}
+.gateCard .gateButton {
+    justify-self: stretch;
+    padding: 9px 13px;
+    border-color: var(--ice);
+    color: var(--ice);
+}
+.gateCard .gateButton:hover:not(:disabled) {
+    background: rgba(143, 184, 255, 0.1);
+}
+
 /* controls */
 .row {
     display: flex;

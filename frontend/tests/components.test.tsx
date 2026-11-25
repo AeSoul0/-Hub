@@ -165,6 +165,33 @@ describe("LoginForm and AuthGate", () => {
 
         expect(await screen.findByText("Control Plane content")).toBeInTheDocument();
     });
+
+    it("says the backend is unreachable in the chosen language, and retries", async () => {
+        let up = false;
+        stubFetch({
+            "GET /api/auth/verify": () => (up ? { status: 200, body: { status: "ok" } } : { status: 503, body: {} }),
+        });
+
+        const { unmount } = render(
+            <AuthGate>
+                <p>Control Plane content</p>
+            </AuthGate>,
+        );
+        expect(await screen.findByRole("alert")).toHaveTextContent("The backend is not reachable.");
+        unmount();
+
+        chooseLanguage("it");
+        render(
+            <AuthGate>
+                <p>Control Plane content</p>
+            </AuthGate>,
+        );
+        expect(await screen.findByRole("alert")).toHaveTextContent("Il backend non risponde.");
+
+        up = true;
+        fireEvent.click(screen.getByRole("button", { name: "Riprova" }));
+        expect(await screen.findByText("Control Plane content")).toBeInTheDocument();
+    });
 });
 
 describe("RunDetailView", () => {

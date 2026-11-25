@@ -14,6 +14,8 @@ import React, { useCallback, useEffect, useState } from "react";
 import { ApiError, getJson, postJson } from "@/lib/api/client";
 import { catalog, refreshInterface, useText } from "@/lib/i18n";
 
+import styles from "./control.module.css";
+
 const TEXT = catalog({
     en: {
         wrongKey: "Wrong access key.",
@@ -22,7 +24,7 @@ const TEXT = catalog({
         accessKey: "Access key",
         signingIn: "Signing in…",
         checking: "Checking the session…",
-        unreachable: "{t.unreachable}",
+        unreachable: "The backend is not reachable.",
         retry: "Retry",
     },
     it: {
@@ -69,33 +71,40 @@ export function LoginForm({ onSignedIn }: { onSignedIn: () => void }) {
     };
 
     return (
-        <form onSubmit={submit} className="max-w-sm mx-auto mt-24 space-y-4" aria-label={t.signIn}>
-            <h1 className="text-2xl font-bold text-orange-500">ÆHub Control Plane</h1>
-            <label className="block text-sm text-gray-300" htmlFor="access-key">
-                {t.accessKey}
-            </label>
-            <input
-                id="access-key"
-                type="password"
-                autoComplete="current-password"
-                value={key}
-                onChange={(event) => setKey(event.target.value)}
-                className="w-full rounded bg-gray-900 border border-gray-700 px-3 py-2 text-white"
-                required
-            />
-            {error && (
-                <p role="alert" className="text-red-400 text-sm">
-                    {error}
-                </p>
-            )}
-            <button
-                type="submit"
-                disabled={busy || key.length === 0}
-                className="w-full bg-orange-600 hover:bg-orange-500 disabled:opacity-50 rounded px-4 py-2 font-semibold"
+        <main className={styles.gate}>
+            <form
+                onSubmit={submit}
+                className={`surface rise ${styles.gateCard}`}
+                aria-label={t.signIn}
             >
-                {busy ? t.signingIn : t.signIn}
-            </button>
-        </form>
+                <h1 className={styles.mark}>
+                    ÆHUB<small>CONTROL PLANE</small>
+                </h1>
+                <label className={styles.field} htmlFor="access-key">
+                    {t.accessKey}
+                    <input
+                        id="access-key"
+                        type="password"
+                        autoComplete="current-password"
+                        value={key}
+                        onChange={(event) => setKey(event.target.value)}
+                        required
+                    />
+                </label>
+                {error && (
+                    <p role="alert" className={styles.error}>
+                        {error}
+                    </p>
+                )}
+                <button
+                    type="submit"
+                    disabled={busy || key.length === 0}
+                    className={`${styles.btn} ${styles.gateButton}`}
+                >
+                    {busy ? t.signingIn : t.signIn}
+                </button>
+            </form>
+        </main>
     );
 }
 
@@ -118,17 +127,27 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     }, [check]);
 
     if (state === "checking") {
-        return <p className="p-8 text-gray-400">{t.checking}</p>;
+        return (
+            <main className={styles.gate}>
+                <p className={styles.muted} role="status">
+                    {t.checking}
+                </p>
+            </main>
+        );
     }
 
     if (state === "unreachable") {
         return (
-            <div className="p-8">
-                <p className="text-red-400 mb-4">The backend is not reachable.</p>
-                <button onClick={check} className="bg-gray-700 hover:bg-gray-600 px-4 py-1 rounded">
-                    {t.retry}
-                </button>
-            </div>
+            <main className={styles.gate}>
+                <div className={`surface rise ${styles.gateCard}`}>
+                    <p role="alert" className={styles.error}>
+                        {t.unreachable}
+                    </p>
+                    <button onClick={check} className={styles.btn}>
+                        {t.retry}
+                    </button>
+                </div>
+            </main>
         );
     }
 

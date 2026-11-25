@@ -3,13 +3,18 @@
 @description Native browser automation skill for A.U.R.O.R.A.
 
 Provides SSRF-protected browser navigation and text extraction through a
-framework-agnostic asynchronous Python callable.
+framework-agnostic asynchronous Python callable. Every request the page makes
+(redirects, images, scripts, fetch, WebSocket) passes the same SSRF check as
+the first URL, so a public page cannot point the browser at this computer or
+its network.
 """
 
 from __future__ import annotations
+import asyncio
 import logging
+from urllib.parse import urljoin
 
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List
 
 from bs4 import BeautifulSoup
 
@@ -28,6 +33,63 @@ from app.skills.base import (
 
 
 logger = logging.getLogger(__name__)
+
+# Schemes that never reach the network.
+LOCAL_SCHEMES = ("data:", "blob:", "about:")
+MAX_REDIRECTS = 5
+
+
+async def is_allowed_request(url: str) -> bool:
+    """Whether the browser may load this URL: local schemes, or a public address."""
+    from app.core.ssrf_protector import SSRFError, SSRFProtector
+
+    if url.startswith(LOCAL_SCHEMES):
+        return True
+    try:
+        # validate_url resolves DNS, which blocks: keep it off the event loop.
+        await asyncio.to_thread(SSRFProtector.validate_url, url)
+    except SSRFError as exc:
+        logger.warning("Browser request blocked: %s", exc)
+        return False
+    return True
+
+
+async def guard_request(route) -> None:
+    """
+    Playwright route handler: abort any request to a non-public address.
+
+    Playwright calls the handler only for the first request of a redirect
+    chain, and the browser's request after a redirect does not come back
+    here either. So the handler follows the chain itself, one hop at a time,
+    checks every hop, and hands the browser only the final response.
+    """
+    url = route.request.url
+    if not await is_allowed_request(url):
+        await route.abort("blockedbyclient")
+        return
+    if url.startswith(LOCAL_SCHEMES):
+        await route.continue_()
+        return
+    for _ in range(MAX_REDIRECTS + 1):
+        response = await route.fetch(url=url, max_redirects=0)
+        location = response.headers.get("location")
+        if not (300 <= response.status < 400 and location):
+            await route.fulfill(response=response)
+            return
+        url = urljoin(url, location)
+        if not await is_allowed_request(url):
+            await route.abort("blockedbyclient")
+            return
+    logger.warning("Browser request blocked: more than %d redirects", MAX_REDIRECTS)
+    await route.abort("blockedbyclient")
+
+
+async def guard_web_socket(ws) -> None:
+    """Playwright WebSocket handler: connect only to public addresses."""
+    if await is_allowed_request(ws.url.replace("ws", "http", 1)):
+        ws.connect_to_server()
+    else:
+        await ws.close(code=1008, reason="Blocked by ÆHub")
 
 
 async def browse_and_extract(url: str) -> str:
@@ -51,7 +113,10 @@ async def browse_and_extract(url: str) -> str:
             )
 
             try:
-                context = await browser.new_context()
+                # Service workers could fetch outside the route below.
+                context = await browser.new_context(service_workers="block")
+                await context.route("**/*", guard_request)
+                await context.route_web_socket("**/*", guard_web_socket)
 
                 try:
                     page = await context.new_page()
@@ -180,19 +245,6 @@ class BrowserSkill(BaseSkill):
                 audit_policy="standard",
             )
         }
-
-    @property
-    def system_prompt_extension(self) -> Optional[str]:
-        """
-        Return browser-specific system instructions.
-        """
-        return (
-            "You have access to a controlled browser tool. "
-            "Use 'browse_and_extract' only when current web content is "
-            "required. URLs are validated against SSRF protections before "
-            "network access is permitted."
-        )
-
 
 def get_skill() -> BaseSkill:
     """

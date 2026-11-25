@@ -9,7 +9,7 @@ an external tool-decorator framework.
 
 from __future__ import annotations
 
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List
 
 from app.workers.sandbox import sandbox_manager
 
@@ -175,20 +175,6 @@ class SandboxSkill(BaseSkill):
                 audit_policy="standard",
             ),
         }
-
-    @property
-    def system_prompt_extension(self) -> Optional[str]:
-        """
-        Return sandbox-specific system instructions.
-        """
-        return (
-            "You have access to an isolated execution sandbox. "
-            "Use 'execute_python_code' for calculations, data processing, "
-            "or controlled code execution. Use 'execute_shell_script' only "
-            "when shell execution is necessary. Shell execution requires "
-            "explicit approval and sandbox policy enforcement."
-        )
-
 
 def get_skill() -> BaseSkill:
     """

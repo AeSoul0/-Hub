@@ -94,7 +94,7 @@ def test_skill_registry_registration() -> None:
 
 def test_skill_registry_resolves_tool_and_metadata() -> None:
     """
-    Verify executable tool and metadata are resolved together.
+    Verify the executable tool and its metadata are found by name.
     """
     registry = SkillRegistry()
 
@@ -102,14 +102,10 @@ def test_skill_registry_resolves_tool_and_metadata() -> None:
         DummySkill()
     )
 
-    resolved = registry.resolve_tool(
-        "dummy_tool"
-    )
+    tool = registry.get_tool("dummy_tool")
+    metadata = registry.get_tool_metadata("dummy_tool")
 
-    assert resolved is not None
-
-    tool, metadata = resolved
-
+    assert metadata is not None
     assert tool is dummy_tool
     assert metadata.name == "dummy_tool"
     assert metadata.description == "Deterministic test tool."
@@ -133,23 +129,6 @@ def test_skill_registry_public_metadata_lookup() -> None:
     assert metadata.name == "dummy_tool"
 
 
-def test_skill_registry_get_tools() -> None:
-    """
-    Verify registered executable tools are returned.
-    """
-    registry = SkillRegistry()
-
-    registry.register_skill(
-        DummySkill()
-    )
-
-    tools = registry.get_all_tools()
-
-    assert tools == [
-        dummy_tool,
-    ]
-
-
 def test_skill_registry_unknown_tool_fails_closed() -> None:
     """
     Verify unknown tools are not resolved.
@@ -165,10 +144,6 @@ def test_skill_registry_unknown_tool_fails_closed() -> None:
     ) is None
 
     assert registry.get_tool_metadata(
-        "unknown_tool"
-    ) is None
-
-    assert registry.resolve_tool(
         "unknown_tool"
     ) is None
 

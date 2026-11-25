@@ -311,20 +311,6 @@ class MemorySkill(BaseSkill):
             ),
         }
 
-    @property
-    def system_prompt_extension(self) -> Optional[str]:
-        """
-        Return the memory-specific system prompt extension.
-        """
-        return (
-            "You have access to a long-term Memory system. "
-            "When the user explicitly asks you to remember a durable fact, "
-            "preference, or procedure, use the appropriate memory tool; "
-            "relevant memories from earlier sessions are recalled for you. "
-            "Do not persist transient conversational context."
-        )
-
-
 def get_skill() -> BaseSkill:
     """
     Return the initialized MemorySkill instance.
