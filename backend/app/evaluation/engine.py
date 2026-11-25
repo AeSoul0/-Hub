@@ -178,8 +178,8 @@ def eval_environment(
     documents: Optional[Dict[str, str]] = None,
 ) -> Iterator[SimpleNamespace]:
     """
-    Isolated engine environment: in-memory database, recorded event bus, no
-    Celery, the evaluation tools plus memory and document search as the only
+    Isolated engine environment: in-memory database, recorded event bus, the
+    evaluation tools plus memory and document search as the only
     skills, and a temporary working folder holding the case's documents.
     """
     from app.domain.models.audit import ApprovalRecord, AuditChainLink, AuditLog
@@ -464,7 +464,7 @@ async def _run_step(
         outcome["error"] = str(exc)
     except AgentEngineError as exc:
         outcome["error"] = f"{type(exc).__name__}: {exc}"
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - the eval harness records any engine error as the case outcome
         outcome["status"] = "ERROR"
         outcome["error"] = f"{type(exc).__name__}: {exc}"
 

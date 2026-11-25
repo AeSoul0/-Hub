@@ -1,17 +1,18 @@
 /**
  * @file frontend/src/components/control-plane/SettingsForm.tsx
- * @description Editable settings (M12): each field shows where its value
- * comes from; Save sends only what changed, Reset goes back to the
- * environment or the default. The backend validates the whole batch.
+ * @description Editable settings (M12, restyled in F4): each field shows
+ * where its value comes from; Save sends only what changed, Ripristina goes
+ * back to the environment or the default. The backend validates the whole
+ * batch.
  */
 import React, { useState } from "react";
 
-import type { SettingChanges, SettingField, SettingSource } from "@/lib/api/settings";
+import styles from "@/components/control-plane/control.module.css";
+import type { SettingChanges, SettingField } from "@/lib/api/settings";
+import { settingText, SOURCE_LABELS } from "@/lib/nucleo/models";
 
-const SOURCE_LABEL: Record<SettingSource, string> = {
-    database: "set here",
-    environment: "from backend/.env",
-    default: "default",
+const CHOICE_EMPTY: Record<string, string> = {
+    AEHUB_FORCE_ROLE: "per regole (consigliato)",
 };
 
 export default function SettingsForm({
@@ -19,7 +20,7 @@ export default function SettingsForm({
     errors,
     busy,
     onSave,
-    submitLabel = "Save",
+    submitLabel = "Salva",
 }: {
     fields: SettingField[];
     errors: Record<string, string>;
@@ -37,78 +38,87 @@ export default function SettingsForm({
             .map((field) => [field.name, draft[field.name] ?? ""]),
     );
 
+    const set = (name: string, value: string) => setDraft((current) => ({ ...current, [name]: value }));
+
     return (
         <form
             onSubmit={(event) => {
                 event.preventDefault();
                 onSave(changes);
             }}
-            className="space-y-4 max-w-3xl"
+            className={styles.form}
         >
             {fields.map((field) => {
                 const id = `setting-${field.name}`;
+                const { label, help } = settingText(field);
                 const multiline = field.kind === "roles" || field.kind === "prices";
                 const common = {
                     id,
                     value: draft[field.name] ?? "",
                     "aria-invalid": Boolean(errors[field.name]),
                     "aria-describedby": `${id}-help`,
-                    className: `w-full rounded bg-gray-900 border px-3 py-1 ${
-                        errors[field.name] ? "border-red-600" : "border-gray-700"
-                    } ${multiline ? "font-mono text-sm" : ""}`,
+                    className: styles.input,
                 };
 
                 return (
-                    <div key={field.name}>
-                        <div className="flex flex-wrap items-baseline gap-2 mb-1">
-                            <label htmlFor={id} className="text-sm text-gray-200">
-                                {field.label}
+                    <div key={field.name} className={styles.setting}>
+                        <div className={styles.settingHead}>
+                            <label htmlFor={id} className={styles.settingLabel}>
+                                {label}
                             </label>
-                            <span className="text-xs text-gray-500">{SOURCE_LABEL[field.source]}</span>
+                            <span className={styles.source}>{SOURCE_LABELS[field.source]}</span>
                             {field.source === "database" && (
                                 <button
                                     type="button"
                                     onClick={() => onSave({ [field.name]: null })}
                                     disabled={busy}
-                                    className="text-xs text-cyan-400 hover:text-cyan-300"
-                                    aria-label={`Reset ${field.label}`}
+                                    className={styles.linkBtn}
+                                    aria-label={`Ripristina ${label}`}
                                 >
-                                    Reset
+                                    ripristina
                                 </button>
                             )}
                         </div>
-                        {multiline ? (
-                            <textarea
-                                {...common}
-                                rows={4}
-                                onChange={(event) =>
-                                    setDraft((current) => ({ ...current, [field.name]: event.target.value }))
-                                }
-                            />
+                        {field.kind === "choice" ? (
+                            <select {...common} onChange={(event) => set(field.name, event.target.value)}>
+                                {field.default === "" && <option value="">{CHOICE_EMPTY[field.name] ?? "—"}</option>}
+                                {(field.options ?? []).map((option) => (
+                                    <option key={option} value={option}>
+                                        {option}
+                                    </option>
+                                ))}
+                            </select>
+                        ) : multiline ? (
+                            <textarea {...common} rows={4} onChange={(event) => set(field.name, event.target.value)} />
                         ) : (
                             <input
                                 {...common}
                                 inputMode={field.kind === "text" || field.kind === "price_pair" ? undefined : "decimal"}
                                 placeholder={field.default}
-                                onChange={(event) =>
-                                    setDraft((current) => ({ ...current, [field.name]: event.target.value }))
-                                }
+                                spellCheck={false}
+                                onChange={(event) => set(field.name, event.target.value)}
                             />
                         )}
-                        <p id={`${id}-help`} className="mt-1 text-xs text-gray-400">
-                            {field.help}
+                        <p id={`${id}-help`} className={styles.help}>
+                            {help}
                         </p>
-                        {errors[field.name] && <p className="text-sm text-red-400">{errors[field.name]}</p>}
+                        {errors[field.name] && (
+                            <p className={styles.error} role="alert">
+                                {errors[field.name]}
+                            </p>
+                        )}
                     </div>
                 );
             })}
-            <button
-                type="submit"
-                disabled={busy || Object.keys(changes).length === 0}
-                className="bg-orange-600 hover:bg-orange-500 disabled:opacity-50 rounded px-4 py-1"
-            >
-                {submitLabel}
-            </button>
+            <div className={styles.row}>
+                <button
+                    type="submit"
+                    disabled={busy || Object.keys(changes).length === 0}
+                    className={`${styles.btn} ${styles.go}`}
+                >
+                    {submitLabel}
+                </button>
+            </div>
         </form>
     );
 }

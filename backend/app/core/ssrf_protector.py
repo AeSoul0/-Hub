@@ -16,17 +16,13 @@ class SSRFError(Exception):
     pass
 
 class SSRFProtector:
-    """
-    Represents the SSRFProtector entity and its core operations.
-    """
+    """Checks that a URL the agent fetches resolves only to public addresses."""
 
     ALLOWED_SCHEMES = {"http", "https"}
 
     @staticmethod
     def is_safe_ip(ip_str: str) -> bool:
-        """
-        Executes the is_safe_ip logic.
-        """
+        """Whether an address is globally routable unicast (no loopback, private, link-local or reserved range)."""
         try:
             ip = ipaddress.ip_address(ip_str)
         except ValueError:
@@ -45,7 +41,6 @@ class SSRFProtector:
     @staticmethod
     def resolve_and_validate(hostname: str) -> str:
         """
-        Executes the resolve_and_validate logic.
         Resolves hostname and checks that every resolved IP is safe, so a
         host with one public and one private record is rejected.
         """
@@ -68,8 +63,7 @@ class SSRFProtector:
     @staticmethod
     def validate_url(url: str) -> Tuple[urllib.parse.ParseResult, str]:
         """
-        Executes the validate_url logic.
-        Returns parsed URL parts if safe.
+        The parsed URL and its first safe address; SSRFError for an unsafe one.
         """
         parsed = urllib.parse.urlparse(url)
         if parsed.scheme not in SSRFProtector.ALLOWED_SCHEMES:
@@ -86,14 +80,11 @@ class SSRFProtector:
         return parsed, ip_address
 
 class SafeHTTPClient:
-    """
-    Represents the SafeHTTPClient entity and its core operations.
-    """
+    """An HTTP client that validates every URL, redirects included, against SSRF."""
 
     @staticmethod
     async def request(method: str, url: str, **kwargs) -> httpx.Response:
         """
-        Executes the request logic.
         Validates URL and handles redirects manually to prevent redirect SSRF.
         """
         SSRFProtector.validate_url(url)

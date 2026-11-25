@@ -39,6 +39,9 @@ from .settings import AppSetting
 # Files of the working folder indexed for document search (M13).
 from .documents import DocumentFile
 
+# Skills imported as SKILL.md files (F5).
+from .skills import ImportedSkill
+
 __all__ = [
     "Base",
     "Workspace",
@@ -57,4 +60,5 @@ __all__ = [
     "MonthlySpend",
     "AppSetting",
     "DocumentFile",
+    "ImportedSkill",
 ]

@@ -1,10 +1,13 @@
+/**
+ * @file frontend/tests/components.test.tsx
+ * @description Tests of shared components: ApprovalCard, LoginForm and AuthGate, RunDetailView.
+ */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import ApprovalCard, { type ApprovalRequest } from "@/components/control-plane/ApprovalCard";
 import AuthGate, { LoginForm } from "@/components/control-plane/AuthGate";
-import MemoryList, { type Memory } from "@/components/control-plane/MemoryList";
 import RunDetailView, { type RunDetail } from "@/components/control-plane/RunDetailView";
 
 import { stubFetch } from "./helpers";
@@ -45,6 +48,7 @@ function run(overrides: Partial<RunDetail> = {}): RunDetail {
         errors: [],
         usage: { cost: 0.0123, model_calls: 2, tool_calls: 1, total_tokens: 900, active_seconds: 3.2 },
         untrusted_context: true,
+        exposed_tools: ["browse_and_extract", "search_documents"],
         pending_tool_call: null,
         queued_tool_calls: [],
         last_feedback: null,
@@ -70,20 +74,20 @@ describe("ApprovalCard", () => {
         render(<ApprovalCard item={approval()} now={NOW} busy={false} onDecide={onDecide} />);
 
         expect(screen.getByText(/"record_id": "r1"/)).toBeInTheDocument();
-        expect(screen.getByText("expires in 300s")).toBeInTheDocument();
+        expect(screen.getByText("scade tra 300 s")).toBeInTheDocument();
         expect(screen.getByRole("link", { name: "run run-1" })).toHaveAttribute(
             "href",
             "/control-plane/runs/view?id=run-1",
         );
 
-        fireEvent.click(screen.getByRole("button", { name: "Deny" }));
+        fireEvent.click(screen.getByRole("button", { name: "Nega" }));
         expect(onDecide).toHaveBeenCalledWith("a1", "deny");
     });
 
     it("warns when the arguments cannot be shown", () => {
         render(<ApprovalCard item={approval({ arguments: null })} now={NOW} busy={false} onDecide={vi.fn()} />);
 
-        expect(screen.getByText(/Arguments not available/)).toBeInTheDocument();
+        expect(screen.getByText(/Argomenti non disponibili/)).toBeInTheDocument();
     });
 
     it("cannot be decided once expired", () => {
@@ -96,8 +100,8 @@ describe("ApprovalCard", () => {
             />,
         );
 
-        expect(screen.getByText("expired")).toBeInTheDocument();
-        expect(screen.getByRole("button", { name: "Allow once" })).toBeDisabled();
+        expect(screen.getByText("scaduta")).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Consenti una volta" })).toBeDisabled();
     });
 });
 
@@ -158,9 +162,28 @@ describe("RunDetailView", () => {
         render(<RunDetailView run={run()} />);
 
         expect(screen.getByText("Summarise the page.")).toBeInTheDocument();
-        expect(screen.getByText("untrusted")).toBeInTheDocument();
-        expect(screen.getByText("has read untrusted content")).toBeInTheDocument();
-        expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+        expect(screen.getByText("non affidabile")).toBeInTheDocument();
+        expect(screen.getByText("ha letto contenuti non affidabili")).toBeInTheDocument();
+        expect(screen.getByText("browse_and_extract, search_documents")).toBeInTheDocument();
+        expect(screen.getByText("completata")).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "Ferma la run" })).not.toBeInTheDocument();
+    });
+
+    it("shows the totals against the limits and the timeline slot", () => {
+        render(
+            <RunDetailView
+                run={run({ usage: { cost: 1.9, failed_tool_calls: 2, files_modified: ["a.txt"], active_seconds: 61 } })}
+                limits={{ max_run_cost: 2, max_run_seconds: 900, max_failed_tool_calls: 10, max_files_modified: 0, monthly_budget: 30 }}
+                timeline={<p>la timeline</p>}
+            />,
+        );
+
+        const limits = screen.getByRole("list", { name: "Limiti della run" });
+        expect(limits).toHaveTextContent("$1.90 / $2.00");
+        expect(limits).toHaveTextContent("1:01 / 15:00");
+        expect(limits).toHaveTextContent("2 / 10");
+        expect(limits).toHaveTextContent("1 · nessun limite");
+        expect(screen.getByText("la timeline")).toBeInTheDocument();
     });
 
     it("shows the parked call and lets a waiting run be cancelled", () => {
@@ -182,33 +205,11 @@ describe("RunDetailView", () => {
             />,
         );
 
-        expect(screen.getByText("Waiting for approval")).toBeInTheDocument();
+        expect(screen.getByText("Attende approvazione".toUpperCase())).toBeInTheDocument();
         expect(screen.getByText(/boss@example.org/)).toBeInTheDocument();
-        expect(screen.getByText("Then: write_file")).toBeInTheDocument();
+        expect(screen.getByText("Poi: write_file")).toBeInTheDocument();
 
-        fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+        fireEvent.click(screen.getByRole("button", { name: "Ferma la run" }));
         expect(onCancel).toHaveBeenCalledTimes(1);
-    });
-});
-
-describe("MemoryList", () => {
-    it("lists memories with their source and forgets one", () => {
-        const memories: Memory[] = [
-            { id: "m1", kind: "preference", content: "Answer in Italian.", trusted: true, session_id: null, created_at: null, score: null },
-            { id: "m2", kind: "fact", content: "From a web page.", trusted: false, session_id: "s1", created_at: null, score: null },
-        ];
-        const onForget = vi.fn();
-        render(<MemoryList memories={memories} onForget={onForget} />);
-
-        expect(screen.getByText("trusted")).toBeInTheDocument();
-        expect(screen.getByText("untrusted")).toBeInTheDocument();
-
-        fireEvent.click(screen.getByRole("button", { name: "Forget fact m2" }));
-        expect(onForget).toHaveBeenCalledWith(memories[1]);
-    });
-
-    it("says when there is nothing", () => {
-        render(<MemoryList memories={[]} onForget={vi.fn()} />);
-        expect(screen.getByText("Nothing remembered here.")).toBeInTheDocument();
     });
 });

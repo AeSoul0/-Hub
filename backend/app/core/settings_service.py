@@ -18,6 +18,7 @@ import json
 import logging
 import math
 import os
+import re
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Dict, List, Literal, Mapping, Optional
@@ -32,6 +33,7 @@ from app.core.runtime_config import (
     replace_stored,
     source_of,
 )
+from app.agent_engine.adapters.pydantic_ai_adapter import PROVIDER_KEYS
 from app.domain.models.settings import AppSetting
 
 
@@ -40,17 +42,18 @@ logger = logging.getLogger(__name__)
 ONBOARDING_KEY = "_onboarding_completed_at"
 MAX_VALUE_LENGTH = 10_000
 
-# Provider -> the environment variable holding its key. The local provider
-# (an OpenAI-compatible server on this machine) needs none.
-PROVIDER_KEYS: Dict[str, str] = {
-    "openai": "OPENAI_API_KEY",
-    "openrouter": "OPENROUTER_API_KEY",
-}
+# PROVIDER_KEYS: provider -> the environment variable holding its key
+# (ADR-032). The local provider (a server on this machine) needs none.
 
 SECRETS = (
     ("OPENAI_API_KEY", "OpenAI API key", "models with the openai provider"),
     ("OPENROUTER_API_KEY", "OpenRouter API key", "models with the openrouter provider"),
+    ("GROQ_API_KEY", "Groq API key", "models with the groq provider (optional)"),
+    ("ANTHROPIC_API_KEY", "Anthropic API key", "models with the anthropic provider (optional)"),
+    ("GEMINI_API_KEY", "Google Gemini API key", "models with the google provider (optional)"),
     ("AEHUB_MQTT_PASSWORD", "MQTT broker password", "home devices (optional)"),
+    ("AEHUB_LOCAL_API_KEY", "Local server key", "models with the local provider (optional)"),
+    ("ELEVENLABS_API_KEY", "ElevenLabs API key", "the cloud voice (optional)"),
 )
 
 SETUP_HINT = "Add it with: python scripts/aehub.py setup, then restart with: python scripts/aehub.py up."
@@ -91,6 +94,12 @@ def _check_value(name: str, value: str) -> Optional[str]:
     if len(value) > MAX_VALUE_LENGTH:
         return "The value is too long."
 
+    if spec.kind == "choice" and value not in spec.options:
+        return f"Choose one of: {', '.join(spec.options)}."
+
+    if spec.pattern and not re.fullmatch(spec.pattern, value):
+        return "The value does not have the expected form."
+
     try:
         if spec.kind == "roles":
             parsed = json.loads(value)
@@ -115,6 +124,12 @@ def _check_value(name: str, value: str) -> Optional[str]:
 
             if spec.kind == "ratio" and not 0 < number <= 1:
                 return "Enter a number between 0 and 1."
+
+            if spec.minimum is not None and number < spec.minimum:
+                return f"Enter at least {spec.minimum:g}."
+
+            if spec.maximum is not None and number > spec.maximum:
+                return f"Enter at most {spec.maximum:g}."
 
     except ValueError as exc:
         if spec.kind in {"number", "ratio"}:
@@ -400,6 +415,27 @@ def check_configuration() -> List[ConfigIssue]:
             )
         )
 
+    if voice_enabled() and config_value("AEHUB_TTS_ENGINE", "piper") == "elevenlabs":
+        if not _env_set("ELEVENLABS_API_KEY"):
+            issues.append(
+                ConfigIssue(
+                    "voice_cloud_key_missing",
+                    "warning",
+                    "The ElevenLabs voice is chosen but ELEVENLABS_API_KEY is not set: "
+                    "replies are spoken by Piper.",
+                    "AEHUB_TTS_ENGINE",
+                )
+            )
+        elif not config_value("AEHUB_ELEVENLABS_VOICE"):
+            issues.append(
+                ConfigIssue(
+                    "voice_cloud_voice_missing",
+                    "warning",
+                    "The ElevenLabs voice is chosen but no voice is selected: replies are spoken by Piper.",
+                    "AEHUB_ELEVENLABS_VOICE",
+                )
+            )
+
     from app.home.devices import DeviceConfigError, load_devices
     from app.home.mqtt import MqttNotConfigured, broker
 
@@ -468,6 +504,51 @@ def routed_models() -> List[Dict[str, object]]:
     return sorted(models.values(), key=lambda entry: str(entry["model"]))
 
 
+def role_view() -> Dict[str, Dict[str, object]]:
+    """
+    Each role's chain as the engine would use it now, and whether it is set
+    in AEHUB_MODEL_ROLES ("custom") or falls back to the default model. Empty
+    chains when the routing is invalid (the issue says why).
+    """
+    from app.agent_engine.routing import Role, RoutingConfig, RoutingConfigError
+
+    try:
+        routing: Optional[RoutingConfig] = RoutingConfig.from_env()
+    except RoutingConfigError:
+        routing = None
+
+    try:
+        configured = json.loads(config_value("AEHUB_MODEL_ROLES") or "{}")
+    except ValueError:
+        configured = {}
+
+    if not isinstance(configured, dict):
+        configured = {}
+
+    return {
+        role.value: {
+            "chain": [target.label for target in routing.chain(role)] if routing else [],
+            "custom": role.value in configured,
+        }
+        for role in Role
+    }
+
+
+def provider_view() -> Dict[str, Dict[str, object]]:
+    """
+    Whether each provider can be called: its key (never the value) and, for
+    the local one, the server address.
+    """
+    return {
+        **{provider: {"key": _env_set(variable), "needs_key": True} for provider, variable in PROVIDER_KEYS.items()},
+        "local": {
+            "key": _env_set("AEHUB_LOCAL_API_KEY"),
+            "needs_key": False,
+            "base_url": config_value("AEHUB_LOCAL_BASE_URL") or "http://localhost:11434/v1",
+        },
+    }
+
+
 def settings_view(db: DBSession) -> Dict[str, object]:
     """
     What the Settings page shows. Secrets appear only as configured or not.
@@ -480,6 +561,8 @@ def settings_view(db: DBSession) -> Dict[str, object]:
 
     return {
         "models": routed_models(),
+        "roles": role_view(),
+        "providers": provider_view(),
         "workspace": {"path": str(workspace), "exists": workspace.is_dir()},
         "settings": [
             {
@@ -491,6 +574,7 @@ def settings_view(db: DBSession) -> Dict[str, object]:
                 "default": spec.default,
                 "value": config_value(spec.name, spec.default) or "",
                 "source": source_of(spec.name),
+                "options": list(spec.options),
             }
             for spec in SPECS
         ],

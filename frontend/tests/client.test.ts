@@ -1,3 +1,7 @@
+/**
+ * @file frontend/tests/client.test.ts
+ * @description Tests of the API client: requests, errors and the session token.
+ */
 import { describe, expect, it } from "vitest";
 
 import { ApiError, deleteJson, getJson } from "@/lib/api/client";

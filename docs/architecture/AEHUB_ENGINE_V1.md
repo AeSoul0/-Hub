@@ -1,47 +1,110 @@
-# ÆHub Agent Engine v1 (Final Architecture)
+# ÆHub Agent Engine v1
 
 ## 1. Overview
-The **ÆHub Agent Engine v1** represents a complete departure from prototype frameworks (like LangGraph) towards a highly deterministic, enterprise-grade Agent Execution Kernel. It strictly decouples the LLM from system authority.
+The agent engine of ÆHub is A.U.R.O.R.A.'s own execution loop: an explicit
+loop written in the project, with no agent framework as the authority. The
+language model only proposes text and tool calls; the engine decides what
+runs, records every step and can stop, pause and resume a run.
 
-## 2. Core Tenets
-- **LLM is Untrusted**: The language model only suggests actions.
-- **Kernel is Authority**: The AgentRuntime dictates execution loops, persistence, and state.
-- **Strict Role Separation**: Orchestrator (Plans), Subagent (Executes), Checker (Verifies).
-- **Centralized Side-Effects**: ALL execution occurs solely through the ToolGateway v2.
+The engine runs inside the backend process (`backend/app/agent_engine/`).
+`AgentEngine` (`application.py`) is the entry point; `runtime/aurora.py` is a
+thin compatibility facade over it.
 
-## 3. The Orchestration Loop
-The heart of the Engine operates on a native Worker -> Checker -> Retry loop:
-1. Worker (Adapter) generates a response and proposes tools.
-2. ToolGateway executes tools and returns observations.
-3. Checker (Independent Adapter) verifies the final output.
-4. If rejected, the Worker receives targeted feedback for a retry loop up to a strict max_attempts budget.
+## 2. Core tenets
+- **The model is untrusted**: it suggests; the Tool Gateway authorizes.
+- **The engine is the authority** over the loop, persistence and state.
+- **Roles are separate**: the worker (Architect, Research, Fast Worker) does
+  the task, an independent **Critic** on a different model checks it, the
+  triage picks the role (ADR-029).
+- **One door for side effects**: every tool call goes through the Tool
+  Gateway, including the ones the Control Plane sends (home, skills).
 
-## 4. Subsystem Capabilities
-### Tool Gateway v2
-Before execution, every request passes through:
-Validation -> Identity -> Permission -> Risk -> Budget -> Approval -> Idempotency -> Sandbox -> Audit
+## 3. The loop
+1. The triage picks the role, unless the user chose one or
+   `AEHUB_FORCE_ROLE` is set.
+2. The worker's model gets the input rebuilt from the durable context
+   (`model_input.build_input`, ADR-032) and answers with text and tool
+   proposals.
+3. Each proposal goes through the Tool Gateway; its observation is stored
+   with the run before the next turn.
+4. When the worker gives a final answer, the Critic checks it. A rejection
+   sends targeted feedback back to the worker, up to the run's attempts.
+5. Limits stop the run: cost (per run and monthly), active time, failed tool
+   calls, subagents and modified files (`control.RunLimits`), and the stop
+   buttons of the Nucleo and of the Runs page.
 
-### Durable Runs & Approvals
-The AgentStateManager persists the AgentRun model to disk (durable_runs.json). 
-Tasks requiring human approval are paused (WAITING_APPROVAL) and safely recovered without context loss. If a process crashes during a retry loop, it restarts exactly where it died.
+## 4. Subsystems
 
-### Multi-Agent Orchestration
-spawn_agent dynamically spins up specialized workers governed by a restrictive SubagentCapabilitySet. This guarantees child agents do not inherit admin privileges from the parent orchestrator.
+### Tool Gateway
+`backend/app/runtime/tool_gateway.py`. Before anything runs:
+identity → policy (tools disabled in the Control Plane included) → guardrail
+(arguments, SSRF, paths) → schema → idempotency → budget → approval → audit
+(fail-closed) → executor → post-guardrail (secret redaction) → audit.
+The audit is a hash chain in PostgreSQL (`runtime/audit_chain.py`), shown on
+the SICUREZZA page.
 
-### Memory Engine v1
-Implements Semantic, Episodic, and Execution memory tracking.
-Retrieval relies on: Relevance * Importance * Confidence * Recency Decay.
-Strictly isolated by workspace_id.
+### Durable runs and approvals
+`AgentStateManager` (`agent_engine/state/manager.py`) keeps every run in
+PostgreSQL, bound to its principal, session and workspace. A HIGH-risk call
+pauses the run (`WAITING_APPROVAL`); after the decision it resumes with the
+same `run_id`, and a tool already executed is not executed again
+(`state/idempotency.py`). An approval left undecided is denied after
+`AEHUB_APPROVAL_TTL_SECONDS`.
 
-### Guardrails Layer
-1. **InputGuardrail**: Blocks prompt injection strings before they hit the LLM.
-2. **ToolGuardrail**: Pre-execution parameter blocking and Post-execution massive output truncation.
-3. **OutputGuardrail**: Strips sensitive system variables from user-facing responses.
+### Subagents
+The `delegate_task` tool (ADR-029) starts a subagent with at most the
+parent's tools, permissions and remaining budget. It cannot delegate again,
+starts tainted when the parent read untrusted content, and its cost counts
+toward the parent.
 
-### Model Adapters & Circuit Breaking
-LangGraph was removed in favor of the unified ModelProvider layer (e.g., OpenAIAdapter, GroqAdapter).
-The Orchestrator, Worker, and Checker can each operate on different providers.
-If the primary provider crashes (e.g., HTTP 503), the Kernel's native **Circuit Breaker** automatically reroutes the prompt to a fallback adapter.
+### Context Manager and memory
+`context.py` builds each request inside one token budget
+(`AEHUB_CONTEXT_BUDGET`), in levels L0–L5: system and tools, task and Critic
+feedback, trusted preferences and rules, the State Snapshot of older calls,
+the recent calls, and memories from earlier sessions.
+Long-term memory (`memory/store.py`, ADR-027) is scoped to workspace and
+user. Retrieval fuses PostgreSQL full-text search and pgvector similarity
+with Reciprocal Rank Fusion. Anything written while untrusted content is in
+the run is stored as untrusted and recalled only inside a fence.
 
-### Observability & Evaluation
-The EventDispatcher creates deterministic Flight Recorder logs (JSONL). The Phase 10 EvaluationEngine leverages an LLM-as-a-Judge to parse these traces against a 140+ test case dataset to certify the Engine's Definition of Done.
+### Guardrails
+1. **InputGuardrail**: refuses prompt-injection patterns in user text.
+2. **ToolGuardrail**: checks arguments before a call and truncates huge
+   outputs after it.
+3. **OutputGuardrail**: removes secrets from what the user sees.
+
+Untrusted tool output (web, files, MCP, imported skills) reaches the model
+inside an `<untrusted_tool_output>` fence; after it, every HIGH-risk action
+needs an approval.
+
+### Models, routing and circuit breakers
+Every model call goes through one `ModelProvider`, `PydanticAIAdapter`
+(ADR-032): Pydantic AI makes exactly one request per turn and returns the
+proposed tool calls, which run only through the Tool Gateway. Providers:
+OpenAI (Responses API), OpenRouter, a local OpenAI-compatible server, Groq,
+Anthropic and Google Gemini.
+Each role runs on its own chain of `provider:model` (`routing.py`), and the
+Critic never shares a model with a worker. If a provider fails (for example
+HTTP 503), a per-target **circuit breaker** moves the call to the next model
+of the chain (`FailoverProvider`); the input is rebuilt from the run's
+durable observations, so no tool runs twice.
+
+### Resources
+`resources.py` guesses from its text what a task needs (light, standard,
+browser, audio, vision, heavy) and gives it the RAM, run time and
+parallelism of that class.
+
+### Observability and evaluation
+- **Live events**: each step is published on the event bus (Redis, or in
+  process in the desktop app) and streamed to the Nucleo and the Control
+  Plane over SSE.
+- **Flight recorder**: every event is written to a JSONL file
+  (`AEHUB_FLIGHT_RECORDER_PATH`), searchable and exportable from the SISTEMA
+  page.
+- **Logs and metrics**: JSON logs, OpenTelemetry traces and the Prometheus
+  `/metrics` endpoint.
+- **Evaluation** (`backend/app/evaluation/`, `evals/run_evals.py`): 44 cases
+  run through the real engine with a scripted model and deterministic tools,
+  offline and free. The release gate fails when a security case fails or a
+  metric is worse than `evals/baseline.json`. `--live` uses the configured
+  models instead.

@@ -1,10 +1,7 @@
 /**
  * @file frontend/next.config.js
- * @description Core module for A.U.R.O.R.A. System
- *
- * Implements primary logic and architectural constraints.
- * Architectural constraints and responsibilities apply here.
- * Testability and dependency separation are enforced.
+ * @description Next.js configuration: strict mode, the dev origins of the
+ * LAN and, with AEHUB_STATIC_EXPORT=1, the static export of the desktop app.
  */
 
 // AEHUB_STATIC_EXPORT=1: static files in out/ for the desktop app (M14,

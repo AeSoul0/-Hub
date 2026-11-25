@@ -18,7 +18,9 @@ export type ControlEventType =
     | "run.state"
     | "approval.requested"
     | "approval.decided"
-    | "run.resumed";
+    | "run.resumed"
+    // Every run event, pushed live for the Nucleo (F1).
+    | "engine.event";
 
 export interface ControlEvent {
     type: string;

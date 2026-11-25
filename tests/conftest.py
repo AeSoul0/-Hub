@@ -11,7 +11,6 @@ import os
 
 _TEST_ENV_DEFAULTS = {
     "AEHUB_SECRET_KEY": "test-only-secret-key",
-    "GROQ_API_KEY": "test-only-groq-key",
     "POSTGRES_URL": "postgresql://aehub_user:password@localhost:5432/aehub_db",
     "REDIS_URL": "redis://localhost:6379/0",
     # Spec 4.1: the Critic must differ from the Implementer, or the engine
