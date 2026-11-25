@@ -35,6 +35,7 @@ from app.api import (
     desktop,
     documents,
     home as home_api,
+    interface as interface_api,
     memory,
     realtime,
     runs,
@@ -489,6 +490,10 @@ app.include_router(
 
 app.include_router(
     system_api.router
+)
+
+app.include_router(
+    interface_api.router
 )
 
 

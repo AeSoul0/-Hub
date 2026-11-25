@@ -37,9 +37,11 @@ export interface Recording {
 }
 
 /** Open the microphone and start recording. Rejects when it is refused. */
-export async function startRecording(): Promise<Recording> {
+export async function startRecording(
+    unavailable = "The microphone is not available in this browser.",
+): Promise<Recording> {
     if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
-        throw new Error("Il microfono non è disponibile in questo browser.");
+        throw new Error(unavailable);
     }
 
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });

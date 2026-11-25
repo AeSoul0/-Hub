@@ -4,7 +4,7 @@
  */
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import React from "react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import VoicePage from "@/app/control-plane/voice/page";
 import type { SettingField, SettingsView } from "@/lib/api/settings";
@@ -17,6 +17,11 @@ import {
 } from "@/lib/nucleo/voice";
 
 import { stubFetch } from "./helpers";
+
+import { chooseLanguage } from "@/lib/i18n";
+
+// These tests read the Italian interface; interface.test.tsx covers the English default.
+beforeEach(() => chooseLanguage("it"));
 
 const VOICE_ID = "Xb7hH8MSUJpSbSDYk0k2";
 
@@ -99,9 +104,9 @@ describe("voice helpers", () => {
     });
 
     it("formats sizes and recognises a voice run", () => {
-        expect(formatBytes(145 * 1024 ** 2)).toBe("145 MB");
-        expect(formatBytes(1.5 * 1024 ** 3)).toBe("1,5 GB");
-        expect(formatBytes(10)).toBe("1 KB");
+        expect(formatBytes(145 * 1024 ** 2, "it")).toBe("145 MB");
+        expect(formatBytes(1.5 * 1024 ** 3, "it")).toBe("1,5 GB");
+        expect(formatBytes(10, "it")).toBe("1 KB");
         expect(resumedByVoice({ input_channel: "voice" })).toBe(true);
         expect(resumedByVoice({ input_channel: "text" })).toBe(false);
         expect(resumedByVoice({})).toBe(false);

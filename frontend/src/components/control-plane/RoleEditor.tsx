@@ -4,7 +4,7 @@
  * supervisor), Fast Worker and Triage, each with its chain of models, the
  * first one first and the others as fallbacks.
  *
- * A role left on "predefinito" uses the default model (OPENAI_MODEL, or the
+ * A role left on "default" uses the default model (OPENAI_MODEL, or the
  * default Critic). Saving writes AEHUB_MODEL_ROLES with the custom roles
  * only. Model names are suggested from each provider's list but can be
  * typed freely. The Critic must not share a model with another role: the
@@ -36,6 +36,60 @@ import {
     type Chains,
     type Target,
 } from "@/lib/nucleo/models";
+import { catalog, useLanguage } from "@/lib/i18n";
+
+const TEXT = catalog({
+    en: {
+        intro:
+            "The role of each task is chosen by rules from its text, without calling a model. Each role tries its models in order: the first, then the fallbacks if the first does not answer.",
+        noList: (providers: string) => `No model list for ${providers}: type the name by hand.`,
+        custom: "custom",
+        default: "default",
+        providerOf: (index: number, role: string) => `Provider ${index} of ${role}`,
+        modelOf: (index: number, role: string) => `Model ${index} of ${role}`,
+        modelName: "model name",
+        theModel: "the model",
+        moveUp: (model: string) => `Move up ${model}`,
+        moveDown: (model: string) => `Move down ${model}`,
+        remove: (model: string) => `Remove ${model}`,
+        keyMissing: (providers: string) => `The key of ${providers} is missing.`,
+        addFallback: "+ fallback model",
+        backToDefault: "back to the default",
+        customize: "Customize",
+        criticClash: (clashes: string) => `The Critic must use models different from the other roles: ${clashes}.`,
+        clash: (model: string, role: string) => `${model} is also in ${role}`,
+        noModel: (roles: string) => `No model in: ${roles}.`,
+        save: "Save the models",
+        cancel: "Cancel",
+        json: "JSON that will be saved",
+        noCustom: "(no custom role)",
+    },
+    it: {
+        intro:
+            "Il ruolo di ogni compito si sceglie per regole dal testo, senza chiamare un modello. Ogni ruolo prova i suoi modelli in ordine: il primo, poi le riserve se il primo non risponde.",
+        noList: (providers: string) => `Elenco dei modelli non disponibile per ${providers}: scrivi il nome a mano.`,
+        custom: "personalizzato",
+        default: "predefinito",
+        providerOf: (index: number, role: string) => `Provider ${index} di ${role}`,
+        modelOf: (index: number, role: string) => `Modello ${index} di ${role}`,
+        modelName: "nome del modello",
+        theModel: "il modello",
+        moveUp: (model: string) => `Sposta su ${model}`,
+        moveDown: (model: string) => `Sposta giù ${model}`,
+        remove: (model: string) => `Togli ${model}`,
+        keyMissing: (providers: string) => `Manca la chiave di ${providers}.`,
+        addFallback: "+ modello di riserva",
+        backToDefault: "torna al predefinito",
+        customize: "Personalizza",
+        criticClash: (clashes: string) => `Il Critic deve usare modelli diversi dagli altri ruoli: ${clashes}.`,
+        clash: (model: string, role: string) => `${model} è anche in ${role}`,
+        noModel: (roles: string) => `Manca il modello in: ${roles}.`,
+        save: "Salva i modelli",
+        cancel: "Annulla",
+        json: "JSON che verrà salvato",
+        noCustom: "(nessun ruolo personalizzato)",
+    },
+});
 
 function initialChains(view: SettingsView): Chains {
     return Object.fromEntries(
@@ -73,6 +127,10 @@ export default function RoleEditor({
     /** The backend's routing error of the last save, if any. */
     error?: string;
 }) {
+    const lang = useLanguage();
+    const t = TEXT[lang];
+    const roleInfo = ROLE_INFO[lang];
+    const providerLabels = PROVIDER_LABELS[lang];
     const [chains, setChains] = useState<Chains>(() => initialChains(view));
     const [custom, setCustom] = useState<Record<RoleName, boolean>>(() => initialCustom(view));
     // Newer providers appear once they have a key (P1, ADR-032).
@@ -108,18 +166,16 @@ export default function RoleEditor({
 
     return (
         <div className={styles.stack} style={{ gap: 16 }}>
-            <p className={styles.help}>
-                Il ruolo di ogni compito si sceglie per regole dal testo, senza chiamare un modello. Ogni ruolo prova i
-                suoi modelli in ordine: il primo, poi le riserve se il primo non risponde.
-            </p>
+            <p className={styles.help}>{t.intro}</p>
 
             {offered.filter((provider) => missing[provider]).length > 0 && (
                 <p className={styles.help}>
-                    Elenco dei modelli non disponibile per{" "}
-                    {offered.filter((provider) => missing[provider])
-                        .map((provider) => PROVIDER_LABELS[provider])
-                        .join(", ")}
-                    : scrivi il nome a mano.
+                    {t.noList(
+                        offered
+                            .filter((provider) => missing[provider])
+                            .map((provider) => providerLabels[provider])
+                            .join(", "),
+                    )}
                 </p>
             )}
 
@@ -140,17 +196,17 @@ export default function RoleEditor({
                             key={role}
                             className={`${styles.card} ${styles.role} ${role === "critic" ? styles.amber : ""}`}
                             data-custom={editable}
-                            aria-label={ROLE_INFO[role].title}
+                            aria-label={roleInfo[role].title}
                         >
                             <div className={styles.row}>
                                 <h3 className={styles.h2} style={{ margin: 0 }}>
-                                    {ROLE_INFO[role].title}
+                                    {roleInfo[role].title}
                                 </h3>
                                 <span className={styles.badge} data-tone={editable ? "live" : undefined}>
-                                    {editable ? "personalizzato" : "predefinito"}
+                                    {editable ? t.custom : t.default}
                                 </span>
                             </div>
-                            <p className={styles.help}>{ROLE_INFO[role].job}</p>
+                            <p className={styles.help}>{roleInfo[role].job}</p>
                             <ol className={styles.chain}>
                                 {chain.map((target, index) => (
                                     <li
@@ -159,7 +215,7 @@ export default function RoleEditor({
                                     >
                                         <select
                                             className={styles.input}
-                                            aria-label={`Provider ${index + 1} di ${ROLE_INFO[role].title}`}
+                                            aria-label={t.providerOf(index + 1, roleInfo[role].title)}
                                             value={target.provider}
                                             disabled={!editable}
                                             onChange={(event) =>
@@ -168,18 +224,18 @@ export default function RoleEditor({
                                         >
                                             {offered.map((provider) => (
                                                 <option key={provider} value={provider}>
-                                                    {PROVIDER_LABELS[provider]}
+                                                    {providerLabels[provider]}
                                                 </option>
                                             ))}
                                         </select>
                                         <input
                                             className={styles.input}
-                                            aria-label={`Modello ${index + 1} di ${ROLE_INFO[role].title}`}
+                                            aria-label={t.modelOf(index + 1, roleInfo[role].title)}
                                             list={`models-${target.provider}`}
                                             value={target.model}
                                             disabled={!editable}
                                             spellCheck={false}
-                                            placeholder="nome del modello"
+                                            placeholder={t.modelName}
                                             onChange={(event) => setTarget(role, index, { model: event.target.value })}
                                         />
                                         {editable && (
@@ -187,7 +243,7 @@ export default function RoleEditor({
                                                 <button
                                                     type="button"
                                                     className={styles.icon}
-                                                    aria-label={`Sposta su ${target.model || "il modello"}`}
+                                                    aria-label={t.moveUp(target.model || t.theModel)}
                                                     disabled={index === 0}
                                                     onClick={() => move(role, index, -1)}
                                                 >
@@ -196,7 +252,7 @@ export default function RoleEditor({
                                                 <button
                                                     type="button"
                                                     className={styles.icon}
-                                                    aria-label={`Sposta giù ${target.model || "il modello"}`}
+                                                    aria-label={t.moveDown(target.model || t.theModel)}
                                                     disabled={index === chain.length - 1}
                                                     onClick={() => move(role, index, 1)}
                                                 >
@@ -205,7 +261,7 @@ export default function RoleEditor({
                                                 <button
                                                     type="button"
                                                     className={styles.icon}
-                                                    aria-label={`Togli ${target.model || "il modello"}`}
+                                                    aria-label={t.remove(target.model || t.theModel)}
                                                     disabled={chain.length === 1}
                                                     onClick={() => edit(role, (current) => current.filter((_, at) => at !== index))}
                                                 >
@@ -218,9 +274,15 @@ export default function RoleEditor({
                             </ol>
                             {chain.some((target) => keyMissing(target.provider)) && (
                                 <p className={styles.warn}>
-                                    Manca la chiave di{" "}
-                                    {[...new Set(chain.filter((target) => keyMissing(target.provider)).map((target) => PROVIDER_LABELS[target.provider]))].join(", ")}
-                                    .
+                                    {t.keyMissing(
+                                        [
+                                            ...new Set(
+                                                chain
+                                                    .filter((target) => keyMissing(target.provider))
+                                                    .map((target) => providerLabels[target.provider]),
+                                            ),
+                                        ].join(", "),
+                                    )}
                                 </p>
                             )}
                             <div className={styles.row}>
@@ -236,7 +298,7 @@ export default function RoleEditor({
                                                 ])
                                             }
                                         >
-                                            + modello di riserva
+                                            {t.addFallback}
                                         </button>
                                         <button
                                             type="button"
@@ -246,7 +308,7 @@ export default function RoleEditor({
                                                 setChains((current) => ({ ...current, [role]: initialChains(view)[role] }));
                                             }}
                                         >
-                                            torna al predefinito
+                                            {t.backToDefault}
                                         </button>
                                     </>
                                 ) : (
@@ -255,7 +317,7 @@ export default function RoleEditor({
                                         className={styles.btn}
                                         onClick={() => setCustom((current) => ({ ...current, [role]: true }))}
                                     >
-                                        Personalizza
+                                        {t.customize}
                                     </button>
                                 )}
                             </div>
@@ -266,13 +328,14 @@ export default function RoleEditor({
 
             {conflicts.length > 0 && (
                 <p className={styles.error} role="alert">
-                    Il Critic deve usare modelli diversi dagli altri ruoli:{" "}
-                    {conflicts.map((entry) => `${entry.model} è anche in ${ROLE_INFO[entry.role].title}`).join("; ")}.
+                    {t.criticClash(
+                        conflicts.map((entry) => t.clash(entry.model, roleInfo[entry.role].title)).join("; "),
+                    )}
                 </p>
             )}
             {empty.length > 0 && (
                 <p className={styles.error} role="alert">
-                    Manca il modello in: {empty.map((role) => ROLE_INFO[role].title).join(", ")}.
+                    {t.noModel(empty.map((role) => roleInfo[role].title).join(", "))}
                 </p>
             )}
             {error && (
@@ -288,7 +351,7 @@ export default function RoleEditor({
                     disabled={busy || !dirty || conflicts.length > 0 || empty.length > 0}
                     onClick={() => onSave({ AEHUB_MODEL_ROLES: json || null })}
                 >
-                    Salva i modelli
+                    {t.save}
                 </button>
                 {dirty && (
                     <button
@@ -299,14 +362,14 @@ export default function RoleEditor({
                             setCustom(initialCustom(view));
                         }}
                     >
-                        Annulla
+                        {t.cancel}
                     </button>
                 )}
             </div>
 
             <details className={styles.details}>
-                <summary>JSON che verrà salvato</summary>
-                <pre className={styles.pre}>{json ? JSON.stringify(JSON.parse(json), null, 2) : "(nessun ruolo personalizzato)"}</pre>
+                <summary>{t.json}</summary>
+                <pre className={styles.pre}>{json ? JSON.stringify(JSON.parse(json), null, 2) : t.noCustom}</pre>
             </details>
         </div>
     );

@@ -3,11 +3,16 @@
  * @description Tests of the live events: parseEvent, useWorkspaceEvents and useLiveRefresh.
  */
 import { act, renderHook } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { parseEvent, REFRESH_DEBOUNCE_MS, useLiveRefresh, useWorkspaceEvents } from "@/lib/api/events";
 
 import { installEventSource } from "./helpers";
+
+import { chooseLanguage } from "@/lib/i18n";
+
+// These tests read the Italian interface; interface.test.tsx covers the English default.
+beforeEach(() => chooseLanguage("it"));
 
 describe("parseEvent", () => {
     it("reads bus messages", () => {

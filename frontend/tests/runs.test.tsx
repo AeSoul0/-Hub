@@ -4,7 +4,7 @@
  */
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import RunsPage from "@/app/control-plane/runs/page";
 import RunTimeline from "@/components/control-plane/RunTimeline";
@@ -28,6 +28,11 @@ import {
 } from "@/lib/nucleo/runs";
 
 import { installEventSource, stubFetch } from "./helpers";
+
+import { chooseLanguage } from "@/lib/i18n";
+
+// These tests read the Italian interface; interface.test.tsx covers the English default.
+beforeEach(() => chooseLanguage("it"));
 
 const LIMITS = { max_run_cost: 2, max_run_seconds: 900, max_failed_tool_calls: 10, max_files_modified: 20, monthly_budget: 30 };
 const START = Date.parse("2026-10-25T10:00:00Z");
@@ -135,7 +140,7 @@ describe("runs the Nucleo follows", () => {
 
     it("measures each total against its limit", () => {
         const [run] = apply(on(event("model.called", usage({ cost: 1.7, failed_tool_calls: 10, files_modified: 3 })))).runs;
-        const byKey = Object.fromEntries(meters(run, { ...LIMITS, max_files_modified: 0 }, START).map((item) => [item.key, item]));
+        const byKey = Object.fromEntries(meters(run, { ...LIMITS, max_files_modified: 0 }, START, "it").map((item) => [item.key, item]));
         expect(byKey.cost).toMatchObject({ text: "$1.70 / $2.00", level: "warn" });
         expect(byKey.failed).toMatchObject({ text: "10 / 10", level: "over", ratio: 1 });
         expect(byKey.files).toMatchObject({ text: "3 · nessun limite", ratio: 0, level: "ok" });
@@ -214,8 +219,8 @@ describe("run history", () => {
             offset: 50,
         });
         expect(historyParams({ q: " ", status: "", days: 30, subagents: true })).not.toHaveProperty("q");
-        expect(savedStatus("completed")).toEqual({ label: "completata", tone: "ok" });
-        expect(savedStatus("strange").label).toBe("strange");
+        expect(savedStatus("completed", "it")).toEqual({ label: "completata", tone: "ok" });
+        expect(savedStatus("strange", "it").label).toBe("strange");
     });
 
     it("filters the history from the page", async () => {

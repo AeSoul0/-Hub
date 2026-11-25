@@ -4,7 +4,7 @@
  */
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import React from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import SystemPage from "@/app/control-plane/system/page";
 import { describe as describeEvent } from "@/lib/nucleo/engine";
@@ -22,6 +22,11 @@ import {
 import { VOICE_SETTINGS } from "@/lib/nucleo/voice";
 
 import { stubFetch } from "./helpers";
+
+import { chooseLanguage } from "@/lib/i18n";
+
+// These tests read the Italian interface; interface.test.tsx covers the English default.
+beforeEach(() => chooseLanguage("it"));
 
 function view(extra: Partial<SystemView> = {}): SystemView {
     return {
@@ -77,30 +82,30 @@ function routes(extra: Record<string, () => { status: number; body: unknown }> =
 
 describe("system helpers", () => {
     it("say sizes, times and metrics the Italian way", () => {
-        expect(bytesText(300 * 1024 * 1024)).toBe("300 MB");
-        expect(bytesText(2.5 * 1024 ** 3)).toBe("2,5 GB");
-        expect(bytesText(512)).toBe("512 B");
-        expect(uptimeText(40)).toBe("40 s");
-        expect(uptimeText(3700)).toBe("1 h 1 min");
-        expect(uptimeText(3 * 86_400 + 4 * 3600)).toBe("3 g 4 h");
-        expect(metricText("success_rate", 0.9545)).toBe("95,5%");
-        expect(metricText("mean_cost", 0.0012)).toBe("$0.0012");
-        expect(metricText("mean_latency_seconds", 0.25)).toBe("0.25 s");
-        expect(metricText("cases", 44)).toBe("44");
+        expect(bytesText(300 * 1024 * 1024, "it")).toBe("300 MB");
+        expect(bytesText(2.5 * 1024 ** 3, "it")).toBe("2,5 GB");
+        expect(bytesText(512, "it")).toBe("512 B");
+        expect(uptimeText(40, "it")).toBe("40 s");
+        expect(uptimeText(3700, "it")).toBe("1 h 1 min");
+        expect(uptimeText(3 * 86_400 + 4 * 3600, "it")).toBe("3 g 4 h");
+        expect(metricText("success_rate", 0.9545, "it")).toBe("95,5%");
+        expect(metricText("mean_cost", 0.0012, "it")).toBe("$0.0012");
+        expect(metricText("mean_latency_seconds", 0.25, "it")).toBe("0.25 s");
+        expect(metricText("cases", 44, "it")).toBe("44");
     });
 
     it("say whether the database schema is up to date", () => {
-        expect(schemaText("0001", "0001")).toBe("0001, aggiornato");
-        expect(schemaText("0001", "0002")).toBe("0001, da aggiornare a 0002");
-        expect(schemaText(null, "0001")).toBe("non migrato (ultima 0001)");
+        expect(schemaText("0001", "0001", "it")).toBe("0001, aggiornato");
+        expect(schemaText("0001", "0002", "it")).toBe("0001, da aggiornare a 0002");
+        expect(schemaText(null, "0001", "it")).toBe("non migrato (ultima 0001)");
     });
 
     it("name the voice models in memory", () => {
-        expect(voiceText({ kind: "stt", config: ["base", "it"], idle_seconds: 180 })).toBe("Whisper base, ferma da 3 min");
-        expect(voiceText({ kind: "tts", config: ["piper", "it_IT-paola-medium"], idle_seconds: 5 })).toBe(
+        expect(voiceText({ kind: "stt", config: ["base", "it"], idle_seconds: 180 }, "it")).toBe("Whisper base, ferma da 3 min");
+        expect(voiceText({ kind: "tts", config: ["piper", "it_IT-paola-medium"], idle_seconds: 5 }, "it")).toBe(
             "Piper it_IT-paola-medium, ferma da 5 s",
         );
-        expect(voiceText({ kind: "tts", config: ["elevenlabs", "v1", "m", "it_IT-paola-medium"], idle_seconds: 5 })).toBe(
+        expect(voiceText({ kind: "tts", config: ["elevenlabs", "v1", "m", "it_IT-paola-medium"], idle_seconds: 5 }, "it")).toBe(
             "Piper it_IT-paola-medium (riserva di ElevenLabs), ferma da 5 s",
         );
     });

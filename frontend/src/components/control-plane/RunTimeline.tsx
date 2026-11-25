@@ -6,6 +6,7 @@
  */
 import React from "react";
 
+import { catalog, useLanguage } from "@/lib/i18n";
 import type { EngineEvent } from "@/lib/nucleo/engine";
 import { offset, replay, usd, type RunLimits } from "@/lib/nucleo/runs";
 
@@ -18,17 +19,32 @@ export interface Timeline {
     limits: RunLimits;
 }
 
+const TEXT = catalog({
+    en: {
+        empty: "No event recorded for this run.",
+        truncated: "Only the most recent events.",
+        timeline: "Timeline of the run",
+    },
+    it: {
+        empty: "Nessun evento registrato per questa run.",
+        truncated: "Solo gli eventi più recenti.",
+        timeline: "Timeline della run",
+    },
+});
+
 export default function RunTimeline({ timeline }: { timeline: Timeline }) {
-    const run = replay(timeline.run_id, timeline.events);
+    const lang = useLanguage();
+    const t = TEXT[lang];
+    const run = replay(timeline.run_id, timeline.events, lang);
 
     if (!run || run.steps.length === 0) {
-        return <p className={styles.muted}>Nessun evento registrato per questa run.</p>;
+        return <p className={styles.muted}>{t.empty}</p>;
     }
 
     return (
         <div className={styles.card}>
-            {timeline.truncated && <p className={styles.muted}>Solo gli eventi più recenti.</p>}
-            <ol className={styles.timeline} aria-label="Timeline della run">
+            {timeline.truncated && <p className={styles.muted}>{t.truncated}</p>}
+            <ol className={styles.timeline} aria-label={t.timeline}>
                 {run.steps.map((step) => (
                     <li key={step.id} data-k={step.kind}>
                         <time>{offset(step, run)}</time>

@@ -439,7 +439,7 @@ def test_browser_smoke(tmp_path):
             # 1. The launch URL opens the Control Plane, logged in.
             page.goto(app.launch_url)
             page.wait_for_url(f"{app.origin}/control-plane**")
-            expect(page.get_by_text("APPROVAZIONI").first).to_be_visible()
+            expect(page.get_by_text("APPROVALS").first).to_be_visible()
 
             # 2. Models and budget, as the setup page saves them.
             configure_models(
@@ -450,8 +450,8 @@ def test_browser_smoke(tmp_path):
             # 3. A typed command in the Nucleo, the home page (F1), once its
             # live stream is open.
             page.goto(f"{app.origin}/")
-            expect(page.get_by_text("in linea")).to_be_visible(timeout=30_000)
-            command = page.get_by_role("textbox", name="Comando")
+            expect(page.get_by_text("online", exact=True)).to_be_visible(timeout=30_000)
+            command = page.get_by_role("textbox", name="Command")
             command.fill("Run echo hello in the sandbox shell.")
             # The run parks on the approval before the request returns.
             with page.expect_response("**/api/orchestrator/ask", timeout=120_000) as asked:
@@ -461,7 +461,7 @@ def test_browser_smoke(tmp_path):
             # 4. The engine's events arrive live; the HIGH call waits in the
             # Nucleo and the owner allows it there.
             expect(page.get_by_text("tool.approval_required").first).to_be_visible(timeout=60_000)
-            allow = page.get_by_role("button", name="Consenti")
+            allow = page.get_by_role("button", name="Allow", exact=True)
             expect(allow).to_be_visible(timeout=60_000)
             expect(page.get_by_text("execute_shell_script").first).to_be_visible()
             allow.click()
@@ -469,7 +469,7 @@ def test_browser_smoke(tmp_path):
 
             # 5. The run completes.
             page.goto(f"{app.origin}/control-plane/runs/")
-            expect(page.get_by_role("cell", name="completata").first).to_be_visible(timeout=120_000)
+            expect(page.get_by_role("cell", name="completed").first).to_be_visible(timeout=120_000)
 
             blocked = [text for text in console_errors if "Content Security Policy" in text]
             assert blocked == [], blocked
@@ -547,12 +547,12 @@ def test_browser_smoke_every_page_fits(tmp_path):
             )
 
             page.goto(f"{app.origin}/")
-            expect(page.get_by_text("in linea")).to_be_visible(timeout=30_000)
-            command = page.get_by_role("textbox", name="Comando")
+            expect(page.get_by_text("online", exact=True)).to_be_visible(timeout=30_000)
+            command = page.get_by_role("textbox", name="Command")
             command.fill("Run echo hello in the sandbox shell.")
             with page.expect_response("**/api/orchestrator/ask", timeout=120_000):
                 command.press("Enter")
-            allow = page.get_by_role("button", name="Consenti")
+            allow = page.get_by_role("button", name="Allow", exact=True)
             expect(allow).to_be_visible(timeout=60_000)
             allow.click()
             expect(allow).to_be_hidden(timeout=60_000)

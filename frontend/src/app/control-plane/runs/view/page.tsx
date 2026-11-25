@@ -22,6 +22,20 @@ import RunTimeline, { type Timeline } from "@/components/control-plane/RunTimeli
 import styles from "@/components/control-plane/control.module.css";
 import { ApiError, getJson, postJson } from "@/lib/api/client";
 import { useLiveRefresh } from "@/lib/api/events";
+import { catalog, useText } from "@/lib/i18n";
+
+const TEXT = catalog({
+    en: {
+        all: "← ALL RUNS",
+        none: "No run selected.",
+        missing: "No run with this id in your workspace.",
+    },
+    it: {
+        all: "← TUTTE LE RUN",
+        none: "Nessuna run selezionata.",
+        missing: "Nessuna run con questo id nel tuo workspace.",
+    },
+});
 
 export default function RunPage() {
     // The query string is known only in the browser: a static export needs
@@ -34,6 +48,7 @@ export default function RunPage() {
 }
 
 function RunView() {
+    const t = useText(TEXT);
     const runId = useSearchParams()?.get("id") ?? "";
 
     const [run, setRun] = useState<RunDetail | null>(null);
@@ -84,7 +99,7 @@ function RunView() {
     return (
         <div className={styles.page}>
             <Link href="/control-plane/runs" className={styles.back}>
-                ← TUTTE LE RUN
+                {t.all}
             </Link>
             <div className={styles.head}>
                 <h1 className={`${styles.title} ${styles.runTitle}`}>
@@ -94,8 +109,8 @@ function RunView() {
             </div>
 
             {error && <p className={styles.error}>{error}</p>}
-            {!runId && <p className={styles.muted}>Nessuna run selezionata.</p>}
-            {missing && <p className={styles.muted}>Nessuna run con questo id nel tuo workspace.</p>}
+            {!runId && <p className={styles.muted}>{t.none}</p>}
+            {missing && <p className={styles.muted}>{t.missing}</p>}
             {run && (
                 <RunDetailView
                     run={run}

@@ -9,6 +9,7 @@
  * of the event log. Pure functions, so the page stays a thin shell.
  */
 import type { ControlEvent } from "@/lib/api/events";
+import { catalog, type Lang } from "@/lib/i18n";
 
 export type OrbMode = "idle" | "listening" | "thinking" | "tool" | "approval" | "speaking";
 
@@ -114,17 +115,45 @@ function kindOf(name: string): LogKind {
     return "other";
 }
 
-/** "tentativo 2 di 3" for a Critic verdict or a retry; "" without an attempt. */
-export function attemptText(event: EngineEvent): string {
+const TEXT = catalog({
+    en: {
+        attempt: (attempt: number, max?: number) =>
+            max === undefined ? `attempt ${attempt}` : `attempt ${attempt} of ${max}`,
+        role: (role: string) => `role ${role}`,
+        accepted: "accepted",
+        rejected: "rejected",
+        failed: "failed",
+        retry: "new attempt",
+        toolFailed: "failed",
+        subagent: "subagent",
+        budget: "monthly budget almost used up",
+    },
+    it: {
+        attempt: (attempt: number, max?: number) =>
+            max === undefined ? `tentativo ${attempt}` : `tentativo ${attempt} di ${max}`,
+        role: (role: string) => `ruolo ${role}`,
+        accepted: "accettato",
+        rejected: "respinto",
+        failed: "bocciato",
+        retry: "nuovo tentativo",
+        toolFailed: "fallito",
+        subagent: "sub-agente",
+        budget: "budget del mese quasi esaurito",
+    },
+});
+
+/** "attempt 2 of 3" for a Critic verdict or a retry; "" without an attempt. */
+export function attemptText(event: EngineEvent, lang: Lang = "en"): string {
     if (event.attempt == null) {
         return "";
     }
     const max = event.details?.max_attempts;
-    return typeof max === "number" ? `tentativo ${event.attempt} di ${max}` : `tentativo ${event.attempt}`;
+    return TEXT[lang].attempt(event.attempt, typeof max === "number" ? max : undefined);
 }
 
 /** The log line for one engine event. */
-export function describe(event: EngineEvent): Omit<LogLine, "id"> {
+export function describe(event: EngineEvent, lang: Lang = "en"): Omit<LogLine, "id"> {
+    const t = TEXT[lang];
     const name = event.event_type;
     const status = typeof event.details?.status === "string" ? event.details.status : "";
     const reason = typeof event.details?.reason === "string" ? event.details.reason : "";
@@ -133,19 +162,19 @@ export function describe(event: EngineEvent): Omit<LogLine, "id"> {
 
     switch (name) {
         case "run.started":
-            detail = [`run ${short(event.run_id)}`, event.role ? `ruolo ${roleName(event.role)}` : ""].filter(Boolean).join(" · ");
+            detail = [`run ${short(event.run_id)}`, event.role ? t.role(roleName(event.role)) : ""].filter(Boolean).join(" · ");
             break;
         case "checker.accepted":
-            detail = [attemptText(event), "accettato"].filter(Boolean).join(" · ");
+            detail = [attemptText(event, lang), t.accepted].filter(Boolean).join(" · ");
             break;
         case "checker.rejected":
-            detail = [attemptText(event), "respinto", instruction].filter(Boolean).join(" · ");
+            detail = [attemptText(event, lang), t.rejected, instruction].filter(Boolean).join(" · ");
             break;
         case "checker.failed":
-            detail = [attemptText(event), "bocciato", reason].filter(Boolean).join(" · ");
+            detail = [attemptText(event, lang), t.failed, reason].filter(Boolean).join(" · ");
             break;
         case "retry.requested":
-            detail = attemptText(event) || "nuovo tentativo";
+            detail = attemptText(event, lang) || t.retry;
             break;
         case "model.called":
             detail = [
@@ -162,16 +191,16 @@ export function describe(event: EngineEvent): Omit<LogLine, "id"> {
             detail = event.tool ?? "";
             break;
         case "tool.completed":
-            detail = [event.tool, event.details?.succeeded === false ? "fallito" : "ok"].filter(Boolean).join(" · ");
+            detail = [event.tool, event.details?.succeeded === false ? t.toolFailed : "ok"].filter(Boolean).join(" · ");
             break;
         case "subagent.spawned":
-            detail = `${roleName(event.role) || "sub-agente"} · ${short(event.run_id)}`;
+            detail = `${roleName(event.role) || t.subagent} · ${short(event.run_id)}`;
             break;
         case "subagent.completed":
-            detail = [roleName(event.role) || "sub-agente", status.toLowerCase()].filter(Boolean).join(" · ");
+            detail = [roleName(event.role) || t.subagent, status.toLowerCase()].filter(Boolean).join(" · ");
             break;
         case "budget.warning":
-            detail = "budget del mese quasi esaurito";
+            detail = t.budget;
             break;
         default:
             detail = [`run ${short(event.run_id)}`, reason].filter(Boolean).join(" · ");
@@ -190,7 +219,7 @@ export function describe(event: EngineEvent): Omit<LogLine, "id"> {
 }
 
 export type NucleoAction =
-    | { type: "engine"; event: EngineEvent; now: number }
+    | { type: "engine"; event: EngineEvent; now: number; lang?: Lang }
     | { type: "runState"; runId: string; state: string }
     | { type: "approvals"; count: number }
     | { type: "note"; line: Omit<LogLine, "id"> };
@@ -230,7 +259,7 @@ export function nucleoReducer(state: NucleoState, action: NucleoAction): NucleoS
 
         case "engine": {
             const { event, now } = action;
-            const next = withLine(state, describe(event));
+            const next = withLine(state, describe(event, action.lang));
 
             switch (event.event_type) {
                 case "run.started":
@@ -251,7 +280,7 @@ export function nucleoReducer(state: NucleoState, action: NucleoAction): NucleoS
                 case "subagent.spawned":
                     return next.moons.some((moon) => moon.id === event.run_id)
                         ? next
-                        : { ...next, moons: [...next.moons, { id: event.run_id, label: event.role ?? "sub-agente" }] };
+                        : { ...next, moons: [...next.moons, { id: event.run_id, label: event.role ?? "subagent" }] };
                 case "subagent.completed":
                     return { ...next, moons: next.moons.filter((moon) => moon.id !== event.run_id) };
                 default:
@@ -277,31 +306,59 @@ export function orbMode(state: NucleoState, local: LocalActivity, now: number): 
     return "idle";
 }
 
-export const MODE_LABELS: Record<OrbMode, string> = {
-    idle: "IN ATTESA",
-    listening: "IN ASCOLTO",
-    thinking: "STA RAGIONANDO",
-    tool: "USA UN TOOL",
-    approval: "ATTENDE LA TUA APPROVAZIONE",
-    speaking: "STA PARLANDO",
-};
+export const MODE_LABELS = catalog<Record<OrbMode, string>>({
+    en: {
+        idle: "WAITING",
+        listening: "LISTENING",
+        thinking: "THINKING",
+        tool: "USING A TOOL",
+        approval: "WAITING FOR YOUR APPROVAL",
+        speaking: "SPEAKING",
+    },
+    it: {
+        idle: "IN ATTESA",
+        listening: "IN ASCOLTO",
+        thinking: "STA RAGIONANDO",
+        tool: "USA UN TOOL",
+        approval: "ATTENDE LA TUA APPROVAZIONE",
+        speaking: "STA PARLANDO",
+    },
+});
 
-export function modeDetail(mode: OrbMode, state: NucleoState): string {
+const MODE_TEXT = catalog({
+    en: {
+        idle: "Speak or type a command",
+        listening: "microphone on · press again to send",
+        subagents: (count: number) => `${count} subagents at work`,
+        working: "the engine is working",
+        waiting: (count: number) => (count === 1 ? "1 action waiting" : `${count} actions waiting`),
+        speaking: "local voice",
+    },
+    it: {
+        idle: "Parla o scrivi un comando",
+        listening: "microfono acceso · premi di nuovo per inviare",
+        subagents: (count: number) => `${count} sub-agenti al lavoro`,
+        working: "il motore lavora",
+        waiting: (count: number) => (count === 1 ? "1 azione in attesa" : `${count} azioni in attesa`),
+        speaking: "voce locale",
+    },
+});
+
+export function modeDetail(mode: OrbMode, state: NucleoState, lang: Lang = "en"): string {
+    const t = MODE_TEXT[lang];
     switch (mode) {
         case "idle":
-            return "Parla o scrivi un comando";
+            return t.idle;
         case "listening":
-            return "microfono acceso · premi di nuovo per inviare";
+            return t.listening;
         case "thinking":
-            return state.moons.length
-                ? `${state.moons.length} sub-agenti al lavoro`
-                : state.modelName || "il motore lavora";
+            return state.moons.length ? t.subagents(state.moons.length) : state.modelName || t.working;
         case "tool":
             return state.toolName;
         case "approval":
-            return state.waiting === 1 ? "1 azione in attesa" : `${state.waiting} azioni in attesa`;
+            return t.waiting(state.waiting);
         case "speaking":
-            return "voce locale";
+            return t.speaking;
     }
 }
 

@@ -28,6 +28,7 @@ sidecar dell'app desktop (PostgreSQL e API su `127.0.0.1`).
   - deleghe;
   - skill importate `SKILL.md`;
   - client MCP (ADR-033): i tool dei server consentiti, a rischio alto finché non lo abbassi;
+  - interfaccia (ADR-034): Aurora cambia la lingua delle pagine e l'avviso sulla lingua della voce;
   - indice delle skill.
 - `app/voice/`: voce locale (faster-whisper, Piper) ed ElevenLabs facoltativo.
 - `app/home/`: dispositivi di casa via MQTT.
@@ -39,7 +40,7 @@ sidecar dell'app desktop (PostgreSQL e API su `127.0.0.1`).
 - `alembic/`: le revisioni dello schema (ADR-031).
 
 ### Frontend (`frontend/`)
-Next.js 16 con React 19 e TypeScript. L'interfaccia è in italiano, con tema spaziale blu profondo e angoli squircle.
+Next.js 16 con React 19 e TypeScript. L'interfaccia è in inglese o in italiano (ADR-034, `src/lib/i18n.tsx`), con tema spaziale blu profondo e angoli squircle.
 - `src/app/`: le pagine. La home è il Nucleo (`/`); il Control Plane sta sotto `/control-plane`.
 - `src/components/`: componenti del Nucleo e del Control Plane.
 - `src/lib/`: client API, eventi dal vivo, logica delle pagine.

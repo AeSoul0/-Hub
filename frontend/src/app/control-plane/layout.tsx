@@ -14,26 +14,73 @@ import AuthGate from "@/components/control-plane/AuthGate";
 import styles from "@/components/control-plane/control.module.css";
 import { getJson, postJson } from "@/lib/api/client";
 import type { SettingsView } from "@/lib/api/settings";
+import { catalog, useText } from "@/lib/i18n";
 
-const SECTIONS = [
-    { href: "/control-plane/approvals", label: "APPROVAZIONI" },
-    { href: "/control-plane/runs", label: "RUN" },
-    { href: "/control-plane/memory", label: "MEMORIA" },
-    { href: "/control-plane/documents", label: "DOCUMENTI" },
-    { href: "/control-plane/home", label: "CASA" },
-    { href: "/control-plane/tools", label: "STRUMENTI" },
-    { href: "/control-plane/skills", label: "SKILL" },
-    { href: "/control-plane/security", label: "SICUREZZA" },
-    { href: "/control-plane/voice", label: "VOCE" },
-    { href: "/control-plane/settings", label: "IMPOSTAZIONI" },
-    { href: "/control-plane/system", label: "SISTEMA" },
+const PATHS = [
+    "approvals",
+    "runs",
+    "memory",
+    "documents",
+    "home",
+    "tools",
+    "skills",
+    "security",
+    "voice",
+    "settings",
+    "system",
 ] as const;
+
+type Section = (typeof PATHS)[number];
+
+const TEXT = catalog({
+    en: {
+        sections: {
+            approvals: "APPROVALS",
+            runs: "RUNS",
+            memory: "MEMORY",
+            documents: "DOCUMENTS",
+            home: "HOME",
+            tools: "TOOLS",
+            skills: "SKILLS",
+            security: "SECURITY",
+            voice: "VOICE",
+            settings: "SETTINGS",
+            system: "SYSTEM",
+        } as Record<Section, string>,
+        nav: "Sections",
+        logout: "Log out",
+        setupPending: "The first start is not finished.",
+        setupLink: "Finish it",
+        setupRest: "to choose models, prices and budget.",
+    },
+    it: {
+        sections: {
+            approvals: "APPROVAZIONI",
+            runs: "RUN",
+            memory: "MEMORIA",
+            documents: "DOCUMENTI",
+            home: "CASA",
+            tools: "STRUMENTI",
+            skills: "SKILL",
+            security: "SICUREZZA",
+            voice: "VOCE",
+            settings: "IMPOSTAZIONI",
+            system: "SISTEMA",
+        } as Record<Section, string>,
+        nav: "Sezioni",
+        logout: "Esci",
+        setupPending: "Il primo avvio non è finito.",
+        setupLink: "Completalo",
+        setupRest: "per scegliere modelli, prezzi e budget.",
+    },
+});
 
 /**
  * Shown on every page but the setup itself while the first-run setup is not
  * finished. Checked again on each navigation.
  */
 function SetupReminder({ pathname }: { pathname: string | null }) {
+    const t = useText(TEXT);
     const [pending, setPending] = useState(false);
 
     useEffect(() => {
@@ -52,17 +99,18 @@ function SetupReminder({ pathname }: { pathname: string | null }) {
 
     return (
         <div role="status" className={styles.banner}>
-            Il primo avvio non è finito.{" "}
+            {t.setupPending}{" "}
             <Link href="/control-plane/setup" className={styles.link}>
-                Completalo
+                {t.setupLink}
             </Link>{" "}
-            per scegliere modelli, prezzi e budget.
+            {t.setupRest}
         </div>
     );
 }
 
 export default function ControlPlaneLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
+    const t = useText(TEXT);
 
     const logout = async () => {
         try {
@@ -79,14 +127,14 @@ export default function ControlPlaneLayout({ children }: { children: React.React
                     <Link href="/" className={styles.mark}>
                         ÆHUB<small>CONTROL PLANE</small>
                     </Link>
-                    <nav className={styles.nav} aria-label="Sezioni">
-                        {SECTIONS.map((section) => (
+                    <nav className={styles.nav} aria-label={t.nav}>
+                        {PATHS.map((path) => (
                             <Link
-                                key={section.href}
-                                href={section.href}
-                                aria-current={pathname?.startsWith(section.href) ? "page" : undefined}
+                                key={path}
+                                href={`/control-plane/${path}`}
+                                aria-current={pathname?.startsWith(`/control-plane/${path}`) ? "page" : undefined}
                             >
-                                {section.label}
+                                {t.sections[path]}
                             </Link>
                         ))}
                     </nav>
@@ -95,7 +143,7 @@ export default function ControlPlaneLayout({ children }: { children: React.React
                             ← Nucleo
                         </Link>
                         <button type="button" onClick={logout} className={styles.quiet}>
-                            Esci
+                            {t.logout}
                         </button>
                     </div>
                 </header>

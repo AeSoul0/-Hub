@@ -36,6 +36,7 @@ import {
 import { IMPLEMENTER_ROLES } from "@/lib/nucleo/models";
 import { initialRuns, liveCount, runsReducer, type LiveView } from "@/lib/nucleo/runs";
 import { resumedByVoice } from "@/lib/nucleo/voice";
+import { catalog, useLanguage } from "@/lib/i18n";
 
 import ApprovalPrompt from "./ApprovalPrompt";
 import Orb from "./Orb";
@@ -47,7 +48,7 @@ interface ChatLine {
     id: number;
     who: "me" | "aehub" | "system";
     text: string;
-    channel?: "voce" | "testo";
+    channel?: "voice" | "text";
 }
 
 interface Reply {
@@ -61,6 +62,97 @@ interface Budget {
     month_spent: number | null;
     monthly_budget: number;
 }
+
+const TEXT = catalog({
+    en: {
+        denied: "denied · the call does not start",
+        allowed: "allowed",
+        commandFailed: "The command did not start:",
+        micUnavailable: "Microphone not available:",
+        micMissing: "The microphone is not available in this browser.",
+        nothingHeard: "I heard nothing: try again closer to the microphone.",
+        voiceFailed: "The voice did not arrive:",
+        decisionFailed: "Decision not recorded:",
+        stopFailed: "The run did not stop:",
+        halted: "Engine stopped: the running runs stop and new ones are refused until you resume.",
+        stopAllFailed: "Stop failed:",
+        resumeFailed: "The engine does not restart:",
+        panels: "Panels",
+        conversation: "CONVERSATION",
+        engine: "ENGINE",
+        engineChip: "engine",
+        online: "online",
+        offline: "offline",
+        activeRuns: "active runs",
+        haltedButton: "ENGINE STOPPED · RESUME",
+        confirmStop: "SURE? STOP EVERYTHING",
+        stopAll: "STOP EVERYTHING",
+        month: "month",
+        conversationTitle: "Conversation",
+        emptyChat: "Your commands and the answers appear here.",
+        me: "You",
+        system: "System",
+        channels: { voice: "voice", text: "text" },
+        engineTitle: "Engine",
+        engineView: "Engine view",
+        events: "EVENTS",
+        runs: "RUNS",
+        emptyLog: "Run events appear here while the engine works.",
+        sendVoice: "Stop and send the voice",
+        speak: "Speak",
+        roleLabel: "Role of the command",
+        roleTitle: "Who works on the command: auto lets the triage choose",
+        command: "Command",
+        placeholder: "Type a command…",
+        send: "SEND",
+        hint: "SPACE to speak · drag the edge of the panels to make them taller",
+    },
+    it: {
+        denied: "negata · la chiamata non parte",
+        allowed: "consentita",
+        commandFailed: "Il comando non è partito:",
+        micUnavailable: "Microfono non disponibile:",
+        micMissing: "Il microfono non è disponibile in questo browser.",
+        nothingHeard: "Non ho sentito niente: riprova più vicino al microfono.",
+        voiceFailed: "La voce non è arrivata:",
+        decisionFailed: "Decisione non registrata:",
+        stopFailed: "La run non si è fermata:",
+        halted: "Motore fermato: le run in corso si fermano e le nuove sono rifiutate finché non riprendi.",
+        stopAllFailed: "Stop non riuscito:",
+        resumeFailed: "Il motore non riparte:",
+        panels: "Pannelli",
+        conversation: "CONVERSAZIONE",
+        engine: "MOTORE",
+        engineChip: "motore",
+        online: "in linea",
+        offline: "offline",
+        activeRuns: "run attive",
+        haltedButton: "MOTORE FERMO · RIPRENDI",
+        confirmStop: "CONFERMI? FERMA TUTTO",
+        stopAll: "FERMA TUTTO",
+        month: "mese",
+        conversationTitle: "Conversazione",
+        emptyChat: "Qui compaiono i tuoi comandi e le risposte.",
+        me: "Tu",
+        system: "Sistema",
+        channels: { voice: "voce", text: "testo" },
+        engineTitle: "Motore",
+        engineView: "Vista del motore",
+        events: "EVENTI",
+        runs: "RUN",
+        emptyLog: "Gli eventi delle run compaiono qui mentre il motore lavora.",
+        sendVoice: "Ferma e invia la voce",
+        speak: "Parla",
+        roleLabel: "Ruolo del comando",
+        roleTitle: "Chi lavora sul comando: automatico lascia scegliere il triage",
+        command: "Comando",
+        placeholder: "Scrivi un comando…",
+        send: "INVIA",
+        hint: "SPAZIO per parlare · trascina il bordo dei pannelli per allungarli",
+    },
+});
+
+const errorOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 const silence = () => 0;
 const CHAT_LIMIT = 100;
@@ -95,6 +187,13 @@ function useStickToBottom(dependency: unknown) {
 }
 
 export default function Nucleo() {
+    const lang = useLanguage();
+    const t = TEXT[lang];
+    // The event handlers read the language of the moment, not of their first render.
+    const langRef = useRef(lang);
+    useEffect(() => {
+        langRef.current = lang;
+    }, [lang]);
     const [state, dispatch] = useReducer(nucleoReducer, initialNucleo);
     const [chat, setChat] = useState<ChatLine[]>([]);
     const [showChat, setShowChat] = useState(true);
@@ -210,8 +309,8 @@ export default function Nucleo() {
             const engineEvent = toEngineEvent(event);
             if (engineEvent) {
                 const at = Date.now();
-                dispatch({ type: "engine", event: engineEvent, now: at });
-                runsDispatch({ type: "event", event: engineEvent, now: at });
+                dispatch({ type: "engine", event: engineEvent, now: at, lang: langRef.current });
+                runsDispatch({ type: "event", event: engineEvent, now: at, lang: langRef.current });
                 setNow(at);
                 setSpark((current) => ({
                     count: current.count + 1,
@@ -242,7 +341,7 @@ export default function Nucleo() {
                     line: {
                         at: new Date().toTimeString().slice(0, 8),
                         name: "approval.decided",
-                        detail: denied ? "negata · la chiamata non parte" : "consentita",
+                        detail: denied ? TEXT[langRef.current].denied : TEXT[langRef.current].allowed,
                         kind: denied ? "deny" : "approval",
                     },
                 });
@@ -304,7 +403,7 @@ export default function Nucleo() {
 
     const send = async (command: string) => {
         setSending(true);
-        say("me", command, "testo");
+        say("me", command, "text");
         const form = new FormData();
         form.append("text", command);
         if (role) {
@@ -318,7 +417,7 @@ export default function Nucleo() {
             setSending(false);
             await handleReply(await response.json());
         } catch (error) {
-            say("system", `Il comando non è partito: ${error instanceof Error ? error.message : String(error)}`);
+            say("system", `${t.commandFailed} ${errorOf(error)}`);
         } finally {
             setSending(false);
         }
@@ -327,12 +426,12 @@ export default function Nucleo() {
     const toggleMic = async () => {
         if (!listening) {
             try {
-                const started = await startRecording();
+                const started = await startRecording(t.micMissing);
                 recording.current = started;
                 level.current = started.level;
                 setListening(true);
             } catch (error) {
-                say("system", `Microfono non disponibile: ${error instanceof Error ? error.message : String(error)}`);
+                say("system", `${t.micUnavailable} ${errorOf(error)}`);
             }
             return;
         }
@@ -349,21 +448,21 @@ export default function Nucleo() {
         try {
             const audio = await current.stop();
             const form = new FormData();
-            form.append("file", audio, "voce.webm");
+            form.append("file", audio, "voice.webm");
             const response = await fetchApi("/api/orchestrator/listen", { method: "POST", body: form });
             if (!response.ok) {
                 throw new Error(await detailOf(response));
             }
             const reply: Reply = await response.json();
             if (!reply.heard) {
-                say("system", "Non ho sentito niente: riprova più vicino al microfono.");
+                say("system", t.nothingHeard);
                 return;
             }
-            say("me", reply.heard, "voce");
+            say("me", reply.heard, "voice");
             setSending(false);
             await handleReply(reply);
         } catch (error) {
-            say("system", `La voce non è arrivata: ${error instanceof Error ? error.message : String(error)}`);
+            say("system", `${t.voiceFailed} ${errorOf(error)}`);
         } finally {
             setSending(false);
         }
@@ -374,7 +473,7 @@ export default function Nucleo() {
         try {
             await postJson(`/api/approvals/${encodeURIComponent(id)}`, { decision });
         } catch (error) {
-            say("system", `Decisione non registrata: ${error instanceof Error ? error.message : String(error)}`);
+            say("system", `${t.decisionFailed} ${errorOf(error)}`);
         } finally {
             setDeciding(false);
             void refreshApprovals();
@@ -386,7 +485,7 @@ export default function Nucleo() {
         try {
             await postJson(`/api/runs/${encodeURIComponent(runId)}/cancel`, {});
         } catch (error) {
-            say("system", `La run non si è fermata: ${error instanceof Error ? error.message : String(error)}`);
+            say("system", `${t.stopFailed} ${errorOf(error)}`);
         } finally {
             void refreshLive();
         }
@@ -397,9 +496,9 @@ export default function Nucleo() {
         try {
             await postJson("/api/runs/stop-all", {});
             runsDispatch({ type: "halt", halted: true });
-            say("system", "Motore fermato: le run in corso si fermano e le nuove sono rifiutate finché non riprendi.");
+            say("system", t.halted);
         } catch (error) {
-            say("system", `Stop non riuscito: ${error instanceof Error ? error.message : String(error)}`);
+            say("system", `${t.stopAllFailed} ${errorOf(error)}`);
         } finally {
             void refreshLive();
         }
@@ -410,7 +509,7 @@ export default function Nucleo() {
             await postJson("/api/runs/resume", {});
             runsDispatch({ type: "halt", halted: false });
         } catch (error) {
-            say("system", `Il motore non riparte: ${error instanceof Error ? error.message : String(error)}`);
+            say("system", `${t.resumeFailed} ${errorOf(error)}`);
         } finally {
             void refreshLive();
         }
@@ -446,7 +545,7 @@ export default function Nucleo() {
                 <div className={styles.mark}>
                     ÆHUB<small>NUCLEO</small>
                 </div>
-                <div className={styles.toggles} role="group" aria-label="Pannelli">
+                <div className={styles.toggles} role="group" aria-label={t.panels}>
                     <button
                         type="button"
                         className={styles.toggle}
@@ -454,7 +553,7 @@ export default function Nucleo() {
                         aria-controls="nucleo-chat"
                         onClick={() => setShowChat((value) => !value)}
                     >
-                        CONVERSAZIONE
+                        {t.conversation}
                     </button>
                     <button
                         type="button"
@@ -463,20 +562,20 @@ export default function Nucleo() {
                         aria-controls="nucleo-events"
                         onClick={() => setShowEvents((value) => !value)}
                     >
-                        MOTORE
+                        {t.engine}
                     </button>
                 </div>
                 <div className={styles.chips}>
                     <span className={styles.chip}>
                         <span className={styles.dot} data-state={connection} aria-hidden="true" />
-                        motore <b>{connection === "live" ? "in linea" : connection === "offline" ? "offline" : "…"}</b>
+                        {t.engineChip} <b>{connection === "live" ? t.online : connection === "offline" ? t.offline : "…"}</b>
                     </span>
                     <span className={styles.chip}>
-                        run attive <b>{running}</b>
+                        {t.activeRuns} <b>{running}</b>
                     </span>
                     {runs.halted ? (
                         <button type="button" className={`${styles.toggle} ${styles.halted}`} onClick={() => void resumeAll()}>
-                            MOTORE FERMO · RIPRENDI
+                            {t.haltedButton}
                         </button>
                     ) : (
                         running > 0 && (
@@ -485,13 +584,13 @@ export default function Nucleo() {
                                 className={`${styles.toggle} ${styles.danger}`}
                                 onClick={() => (confirmStop ? void stopAll() : setConfirmStop(true))}
                             >
-                                {confirmStop ? "CONFERMI? FERMA TUTTO" : "FERMA TUTTO"}
+                                {confirmStop ? t.confirmStop : t.stopAll}
                             </button>
                         )
                     )}
                     {budget && spent != null && (
                         <span className={styles.chip}>
-                            mese <b>${spent.toFixed(2)}</b> / ${budget.monthly_budget.toFixed(2)}
+                            {t.month} <b>${spent.toFixed(2)}</b> / ${budget.monthly_budget.toFixed(2)}
                             <span className={styles.meter} aria-hidden="true">
                                 <i style={{ width: `${Math.min(100, (spent / Math.max(budget.monthly_budget, 0.01)) * 100)}%` }} />
                             </span>
@@ -503,16 +602,16 @@ export default function Nucleo() {
                 </div>
             </header>
 
-            <SidePane id="nucleo-chat" side="left" title="Conversazione" count={chat.length} hidden={!showChat} ceiling={top}>
+            <SidePane id="nucleo-chat" side="left" title={t.conversationTitle} count={chat.length} hidden={!showChat} ceiling={top}>
                 <ol className={styles.stream} ref={chatList}>
                     {chat.length === 0 ? (
-                        <li className={styles.empty}>Qui compaiono i tuoi comandi e le risposte.</li>
+                        <li className={styles.empty}>{t.emptyChat}</li>
                     ) : (
                         chat.map((line) => (
                             <li key={line.id} className={`${styles.msg} ${line.who === "me" ? styles.me : line.who === "system" ? styles.system : ""} rise`}>
                                 <span className={styles.who}>
-                                    {line.who === "me" ? "Tu" : line.who === "system" ? "Sistema" : "ÆHub"}
-                                    {line.channel ? ` · ${line.channel}` : ""}
+                                    {line.who === "me" ? t.me : line.who === "system" ? t.system : "ÆHub"}
+                                    {line.channel ? ` · ${t.channels[line.channel]}` : ""}
                                 </span>
                                 <p>{line.who === "aehub" ? <CitedText text={line.text} /> : line.text}</p>
                             </li>
@@ -528,8 +627,8 @@ export default function Nucleo() {
                 <span className={`${styles.tick} ${styles.bl}`} />
                 <span className={`${styles.tick} ${styles.br}`} />
                 <div className={styles.state} data-mode={mode} aria-live="polite">
-                    <strong>{MODE_LABELS[mode]}</strong>
-                    <span>{modeDetail(mode, state)}</span>
+                    <strong>{MODE_LABELS[lang][mode]}</strong>
+                    <span>{modeDetail(mode, state, lang)}</span>
                 </div>
                 <ApprovalPrompt pending={approvals} busy={deciding} onDecide={decide} />
             </main>
@@ -537,17 +636,17 @@ export default function Nucleo() {
             <SidePane
                 id="nucleo-events"
                 side="right"
-                title="Motore"
+                title={t.engineTitle}
                 count={state.log.length}
                 hidden={!showEvents}
                 ceiling={top}
                 header={
-                    <div className={`${styles.paneTitle} ${styles.tabs}`} role="group" aria-label="Vista del motore">
+                    <div className={`${styles.paneTitle} ${styles.tabs}`} role="group" aria-label={t.engineView}>
                         <button type="button" aria-pressed={rightTab === "events"} onClick={() => setRightTab("events")}>
-                            EVENTI <span>{state.log.length || ""}</span>
+                            {t.events} <span>{state.log.length || ""}</span>
                         </button>
                         <button type="button" aria-pressed={rightTab === "runs"} onClick={() => setRightTab("runs")}>
-                            RUN <span>{liveCount(runs) || ""}</span>
+                            {t.runs} <span>{liveCount(runs) || ""}</span>
                         </button>
                     </div>
                 }
@@ -557,7 +656,7 @@ export default function Nucleo() {
                 ) : (
                     <ol className={styles.stream} ref={logList}>
                         {state.log.length === 0 ? (
-                            <li className={styles.empty}>Gli eventi delle run compaiono qui mentre il motore lavora.</li>
+                            <li className={styles.empty}>{t.emptyLog}</li>
                         ) : (
                             state.log.map((line) => (
                                 <li key={line.id} className={`${styles.ev} rise`} data-k={line.kind}>
@@ -582,7 +681,7 @@ export default function Nucleo() {
                         type="button"
                         className={styles.mic}
                         aria-pressed={listening}
-                        aria-label={listening ? "Ferma e invia la voce" : "Parla"}
+                        aria-label={listening ? t.sendVoice : t.speak}
                         disabled={sending}
                         onClick={() => void toggleMic()}
                     >
@@ -603,8 +702,8 @@ export default function Nucleo() {
                         }}
                     >
                         <select
-                            aria-label="Ruolo del comando"
-                            title="Chi lavora sul comando: automatico lascia scegliere il triage"
+                            aria-label={t.roleLabel}
+                            title={t.roleTitle}
                             className={styles.role}
                             value={role}
                             onChange={(event) => setRole(event.target.value)}
@@ -617,18 +716,18 @@ export default function Nucleo() {
                             ))}
                         </select>
                         <input
-                            aria-label="Comando"
+                            aria-label={t.command}
                             autoComplete="off"
-                            placeholder="Scrivi un comando…"
+                            placeholder={t.placeholder}
                             value={text}
                             onChange={(event) => setText(event.target.value)}
                         />
                         <button type="submit" disabled={busy || !text.trim()}>
-                            INVIA
+                            {t.send}
                         </button>
                     </form>
                 </div>
-                <div className={styles.hint}>SPAZIO per parlare · trascina il bordo dei pannelli per allungarli</div>
+                <div className={styles.hint}>{t.hint}</div>
             </footer>
         </div>
     );

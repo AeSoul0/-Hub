@@ -4,7 +4,7 @@
  */
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import React from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import SettingsPage from "@/app/control-plane/settings/page";
 import SetupPage from "@/app/control-plane/setup/page";
@@ -28,6 +28,11 @@ import {
 } from "@/lib/nucleo/models";
 
 import { stubFetch } from "./helpers";
+
+import { chooseLanguage } from "@/lib/i18n";
+
+// These tests read the Italian interface; interface.test.tsx covers the English default.
+beforeEach(() => chooseLanguage("it"));
 
 vi.mock("next/link", () => ({
     default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (

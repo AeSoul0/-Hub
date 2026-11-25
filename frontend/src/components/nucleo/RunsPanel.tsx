@@ -12,6 +12,32 @@ import { runHref } from "@/lib/routes";
 import { canStop, isEnded, meters, offset, ordered, STATUS_LABELS, usd, type RunsState } from "@/lib/nucleo/runs";
 
 import styles from "./nucleo.module.css";
+import { catalog, useLanguage } from "@/lib/i18n";
+
+const TEXT = catalog({
+    en: {
+        empty: "Runs start from your commands: here you see cost, time and limits while they work.",
+        history: "Run history",
+        subagent: "SUBAGENT",
+        limits: (id: string) => `Limits of run ${id}`,
+        stop: "Stop the run",
+        details: "Details →",
+        timeline: (id: string) => `Timeline of run ${id}`,
+        noEvents: "No event recorded.",
+        waiting: "Waiting for the first event…",
+    },
+    it: {
+        empty: "Le run partono dai tuoi comandi: qui vedi costo, tempo e limiti mentre lavorano.",
+        history: "Storico delle run",
+        subagent: "SUB-AGENTE",
+        limits: (id: string) => `Limiti della run ${id}`,
+        stop: "Ferma la run",
+        details: "Dettagli →",
+        timeline: (id: string) => `Timeline della run ${id}`,
+        noEvents: "Nessun evento registrato.",
+        waiting: "In attesa del primo evento…",
+    },
+});
 
 const short = (id: string) => id.slice(0, 4);
 
@@ -36,6 +62,8 @@ export default function RunsPanel({
     state: RunsState;
     onStop: (runId: string) => void;
 }) {
+    const lang = useLanguage();
+    const t = TEXT[lang];
     const runs = ordered(state.runs);
     const now = useClock(runs.some((run) => run.status === "running" || run.status === "cancelling"));
     // The newest run opens its timeline; the others on request.
@@ -45,9 +73,9 @@ export default function RunsPanel({
         return (
             <div className={styles.stream}>
                 <p className={styles.empty}>
-                    Le run partono dai tuoi comandi: qui vedi costo, tempo e limiti mentre lavorano.{" "}
+                    {t.empty}{" "}
                     <Link className={styles.link} href="/control-plane/runs">
-                        Storico delle run
+                        {t.history}
                     </Link>
                 </p>
             </div>
@@ -63,13 +91,15 @@ export default function RunsPanel({
                     <li key={run.id} className={`${styles.run} rise`} data-status={run.status} data-sub={run.parentId ? "" : undefined}>
                         <div className={styles.runHead}>
                             <span className={styles.runDot} aria-hidden="true" />
-                            <b>{run.parentId ? "SUB-AGENTE" : "RUN"} {short(run.id)}</b>
-                            <span className={styles.runStatus}>{STATUS_LABELS[run.status]}</span>
+                            <b>
+                                {run.parentId ? t.subagent : "RUN"} {short(run.id)}
+                            </b>
+                            <span className={styles.runStatus}>{STATUS_LABELS[lang][run.status]}</span>
                         </div>
                         {run.task && <p className={styles.runTask}>{run.task}</p>}
 
-                        <ul className={styles.meters} aria-label={`Limiti della run ${short(run.id)}`}>
-                            {meters(run, state.limits, now).map((item) => (
+                        <ul className={styles.meters} aria-label={t.limits(short(run.id))}>
+                            {meters(run, state.limits, now, lang).map((item) => (
                                 <li key={item.key} data-level={item.level}>
                                     <span>{item.label}</span>
                                     <span className={styles.bar2} aria-hidden="true">
@@ -83,7 +113,7 @@ export default function RunsPanel({
                         <div className={styles.row}>
                             {canStop(run) && (
                                 <button type="button" className={`${styles.btn} ${styles.stop}`} onClick={() => onStop(run.id)}>
-                                    Ferma la run
+                                    {t.stop}
                                 </button>
                             )}
                             <button
@@ -96,14 +126,14 @@ export default function RunsPanel({
                                 Timeline {run.steps.length || ""}
                             </button>
                             <Link className={`${styles.link} ${styles.more}`} href={runHref(run.id)}>
-                                Dettagli →
+                                {t.details}
                             </Link>
                         </div>
 
                         {open && (
-                            <ol id={timelineId} className={styles.timeline} aria-label={`Timeline della run ${short(run.id)}`}>
+                            <ol id={timelineId} className={styles.timeline} aria-label={t.timeline(short(run.id))}>
                                 {run.steps.length === 0 ? (
-                                    <li className={styles.empty}>{isEnded(run) ? "Nessun evento registrato." : "In attesa del primo evento…"}</li>
+                                    <li className={styles.empty}>{isEnded(run) ? t.noEvents : t.waiting}</li>
                                 ) : (
                                     run.steps.map((step) => (
                                         <li key={step.id} data-k={step.kind}>

@@ -1,26 +1,37 @@
 /**
  * @file frontend/src/components/control-plane/SettingsForm.tsx
  * @description Editable settings (M12, restyled in F4): each field shows
- * where its value comes from; Save sends only what changed, Ripristina goes
- * back to the environment or the default. The backend validates the whole
- * batch.
+ * where its value comes from; Save sends only what changed, Reset goes back
+ * to the environment or the default. The backend validates the whole batch.
  */
 import React, { useState } from "react";
 
 import styles from "@/components/control-plane/control.module.css";
 import type { SettingChanges, SettingField } from "@/lib/api/settings";
+import { catalog, useLanguage } from "@/lib/i18n";
 import { settingText, SOURCE_LABELS } from "@/lib/nucleo/models";
 
-const CHOICE_EMPTY: Record<string, string> = {
-    AEHUB_FORCE_ROLE: "per regole (consigliato)",
-};
+const TEXT = catalog({
+    en: {
+        save: "Save",
+        reset: "reset",
+        resetLabel: (label: string) => `Reset ${label}`,
+        byRules: "by rules (recommended)",
+    },
+    it: {
+        save: "Salva",
+        reset: "ripristina",
+        resetLabel: (label: string) => `Ripristina ${label}`,
+        byRules: "per regole (consigliato)",
+    },
+});
 
 export default function SettingsForm({
     fields,
     errors,
     busy,
     onSave,
-    submitLabel = "Salva",
+    submitLabel,
 }: {
     fields: SettingField[];
     errors: Record<string, string>;
@@ -28,6 +39,9 @@ export default function SettingsForm({
     onSave: (changes: SettingChanges) => void;
     submitLabel?: string;
 }) {
+    const lang = useLanguage();
+    const t = TEXT[lang];
+    const choiceEmpty: Record<string, string> = { AEHUB_FORCE_ROLE: t.byRules };
     const [draft, setDraft] = useState<Record<string, string>>(() =>
         Object.fromEntries(fields.map((field) => [field.name, field.value])),
     );
@@ -50,7 +64,7 @@ export default function SettingsForm({
         >
             {fields.map((field) => {
                 const id = `setting-${field.name}`;
-                const { label, help } = settingText(field);
+                const { label, help } = settingText(field, lang);
                 const multiline = field.kind === "roles" || field.kind === "prices";
                 const common = {
                     id,
@@ -66,22 +80,22 @@ export default function SettingsForm({
                             <label htmlFor={id} className={styles.settingLabel}>
                                 {label}
                             </label>
-                            <span className={styles.source}>{SOURCE_LABELS[field.source]}</span>
+                            <span className={styles.source}>{SOURCE_LABELS[lang][field.source]}</span>
                             {field.source === "database" && (
                                 <button
                                     type="button"
                                     onClick={() => onSave({ [field.name]: null })}
                                     disabled={busy}
                                     className={styles.linkBtn}
-                                    aria-label={`Ripristina ${label}`}
+                                    aria-label={t.resetLabel(label)}
                                 >
-                                    ripristina
+                                    {t.reset}
                                 </button>
                             )}
                         </div>
                         {field.kind === "choice" ? (
                             <select {...common} onChange={(event) => set(field.name, event.target.value)}>
-                                {field.default === "" && <option value="">{CHOICE_EMPTY[field.name] ?? "—"}</option>}
+                                {field.default === "" && <option value="">{choiceEmpty[field.name] ?? "—"}</option>}
                                 {(field.options ?? []).map((option) => (
                                     <option key={option} value={option}>
                                         {option}
@@ -116,7 +130,7 @@ export default function SettingsForm({
                     disabled={busy || Object.keys(changes).length === 0}
                     className={`${styles.btn} ${styles.go}`}
                 >
-                    {submitLabel}
+                    {submitLabel ?? t.save}
                 </button>
             </div>
         </form>

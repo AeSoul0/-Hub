@@ -10,6 +10,12 @@
 import React, { useEffect, useRef, useState } from "react";
 
 import styles from "./nucleo.module.css";
+import { catalog, useText } from "@/lib/i18n";
+
+const TEXT = catalog({
+    en: { height: (title: string) => `Height: ${title}` },
+    it: { height: (title: string) => `Altezza: ${title}` },
+});
 
 export const MIN_HEIGHT = 140;
 // Room left under the top bar when a pane is at full height.
@@ -51,6 +57,7 @@ export default function SidePane({
     children: React.ReactNode;
 }) {
     const pane = useRef<HTMLElement>(null);
+    const heightLabel = useText(TEXT).height;
     const [height, setHeight] = useState<number | null>(null);
     const [dragging, setDragging] = useState(false);
 
@@ -114,7 +121,7 @@ export default function SidePane({
             <div
                 role="separator"
                 aria-orientation="horizontal"
-                aria-label={`Altezza: ${title.toLowerCase()}`}
+                aria-label={heightLabel(title.toLowerCase())}
                 tabIndex={0}
                 className={`${styles.grip} ${dragging ? styles.dragging : ""}`}
                 onPointerDown={onPointerDown}

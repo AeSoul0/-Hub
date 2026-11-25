@@ -76,6 +76,15 @@ class NativeAgentWorker:
         self.model_provider = model_provider
         self.system_prompt = system_prompt
 
+    def full_system_prompt(self) -> str:
+        """
+        The fixed contract and what Aurora knows about the app she runs in
+        (its language, the voice; ADR-034), read on every turn.
+        """
+        from app.core.interface import app_context
+
+        return f"{self.system_prompt}\n\n{app_context()}"
+
     async def generate(
         self,
         context: Dict[str, Any],
@@ -88,7 +97,7 @@ class NativeAgentWorker:
         )
 
         worker_context["system_prompt"] = (
-            self.system_prompt
+            self.full_system_prompt()
         )
 
         worker_context.setdefault(

@@ -31,12 +31,102 @@ import {
     type HomeView,
 } from "@/lib/api/home";
 import { useSettings } from "@/lib/api/settings";
+import { catalog, useLanguage, type Lang } from "@/lib/i18n";
 import { FORMAT_LABEL, homeError, TYPE_LABEL } from "@/lib/nucleo/home";
 
 const EMPTY: DeviceEntry = { id: "", name: "", type: "light", topic: "", format: "zigbee2mqtt" };
 
-function message(err: unknown): string {
-    return homeError(err instanceof Error ? err.message : String(err));
+const TEXT = catalog({
+    en: {
+        device: "Device",
+        name: "Name",
+        namePlaceholder: "Living room light",
+        type: "Type",
+        format: "Format",
+        topic: "Command topic",
+        agentCalls: "The agent calls it",
+        agentCallsRest: ": it never sees the topic, so it cannot write elsewhere on the broker.",
+        saveDevice: "Save the device",
+        add: "Add",
+        cancel: "Cancel",
+        saved: "Saved: it applies from the next command.",
+        notSaved: "Not saved.",
+        passwordSaved: "Password saved in the system keyring.",
+        brokerOk: "The broker answers.",
+        brokerDown: "The broker does not answer.",
+        unavailable: "Home not available:",
+        loading: "Loading the home…",
+        title: "HOME",
+        brokerMissing: "broker missing",
+        brokerSet: "broker set",
+        devices: (count: number) => (count === 1 ? "1 device" : `${count} devices`),
+        stopped: "The devices are stopped:",
+        devicesTitle: "Devices",
+        noDevices: "No devices. Add one below: the home tools appear by themselves.",
+        noBroker: "Without a broker the commands do not start: set it below.",
+        file: "Devices file, read only:",
+        edit: (name: string) => `Edit ${name}`,
+        addDevice: "Add a device",
+        broker: "MQTT broker",
+        address: "Address",
+        user: "User",
+        save: "Save",
+        test: "Test the connection",
+        passwordSet: "password set",
+        noPassword: "no password",
+        password: "Broker password",
+        savePassword: "Save the password",
+        setWith: "It is set with",
+        setWithRest: ", then a restart.",
+        passwordHelp: "It stays in the system keyring and cannot be read again from here. It is needed only if the broker has a user.",
+    },
+    it: {
+        device: "Dispositivo",
+        name: "Nome",
+        namePlaceholder: "Luce del soggiorno",
+        type: "Tipo",
+        format: "Formato",
+        topic: "Topic dei comandi",
+        agentCalls: "L'agente lo chiama",
+        agentCallsRest: ": non vede mai il topic, quindi non può scrivere altrove sul broker.",
+        saveDevice: "Salva il dispositivo",
+        add: "Aggiungi",
+        cancel: "Annulla",
+        saved: "Salvato: vale dal prossimo comando.",
+        notSaved: "Non salvato.",
+        passwordSaved: "Password salvata nel portachiavi del sistema.",
+        brokerOk: "Il broker risponde.",
+        brokerDown: "Il broker non risponde.",
+        unavailable: "Casa non disponibile:",
+        loading: "Carico la casa…",
+        title: "CASA",
+        brokerMissing: "broker mancante",
+        brokerSet: "broker impostato",
+        devices: (count: number) => (count === 1 ? "1 dispositivo" : `${count} dispositivi`),
+        stopped: "I dispositivi sono fermi:",
+        devicesTitle: "Dispositivi",
+        noDevices: "Nessun dispositivo. Aggiungine uno qui sotto: gli strumenti della casa compaiono da soli.",
+        noBroker: "Senza broker i comandi non partono: impostalo qui sotto.",
+        file: "File dei dispositivi, in sola lettura:",
+        edit: (name: string) => `Modifica ${name}`,
+        addDevice: "Aggiungi un dispositivo",
+        broker: "Broker MQTT",
+        address: "Indirizzo",
+        user: "Utente",
+        save: "Salva",
+        test: "Prova il collegamento",
+        passwordSet: "password impostata",
+        noPassword: "nessuna password",
+        password: "Password del broker",
+        savePassword: "Salva la password",
+        setWith: "Si imposta con",
+        setWithRest: ", poi un riavvio.",
+        passwordHelp: "Resta nel portachiavi del sistema e non si rilegge più da qui. Serve solo se il broker ha un utente.",
+    },
+});
+
+function message(err: unknown, lang: Lang): string {
+    return homeError(err instanceof Error ? err.message : String(err), lang);
 }
 
 function DeviceForm({
@@ -52,6 +142,8 @@ function DeviceForm({
     onSave: (entry: DeviceEntry) => void;
     onCancel: () => void;
 }) {
+    const lang = useLanguage();
+    const t = TEXT[lang];
     const [form, setForm] = useState<DeviceEntry>(editing ?? EMPTY);
     const id = editing ? editing.id : deviceId(form.name);
     const set = (change: Partial<DeviceEntry>) => setForm((current) => ({ ...current, ...change }));
@@ -62,19 +154,19 @@ function DeviceForm({
     };
 
     return (
-        <form onSubmit={submit} className={styles.stack} aria-label="Dispositivo">
+        <form onSubmit={submit} className={styles.stack} aria-label={t.device}>
             <div className={styles.filters}>
                 <label className={`${styles.field} ${styles.grow}`}>
-                    Nome
+                    {t.name}
                     <input
                         value={form.name}
                         maxLength={100}
-                        placeholder="Luce del soggiorno"
+                        placeholder={t.namePlaceholder}
                         onChange={(event) => set({ name: event.target.value })}
                     />
                 </label>
                 <label className={styles.field}>
-                    Tipo
+                    {t.type}
                     <select
                         value={form.type}
                         onChange={(event) => {
@@ -83,15 +175,15 @@ function DeviceForm({
                             set(type === "lock" ? { type, format: "zigbee2mqtt" } : { type });
                         }}
                     >
-                        {(Object.keys(TYPE_LABEL) as DeviceType[]).map((type) => (
+                        {(Object.keys(TYPE_LABEL[lang]) as DeviceType[]).map((type) => (
                             <option key={type} value={type}>
-                                {TYPE_LABEL[type]}
+                                {TYPE_LABEL[lang][type]}
                             </option>
                         ))}
                     </select>
                 </label>
                 <label className={styles.field}>
-                    Formato
+                    {t.format}
                     <select
                         value={form.format}
                         disabled={form.type === "lock"}
@@ -106,7 +198,7 @@ function DeviceForm({
                 </label>
             </div>
             <label className={styles.field}>
-                Topic dei comandi
+                {t.topic}
                 <input
                     value={form.topic}
                     maxLength={256}
@@ -117,8 +209,8 @@ function DeviceForm({
             </label>
             {id && (
                 <p className={styles.help}>
-                    L&apos;agente lo chiama <code className={styles.mono}>{id}</code>: non vede mai il topic, quindi non
-                    può scrivere altrove sul broker.
+                    {t.agentCalls} <code className={styles.mono}>{id}</code>
+                    {t.agentCallsRest}
                 </p>
             )}
             {error && (
@@ -128,11 +220,11 @@ function DeviceForm({
             )}
             <div className={styles.row}>
                 <button type="submit" className={`${styles.btn} ${styles.go}`} disabled={busy || !id || !form.topic.trim()}>
-                    {editing ? "Salva il dispositivo" : "Aggiungi"}
+                    {editing ? t.saveDevice : t.add}
                 </button>
                 {editing && (
                     <button type="button" className={styles.btn} onClick={onCancel}>
-                        Annulla
+                        {t.cancel}
                     </button>
                 )}
             </div>
@@ -141,6 +233,8 @@ function DeviceForm({
 }
 
 export default function HomePage() {
+    const lang = useLanguage();
+    const t = TEXT[lang];
     const { view: settings, error: settingsError, save } = useSettings();
     const [home, setHome] = useState<HomeView | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -161,9 +255,9 @@ export default function HomePage() {
             setHome(await getJson<HomeView>("/api/home"));
             setLoadError(null);
         } catch (err) {
-            setLoadError(message(err));
+            setLoadError(message(err, lang));
         }
-    }, []);
+    }, [lang]);
 
     useEffect(() => {
         const first = setTimeout(refresh, 0);
@@ -189,7 +283,7 @@ export default function HomePage() {
         setBusy(false);
         setErrors(outcome.errors);
         setCheck(null);
-        setNote(outcome.ok ? "Salvato: vale dal prossimo comando." : homeError(outcome.message ?? "Non salvato."));
+        setNote(outcome.ok ? t.saved : homeError(outcome.message ?? t.notSaved, lang));
         if (outcome.ok) {
             setUrl(null);
             setUsername(null);
@@ -206,10 +300,10 @@ export default function HomePage() {
             await putJson("/api/desktop/secrets", { AEHUB_MQTT_PASSWORD: password });
             setPassword("");
             setCheck(null);
-            setNote("Password salvata nel portachiavi del sistema.");
+            setNote(t.passwordSaved);
             await refresh();
         } catch (err) {
-            setNote(message(err));
+            setNote(message(err, lang));
         } finally {
             setBusy(false);
         }
@@ -222,10 +316,10 @@ export default function HomePage() {
             const result = await postJson<{ ok: boolean; error: string | null }>("/api/home/broker/check", {});
             setCheck({
                 ok: result.ok,
-                text: result.ok ? "Il broker risponde." : homeError(result.error ?? "Il broker non risponde."),
+                text: result.ok ? t.brokerOk : homeError(result.error ?? t.brokerDown, lang),
             });
         } catch (err) {
-            setCheck({ ok: false, text: message(err) });
+            setCheck({ ok: false, text: message(err, lang) });
         } finally {
             setBusy(false);
         }
@@ -245,7 +339,7 @@ export default function HomePage() {
                     : current,
             );
         } catch (err) {
-            setProblem({ id: device.id, text: message(err) });
+            setProblem({ id: device.id, text: message(err, lang) });
         } finally {
             setBusy(false);
         }
@@ -266,7 +360,7 @@ export default function HomePage() {
             setHome(await putJson<HomeView>("/api/home/devices", { devices: entries }));
             return true;
         } catch (err) {
-            setFormError(message(err));
+            setFormError(message(err, lang));
             return false;
         } finally {
             setBusy(false);
@@ -294,7 +388,9 @@ export default function HomePage() {
     if (loadError || settingsError) {
         return (
             <main className={styles.page}>
-                <p className={styles.error}>Casa non disponibile: {loadError ?? settingsError}</p>
+                <p className={styles.error}>
+                    {t.unavailable} {loadError ?? settingsError}
+                </p>
             </main>
         );
     }
@@ -302,7 +398,7 @@ export default function HomePage() {
     if (!home || !settings) {
         return (
             <main className={styles.page}>
-                <p className={styles.muted}>Carico la casa…</p>
+                <p className={styles.muted}>{t.loading}</p>
             </main>
         );
     }
@@ -319,23 +415,23 @@ export default function HomePage() {
     return (
         <main className={styles.page}>
             <div className={styles.head}>
-                <h1 className={styles.title}>CASA</h1>
+                <h1 className={styles.title}>{t.title}</h1>
                 <span className={styles.badge} data-tone={offline ? "warn" : "ok"}>
-                    {offline ? "broker mancante" : "broker impostato"}
+                    {offline ? t.brokerMissing : t.brokerSet}
                 </span>
                 <span className={styles.badge}>
-                    {home.devices.length === 1 ? "1 dispositivo" : `${home.devices.length} dispositivi`}
+                    {t.devices(home.devices.length)}
                 </span>
             </div>
 
             {deviceError && (
                 <p className={styles.error} role="alert">
-                    I dispositivi sono fermi: {homeError(deviceError)}
+                    {t.stopped} {homeError(deviceError, lang)}
                 </p>
             )}
 
             <section className={styles.card}>
-                <h2 className={styles.h2}>Dispositivi</h2>
+                <h2 className={styles.h2}>{t.devicesTitle}</h2>
                 {home.devices.length ? (
                     <ul className={styles.devices}>
                         {home.devices.map((device) => (
@@ -363,22 +459,20 @@ export default function HomePage() {
                         ))}
                     </ul>
                 ) : (
-                    <p className={styles.muted}>
-                        Nessun dispositivo. Aggiungine uno qui sotto: gli strumenti della casa compaiono da soli.
-                    </p>
+                    <p className={styles.muted}>{t.noDevices}</p>
                 )}
                 {offline && home.devices.length > 0 && (
-                    <p className={styles.warn}>Senza broker i comandi non partono: impostalo qui sotto.</p>
+                    <p className={styles.warn}>{t.noBroker}</p>
                 )}
                 {home.file && (
                     <p className={styles.help}>
-                        File dei dispositivi, in sola lettura: <code className={styles.mono}>{home.file}</code>
+                        {t.file} <code className={styles.mono}>{home.file}</code>
                     </p>
                 )}
             </section>
 
             <section className={styles.card}>
-                <h2 className={styles.h2}>{editing ? `Modifica ${editing.name}` : "Aggiungi un dispositivo"}</h2>
+                <h2 className={styles.h2}>{editing ? t.edit(editing.name) : t.addDevice}</h2>
                 <DeviceForm
                     key={formKey}
                     editing={editing}
@@ -390,11 +484,11 @@ export default function HomePage() {
             </section>
 
             <section className={styles.card}>
-                <h2 className={styles.h2}>Broker MQTT</h2>
-                <form onSubmit={saveBroker} className={styles.stack} aria-label="Broker MQTT">
+                <h2 className={styles.h2}>{t.broker}</h2>
+                <form onSubmit={saveBroker} className={styles.stack} aria-label={t.broker}>
                     <div className={styles.filters}>
                         <label className={`${styles.field} ${styles.grow}`}>
-                            Indirizzo
+                            {t.address}
                             <input
                                 value={urlValue}
                                 placeholder="mqtt://192.168.1.10:1883"
@@ -406,7 +500,7 @@ export default function HomePage() {
                             />
                         </label>
                         <label className={styles.field}>
-                            Utente
+                            {t.user}
                             <input
                                 value={usernameValue}
                                 autoComplete="off"
@@ -422,7 +516,7 @@ export default function HomePage() {
                     {fieldError("AEHUB_MQTT_USERNAME")}
                     <div className={styles.row}>
                         <button type="submit" className={`${styles.btn} ${styles.go}`} disabled={busy || !dirty}>
-                            Salva
+                            {t.save}
                         </button>
                         <button
                             type="button"
@@ -430,7 +524,7 @@ export default function HomePage() {
                             disabled={busy || dirty || offline}
                             onClick={checkBroker}
                         >
-                            Prova il collegamento
+                            {t.test}
                         </button>
                         {note && (
                             <span className={styles.muted} role="status">
@@ -447,12 +541,12 @@ export default function HomePage() {
 
                 <div className={styles.row}>
                     <span className={styles.badge} data-tone={home.broker.password_set ? "ok" : undefined}>
-                        {home.broker.password_set ? "password impostata" : "nessuna password"}
+                        {home.broker.password_set ? t.passwordSet : t.noPassword}
                     </span>
                     {home.desktop ? (
                         <>
                             <label className={styles.field}>
-                                Password del broker
+                                {t.password}
                                 <input
                                     type="password"
                                     autoComplete="off"
@@ -466,19 +560,17 @@ export default function HomePage() {
                                 onClick={savePassword}
                                 disabled={busy || !password}
                             >
-                                Salva la password
+                                {t.savePassword}
                             </button>
                         </>
                     ) : (
                         <span className={styles.muted}>
-                            Si imposta con <code className={styles.mono}>python scripts/aehub.py setup</code>, poi un
-                            riavvio.
+                            {t.setWith} <code className={styles.mono}>python scripts/aehub.py setup</code>
+                            {t.setWithRest}
                         </span>
                     )}
                 </div>
-                <p className={styles.help}>
-                    Resta nel portachiavi del sistema e non si rilegge più da qui. Serve solo se il broker ha un utente.
-                </p>
+                <p className={styles.help}>{t.passwordHelp}</p>
             </section>
         </main>
     );

@@ -5,6 +5,8 @@
  * the MEMORIA and DOCUMENTI pages write through PUT /api/settings.
  */
 
+import type { Lang } from "@/lib/i18n";
+
 export type MemoryKind = "fact" | "preference" | "rule" | "episode";
 export type TrustFilter = "all" | "trusted" | "untrusted";
 
@@ -118,11 +120,11 @@ export function splitCitations(text: string): CitedPart[] {
 }
 
 /** "L12-30" → "righe 12-30", "p3" → "pagina 3". */
-export function locatorLabel(locator: string): string {
+export function locatorLabel(locator: string, lang: Lang = "en"): string {
     if (locator.startsWith("p")) {
-        return `pagina ${locator.slice(1)}`;
+        return `${lang === "it" ? "pagina" : "page"} ${locator.slice(1)}`;
     }
-    return `righe ${locator.slice(1)}`;
+    return `${lang === "it" ? "righe" : "lines"} ${locator.slice(1)}`;
 }
 
 export function formatSize(bytes: number): string {

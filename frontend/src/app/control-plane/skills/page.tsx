@@ -1,6 +1,6 @@
 /**
  * @file frontend/src/app/control-plane/skills/page.tsx
- * @description Skill (F5, ADR-026): import a skill in the SKILL.md format
+ * @description Skills (F5, ADR-026): import a skill in the SKILL.md format
  * (Claude Code, Codex, OpenClaw) from a link or a file, read it, turn it on
  * or off, remove it.
  *
@@ -20,7 +20,97 @@ import React, { useCallback, useEffect, useState } from "react";
 import styles from "@/components/control-plane/control.module.css";
 import { deleteJson, getJson, postJson, putJson } from "@/lib/api/client";
 import type { ImportedSkill, ImportedSkillDetail } from "@/lib/api/tools";
+import { catalog, useLanguage, useText } from "@/lib/i18n";
 import { WARNING_TEXT, importErrorText, sourceLabel } from "@/lib/nucleo/tools";
+
+const TEXT = catalog({
+    en: {
+        on: "on",
+        off: "off",
+        turnOff: "Turn off",
+        turnOn: "Turn on",
+        confirmDelete: "Confirm: delete",
+        cancel: "Cancel",
+        delete: "Delete",
+        source: "Source",
+        fingerprint: "Fingerprint",
+        size: "Size",
+        chars: (count: number) => `${count} characters`,
+        toCheck: "to check",
+        toCheckList: "To check",
+        clean: "No suspicious sign found in the text. Read it anyway.",
+        readFirst:
+            "Read the text before turning it on. Once on, the agent reads it when a task resembles it; its instructions count as external content: they grant no permission and, after reading them, every high-risk action asks for your approval.",
+        skillText: "Text of the skill",
+        imported: (name: string) => `${name} imported, off: read it below.`,
+        updated: (name: string) => `${name} updated: the text changed, read it again before turning it on.`,
+        same: (name: string) => `${name}: same text as before, nothing changed.`,
+        turnedOn: (name: string) => `${name} on: it applies from the next run.`,
+        turnedOff: (name: string) => `${name} off.`,
+        deleted: (name: string) => `${name} deleted.`,
+        title: "SKILLS",
+        count: (on: number, total: number) => `${on} of ${total} on`,
+        importSkill: "Import a skill",
+        importHelp:
+            "SKILL.md format, the same as Claude Code, Codex and OpenClaw. Only the text is imported: scripts and other files of the skill stay out and nothing runs. In 2026 skill registries had malicious skills: import from sources you know and read the text before turning it on.",
+        from: "From where",
+        fromLink: "from a link",
+        fromFile: "from a file",
+        link: "https link to the file or the folder on GitHub",
+        file: "SKILL.md file",
+        importing: "Importing…",
+        import: "Import",
+        unavailable: "Skills not available:",
+        importedSkills: "Imported skills",
+        importedTitle: "Imported",
+        warnings: (count: number) => `${count} to check`,
+        none: "No skill imported.",
+        choose: "Choose a skill to read it.",
+    },
+    it: {
+        on: "accesa",
+        off: "spenta",
+        turnOff: "Spegni",
+        turnOn: "Accendi",
+        confirmDelete: "Conferma: elimina",
+        cancel: "Annulla",
+        delete: "Elimina",
+        source: "Fonte",
+        fingerprint: "Impronta",
+        size: "Dimensione",
+        chars: (count: number) => `${count} caratteri`,
+        toCheck: "da controllare",
+        toCheckList: "Da controllare",
+        clean: "Nessun segnale sospetto trovato nel testo. Leggilo comunque.",
+        readFirst:
+            "Leggi il testo prima di accenderla. Accesa, l'agente la legge quando un compito le somiglia; le sue istruzioni contano come contenuto esterno: non danno permessi e, dopo averle lette, ogni azione a rischio alto chiede la tua approvazione.",
+        skillText: "Testo della skill",
+        imported: (name: string) => `${name} importata, spenta: leggila qui sotto.`,
+        updated: (name: string) => `${name} aggiornata: il testo è cambiato, rileggilo prima di accenderla.`,
+        same: (name: string) => `${name}: stesso testo di prima, niente è cambiato.`,
+        turnedOn: (name: string) => `${name} accesa: vale dalla prossima run.`,
+        turnedOff: (name: string) => `${name} spenta.`,
+        deleted: (name: string) => `${name} eliminata.`,
+        title: "SKILL",
+        count: (on: number, total: number) => `${on} accese su ${total}`,
+        importSkill: "Importa una skill",
+        importHelp:
+            "Formato SKILL.md, lo stesso di Claude Code, Codex e OpenClaw. Si importa solo il testo: script e altri file della skill restano fuori e niente viene eseguito. Nel 2026 i registri di skill hanno avuto skill malevole: importa da fonti che conosci e leggi il testo prima di accenderla.",
+        from: "Da dove",
+        fromLink: "da un link",
+        fromFile: "da un file",
+        link: "Link https al file o alla cartella su GitHub",
+        file: "File SKILL.md",
+        importing: "Importo…",
+        import: "Importa",
+        unavailable: "Skill non disponibili:",
+        importedSkills: "Skill importate",
+        importedTitle: "Importate",
+        warnings: (count: number) => `${count} da controllare`,
+        none: "Nessuna skill importata.",
+        choose: "Scegli una skill per leggerla.",
+    },
+});
 
 function message(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
@@ -40,12 +130,13 @@ function readText(file: File): Promise<string> {
 }
 
 function StateBadge({ skill }: { skill: ImportedSkill }) {
+    const t = useText(TEXT);
     return skill.enabled ? (
         <span className={styles.badge} data-tone="ok">
-            accesa
+            {t.on}
         </span>
     ) : (
-        <span className={styles.badge}>spenta</span>
+        <span className={styles.badge}>{t.off}</span>
     );
 }
 
@@ -60,6 +151,8 @@ function SkillDetail({
     onToggle: (enabled: boolean) => void;
     onDelete: () => void;
 }) {
+    const lang = useLanguage();
+    const t = TEXT[lang];
     const [confirming, setConfirming] = useState(false);
 
     return (
@@ -70,7 +163,7 @@ function SkillDetail({
                 <div className={styles.headEnd}>
                     {skill.enabled ? (
                         <button type="button" className={styles.btn} disabled={busy} onClick={() => onToggle(false)}>
-                            Spegni
+                            {t.turnOff}
                         </button>
                     ) : (
                         <button
@@ -79,7 +172,7 @@ function SkillDetail({
                             disabled={busy}
                             onClick={() => onToggle(true)}
                         >
-                            Accendi
+                            {t.turnOn}
                         </button>
                     )}
                     {confirming ? (
@@ -90,10 +183,10 @@ function SkillDetail({
                                 disabled={busy}
                                 onClick={onDelete}
                             >
-                                Conferma: elimina
+                                {t.confirmDelete}
                             </button>
                             <button type="button" className={styles.btn} onClick={() => setConfirming(false)}>
-                                Annulla
+                                {t.cancel}
                             </button>
                         </>
                     ) : (
@@ -103,7 +196,7 @@ function SkillDetail({
                             disabled={busy}
                             onClick={() => setConfirming(true)}
                         >
-                            Elimina
+                            {t.delete}
                         </button>
                     )}
                 </div>
@@ -112,36 +205,32 @@ function SkillDetail({
             <p className={styles.help}>{skill.description}</p>
 
             <dl className={styles.facts}>
-                <dt>Fonte</dt>
+                <dt>{t.source}</dt>
                 <dd className={styles.mono}>{sourceLabel(skill.source)}</dd>
-                <dt>Impronta</dt>
+                <dt>{t.fingerprint}</dt>
                 <dd className={styles.mono}>{skill.sha256.slice(0, 16)}…</dd>
-                <dt>Dimensione</dt>
-                <dd className={styles.mono}>{skill.chars} caratteri</dd>
+                <dt>{t.size}</dt>
+                <dd className={styles.mono}>{t.chars(skill.chars)}</dd>
             </dl>
 
             {skill.warnings.length > 0 ? (
-                <div className={styles.stack} style={{ gap: 6 }} role="list" aria-label="Da controllare">
+                <div className={styles.stack} style={{ gap: 6 }} role="list" aria-label={t.toCheckList}>
                     {skill.warnings.map((code) => (
                         <div key={code} role="listitem" className={styles.issue} data-tone="warn">
-                            <span className={styles.warn}>da controllare</span>
-                            <span>{WARNING_TEXT[code] ?? code}</span>
+                            <span className={styles.warn}>{t.toCheck}</span>
+                            <span>{WARNING_TEXT[lang][code] ?? code}</span>
                         </div>
                     ))}
                 </div>
             ) : (
-                <p className={styles.muted}>Nessun segnale sospetto trovato nel testo. Leggilo comunque.</p>
+                <p className={styles.muted}>{t.clean}</p>
             )}
 
             {!skill.enabled && (
-                <p className={styles.warn}>
-                    Leggi il testo prima di accenderla. Accesa, l&apos;agente la legge quando un compito le somiglia; le
-                    sue istruzioni contano come contenuto esterno: non danno permessi e, dopo averle lette, ogni azione
-                    a rischio alto chiede la tua approvazione.
-                </p>
+                <p className={styles.warn}>{t.readFirst}</p>
             )}
 
-            <pre className={styles.pre} aria-label="Testo della skill">
+            <pre className={styles.pre} aria-label={t.skillText}>
                 {skill.content}
             </pre>
         </section>
@@ -149,6 +238,8 @@ function SkillDetail({
 }
 
 export default function SkillsPage() {
+    const lang = useLanguage();
+    const t = TEXT[lang];
     const [skills, setSkills] = useState<ImportedSkill[] | null>(null);
     const [selected, setSelected] = useState<ImportedSkillDetail | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -199,14 +290,14 @@ export default function SkillsPage() {
             setFile(null);
             setNote(
                 !imported.replaced
-                    ? `${imported.name} importata, spenta: leggila qui sotto.`
+                    ? t.imported(imported.name)
                     : imported.changed
-                      ? `${imported.name} aggiornata: il testo è cambiato, rileggilo prima di accenderla.`
-                      : `${imported.name}: stesso testo di prima, niente è cambiato.`,
+                      ? t.updated(imported.name)
+                      : t.same(imported.name),
             );
             await refresh();
         } catch (err) {
-            setImportError(importErrorText(message(err)));
+            setImportError(importErrorText(message(err), lang));
         } finally {
             setBusy(false);
         }
@@ -220,7 +311,7 @@ export default function SkillsPage() {
         try {
             const updated = await putJson<ImportedSkill>(`/api/skills/${encodeURIComponent(selected.id)}`, { enabled });
             setSelected({ ...selected, ...updated });
-            setNote(enabled ? `${updated.name} accesa: vale dalla prossima run.` : `${updated.name} spenta.`);
+            setNote(enabled ? t.turnedOn(updated.name) : t.turnedOff(updated.name));
             await refresh();
         } catch (err) {
             setNote(message(err));
@@ -236,7 +327,7 @@ export default function SkillsPage() {
         setBusy(true);
         try {
             await deleteJson(`/api/skills/${encodeURIComponent(selected.id)}`);
-            setNote(`${selected.name} eliminata.`);
+            setNote(t.deleted(selected.name));
             setSelected(null);
             await refresh();
         } catch (err) {
@@ -252,10 +343,10 @@ export default function SkillsPage() {
     return (
         <main className={styles.page}>
             <div className={styles.head}>
-                <h1 className={styles.title}>SKILL</h1>
+                <h1 className={styles.title}>{t.title}</h1>
                 {skills && (
                     <span className={styles.badge} data-tone={enabled ? "ok" : undefined}>
-                        {enabled} accese su {skills.length}
+                        {t.count(enabled, skills.length)}
                     </span>
                 )}
                 {note && (
@@ -265,37 +356,33 @@ export default function SkillsPage() {
                 )}
             </div>
 
-            <form className={styles.card} onSubmit={submit} aria-label="Importa una skill">
-                <h2 className={styles.h2}>Importa una skill</h2>
-                <p className={styles.help}>
-                    Formato SKILL.md, lo stesso di Claude Code, Codex e OpenClaw. Si importa solo il testo: script e
-                    altri file della skill restano fuori e niente viene eseguito. Nel 2026 i registri di skill hanno
-                    avuto skill malevole: importa da fonti che conosci e leggi il testo prima di accenderla.
-                </p>
-                <div className={styles.row} role="radiogroup" aria-label="Da dove">
+            <form className={styles.card} onSubmit={submit} aria-label={t.importSkill}>
+                <h2 className={styles.h2}>{t.importSkill}</h2>
+                <p className={styles.help}>{t.importHelp}</p>
+                <div className={styles.row} role="radiogroup" aria-label={t.from}>
                     <label className={styles.check}>
                         <input type="radio" name="mode" checked={mode === "url"} onChange={() => setMode("url")} />
-                        da un link
+                        {t.fromLink}
                     </label>
                     <label className={styles.check}>
                         <input type="radio" name="mode" checked={mode === "file"} onChange={() => setMode("file")} />
-                        da un file
+                        {t.fromFile}
                     </label>
                 </div>
                 <div className={styles.filters}>
                     {mode === "url" ? (
                         <label className={`${styles.field} ${styles.grow}`}>
-                            Link https al file o alla cartella su GitHub
+                            {t.link}
                             <input
                                 value={url}
-                                placeholder="https://github.com/…/skills/nome/SKILL.md"
+                                placeholder="https://github.com/…/skills/name/SKILL.md"
                                 spellCheck={false}
                                 onChange={(event) => setUrl(event.target.value)}
                             />
                         </label>
                     ) : (
                         <label className={`${styles.field} ${styles.grow}`}>
-                            File SKILL.md
+                            {t.file}
                             <input
                                 type="file"
                                 accept=".md,text/markdown,text/plain"
@@ -304,7 +391,7 @@ export default function SkillsPage() {
                         </label>
                     )}
                     <button type="submit" className={`${styles.btn} ${styles.go}`} disabled={busy || !ready}>
-                        {busy ? "Importo…" : "Importa"}
+                        {busy ? t.importing : t.import}
                     </button>
                 </div>
                 {importError && (
@@ -314,13 +401,15 @@ export default function SkillsPage() {
                 )}
             </form>
 
-            {error && <p className={styles.error}>Skill non disponibili: {error}</p>}
+            {error && <p className={styles.error}>
+                    {t.unavailable} {error}
+                </p>}
 
             {skills && (
                 <div className={styles.skills}>
-                    <section className={styles.section} aria-label="Skill importate">
+                    <section className={styles.section} aria-label={t.importedSkills}>
                         <h2 className={styles.h2}>
-                            Importate <span>{skills.length}</span>
+                            {t.importedTitle} <span>{skills.length}</span>
                         </h2>
                         {skills.length ? (
                             <ul className={styles.plain} style={{ display: "grid", gap: 8 }}>
@@ -337,7 +426,7 @@ export default function SkillsPage() {
                                                 <StateBadge skill={skill} />
                                                 {skill.warnings.length > 0 && (
                                                     <span className={styles.badge} data-tone="warn">
-                                                        {skill.warnings.length} da controllare
+                                                        {t.warnings(skill.warnings.length)}
                                                     </span>
                                                 )}
                                             </span>
@@ -347,7 +436,7 @@ export default function SkillsPage() {
                                 ))}
                             </ul>
                         ) : (
-                            <p className={styles.muted}>Nessuna skill importata.</p>
+                            <p className={styles.muted}>{t.none}</p>
                         )}
                     </section>
 
@@ -360,7 +449,7 @@ export default function SkillsPage() {
                             onDelete={remove}
                         />
                     ) : (
-                        skills.length > 0 && <p className={styles.muted}>Scegli una skill per leggerla.</p>
+                        skills.length > 0 && <p className={styles.muted}>{t.choose}</p>
                     )}
                 </div>
             )}

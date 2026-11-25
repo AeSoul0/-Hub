@@ -4,7 +4,7 @@
  */
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import React from "react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import SecurityPage from "@/app/control-plane/security/page";
 import SkillsPage from "@/app/control-plane/skills/page";
@@ -21,6 +21,11 @@ import {
 import { importErrorText } from "@/lib/nucleo/tools";
 
 import { stubFetch } from "./helpers";
+
+import { chooseLanguage } from "@/lib/i18n";
+
+// These tests read the Italian interface; interface.test.tsx covers the English default.
+beforeEach(() => chooseLanguage("it"));
 
 function tool(name: string, extra: Partial<ToolInfo> = {}): ToolInfo {
     return {

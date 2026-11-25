@@ -657,7 +657,9 @@ class AgentRuntime(ToolsMixin, LimitsMixin, ResumeMixin, StateMixin, SubagentsMi
             model_context, context_report = self.context_manager.build(
                 loop.worker_context,
                 system_prompt=str(
-                    getattr(worker, "system_prompt", "") or ""
+                    worker.full_system_prompt()
+                    if hasattr(worker, "full_system_prompt")
+                    else getattr(worker, "system_prompt", "") or ""
                 ),
             )
 

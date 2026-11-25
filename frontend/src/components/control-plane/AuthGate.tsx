@@ -12,10 +12,35 @@
 import React, { useCallback, useEffect, useState } from "react";
 
 import { ApiError, getJson, postJson } from "@/lib/api/client";
+import { catalog, refreshInterface, useText } from "@/lib/i18n";
+
+const TEXT = catalog({
+    en: {
+        wrongKey: "Wrong access key.",
+        tooMany: "Too many attempts: wait a few minutes.",
+        signIn: "Sign in",
+        accessKey: "Access key",
+        signingIn: "Signing in…",
+        checking: "Checking the session…",
+        unreachable: "{t.unreachable}",
+        retry: "Retry",
+    },
+    it: {
+        wrongKey: "Chiave di accesso sbagliata.",
+        tooMany: "Troppi tentativi: aspetta qualche minuto.",
+        signIn: "Entra",
+        accessKey: "Chiave di accesso",
+        signingIn: "Accesso in corso…",
+        checking: "Controllo la sessione…",
+        unreachable: "Il backend non risponde.",
+        retry: "Riprova",
+    },
+});
 
 type SessionState = "checking" | "signed-in" | "signed-out" | "unreachable";
 
 export function LoginForm({ onSignedIn }: { onSignedIn: () => void }) {
+    const t = useText(TEXT);
     const [key, setKey] = useState("");
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
@@ -28,12 +53,13 @@ export function LoginForm({ onSignedIn }: { onSignedIn: () => void }) {
         try {
             await postJson("/api/auth/login", { key });
             setKey("");
+            refreshInterface();
             onSignedIn();
         } catch (err) {
             if (err instanceof ApiError && err.status === 401) {
-                setError("Wrong access key.");
+                setError(t.wrongKey);
             } else if (err instanceof ApiError && err.status === 429) {
-                setError("Too many attempts: wait a few minutes.");
+                setError(t.tooMany);
             } else {
                 setError(err instanceof Error ? err.message : String(err));
             }
@@ -43,10 +69,10 @@ export function LoginForm({ onSignedIn }: { onSignedIn: () => void }) {
     };
 
     return (
-        <form onSubmit={submit} className="max-w-sm mx-auto mt-24 space-y-4" aria-label="Sign in">
+        <form onSubmit={submit} className="max-w-sm mx-auto mt-24 space-y-4" aria-label={t.signIn}>
             <h1 className="text-2xl font-bold text-orange-500">ÆHub Control Plane</h1>
             <label className="block text-sm text-gray-300" htmlFor="access-key">
-                Access key
+                {t.accessKey}
             </label>
             <input
                 id="access-key"
@@ -67,13 +93,14 @@ export function LoginForm({ onSignedIn }: { onSignedIn: () => void }) {
                 disabled={busy || key.length === 0}
                 className="w-full bg-orange-600 hover:bg-orange-500 disabled:opacity-50 rounded px-4 py-2 font-semibold"
             >
-                {busy ? "Signing in..." : "Sign in"}
+                {busy ? t.signingIn : t.signIn}
             </button>
         </form>
     );
 }
 
 export default function AuthGate({ children }: { children: React.ReactNode }) {
+    const t = useText(TEXT);
     const [state, setState] = useState<SessionState>("checking");
 
     const check = useCallback(async () => {
@@ -91,7 +118,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     }, [check]);
 
     if (state === "checking") {
-        return <p className="p-8 text-gray-400">Checking session...</p>;
+        return <p className="p-8 text-gray-400">{t.checking}</p>;
     }
 
     if (state === "unreachable") {
@@ -99,7 +126,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
             <div className="p-8">
                 <p className="text-red-400 mb-4">The backend is not reachable.</p>
                 <button onClick={check} className="bg-gray-700 hover:bg-gray-600 px-4 py-1 rounded">
-                    Retry
+                    {t.retry}
                 </button>
             </div>
         );

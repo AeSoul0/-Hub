@@ -5,21 +5,23 @@
 import React from "react";
 
 import type { ConnectionState } from "@/lib/api/events";
+import { catalog, useText } from "@/lib/i18n";
 
 import styles from "./control.module.css";
 
-const LABELS: Record<ConnectionState, { text: string; tone: string }> = {
-    connecting: { text: "connessione…", tone: "" },
-    live: { text: "in linea", tone: "ok" },
-    offline: { text: "offline, riconnessione", tone: "bad" },
-};
+const TONES: Record<ConnectionState, string> = { connecting: "", live: "ok", offline: "bad" };
+
+const LABELS = catalog<Record<ConnectionState, string>>({
+    en: { connecting: "connecting…", live: "online", offline: "offline, reconnecting" },
+    it: { connecting: "connessione…", live: "in linea", offline: "offline, riconnessione" },
+});
 
 export default function LiveBadge({ state }: { state: ConnectionState }) {
-    const label = LABELS[state];
+    const labels = useText(LABELS);
 
     return (
-        <span className={styles.badge} data-tone={label.tone || undefined} role="status">
-            {label.text}
+        <span className={styles.badge} data-tone={TONES[state] || undefined} role="status">
+            {labels[state]}
         </span>
     );
 }

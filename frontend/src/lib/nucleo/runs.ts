@@ -7,6 +7,8 @@
  * limits; `model.called` and `tool.completed` then carry the run totals
  * live, so the meters move without polling. Pure functions, like engine.ts.
  */
+import { catalog, localeOf, type Lang } from "@/lib/i18n";
+
 import { describe, type EngineEvent, type LogKind } from "./engine";
 
 export interface RunUsage {
@@ -111,15 +113,26 @@ const TICKING: ReadonlySet<RunStatus> = new Set(["running", "cancelling"]);
 export const isEnded = (run: TrackedRun) => ENDED.has(run.status);
 export const canStop = (run: TrackedRun) => run.status === "running" || run.status === "waiting";
 
-export const STATUS_LABELS: Record<RunStatus, string> = {
-    running: "in corso",
-    waiting: "attende approvazione",
-    cancelling: "si sta fermando",
-    completed: "completata",
-    cancelled: "fermata",
-    failed: "interrotta",
-    finished: "finita",
-};
+export const STATUS_LABELS = catalog<Record<RunStatus, string>>({
+    en: {
+        running: "running",
+        waiting: "waiting for approval",
+        cancelling: "stopping",
+        completed: "completed",
+        cancelled: "stopped",
+        failed: "interrupted",
+        finished: "finished",
+    },
+    it: {
+        running: "in corso",
+        waiting: "attende approvazione",
+        cancelling: "si sta fermando",
+        completed: "completata",
+        cancelled: "fermata",
+        failed: "interrotta",
+        finished: "finita",
+    },
+});
 
 /**
  * Run totals from a JSON object, a missing number as 0; the saved list of
@@ -230,7 +243,7 @@ function withStep(run: TrackedRun, step: Step): TrackedRun {
 
 export type RunsAction =
     | { type: "live"; view: LiveView; now: number }
-    | { type: "event"; event: EngineEvent; now: number }
+    | { type: "event"; event: EngineEvent; now: number; lang?: Lang }
     | { type: "runState"; runId: string; state: string; now: number }
     | { type: "cancelling"; runId: string }
     | { type: "halt"; halted: boolean; reason?: string | null };
@@ -308,7 +321,7 @@ export function runsReducer(state: RunsState, action: RunsAction): RunsState {
         case "event": {
             const { event, now } = action;
             const at = timeOf(event.timestamp, now);
-            const line = describe(event);
+            const line = describe(event, action.lang);
             const usage = usageOf(event);
             let nextId = state.nextId;
             const step = (): Step => ({
@@ -367,14 +380,14 @@ export function duration(seconds: number): string {
 }
 
 /** A backend timestamp (naive UTC) in local time: "25/10, 17:38". */
-export function localTime(timestamp: string | null | undefined): string {
+export function localTime(timestamp: string | null | undefined, lang: Lang = "en"): string {
     if (!timestamp) {
         return "-";
     }
     const parsed = Date.parse(timestamp.endsWith("Z") ? timestamp : `${timestamp}Z`);
     return Number.isNaN(parsed)
         ? timestamp
-        : new Date(parsed).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+        : new Date(parsed).toLocaleString(localeOf(lang), { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
 export const usd = (value: number) => `$${value.toFixed(value >= 1 ? 2 : 4)}`;
@@ -388,12 +401,38 @@ export interface Meter {
     level: "ok" | "warn" | "over";
 }
 
-function meter(key: Meter["key"], label: string, value: number, max: number, show: (value: number) => string): Meter {
+const METER_TEXT = catalog({
+    en: {
+        noLimit: "no limit",
+        cost: "cost",
+        time: "active time",
+        failed: "failed tools",
+        files: "files written",
+        subagents: "subagents",
+    },
+    it: {
+        noLimit: "nessun limite",
+        cost: "costo",
+        time: "tempo attivo",
+        failed: "tool falliti",
+        files: "file scritti",
+        subagents: "sub-agenti",
+    },
+});
+
+function meter(
+    key: Meter["key"],
+    value: number,
+    max: number,
+    show: (value: number) => string,
+    lang: Lang,
+): Meter {
     const ratio = max > 0 ? Math.min(1, value / max) : 0;
+    const t = METER_TEXT[lang];
     return {
         key,
-        label,
-        text: max > 0 ? `${show(value)} / ${show(max)}` : `${show(value)} · nessun limite`,
+        label: t[key],
+        text: max > 0 ? `${show(value)} / ${show(max)}` : `${show(value)} · ${t.noLimit}`,
         ratio,
         level: max > 0 && value >= max ? "over" : ratio >= 0.8 ? "warn" : "ok",
     };
@@ -404,16 +443,16 @@ function meter(key: Meter["key"], label: string, value: number, max: number, sho
  * run that may delegate: a subagent never can, and with the limit at 0
  * nobody can (F8).
  */
-export function meters(run: TrackedRun, limits: RunLimits | null, now: number): Meter[] {
+export function meters(run: TrackedRun, limits: RunLimits | null, now: number, lang: Lang = "en"): Meter[] {
     const usage = run.usage;
     const items = [
-        meter("cost", "costo", usage.cost, limits?.max_run_cost ?? 0, usd),
-        meter("time", "tempo attivo", elapsedSeconds(run, now), limits?.max_run_seconds ?? 0, duration),
-        meter("failed", "tool falliti", usage.failed_tool_calls, limits?.max_failed_tool_calls ?? 0, String),
-        meter("files", "file scritti", usage.files_modified, limits?.max_files_modified ?? 0, String),
+        meter("cost", usage.cost, limits?.max_run_cost ?? 0, usd, lang),
+        meter("time", elapsedSeconds(run, now), limits?.max_run_seconds ?? 0, duration, lang),
+        meter("failed", usage.failed_tool_calls, limits?.max_failed_tool_calls ?? 0, String, lang),
+        meter("files", usage.files_modified, limits?.max_files_modified ?? 0, String, lang),
     ];
     if (!run.parentId && (limits?.max_subagents ?? 0) > 0) {
-        items.push(meter("subagents", "sub-agenti", usage.subagents, limits?.max_subagents ?? 0, String));
+        items.push(meter("subagents", usage.subagents, limits?.max_subagents ?? 0, String, lang));
     }
     return items;
 }
@@ -476,9 +515,9 @@ export function trackedFromLive(view: LiveRunView, now: number): TrackedRun {
 }
 
 /** One recorded run rebuilt from its events (GET /api/runs/{id}/events). */
-export function replay(runId: string, events: EngineEvent[]): TrackedRun | null {
+export function replay(runId: string, events: EngineEvent[], lang: Lang = "en"): TrackedRun | null {
     const state = events.reduce(
-        (current, event) => runsReducer(current, { type: "event", event, now: timeOf(event.timestamp, 0) }),
+        (current, event) => runsReducer(current, { type: "event", event, now: timeOf(event.timestamp, 0), lang }),
         initialRuns,
     );
     return state.runs.find((run) => run.id === runId) ?? null;
@@ -513,27 +552,76 @@ export function historyParams(filters: HistoryFilters, offset = 0): Record<strin
 export type Tone = "" | "ok" | "warn" | "bad" | "live";
 
 // The statuses a run has in the database (app/agent_engine/models.py).
-const SAVED_STATUSES: Record<string, { label: string; tone: Tone }> = {
-    queued: { label: "in coda", tone: "" },
-    running: { label: "in corso", tone: "live" },
-    waiting_approval: { label: "attende approvazione", tone: "warn" },
-    waiting_tool: { label: "attende un tool", tone: "live" },
-    retrying: { label: "riprova", tone: "live" },
-    completed: { label: "completata", tone: "ok" },
-    failed: { label: "fallita", tone: "bad" },
-    cancelled: { label: "fermata", tone: "bad" },
-    expired: { label: "scaduta", tone: "bad" },
+const SAVED_TONES: Record<string, Tone> = {
+    queued: "",
+    running: "live",
+    waiting_approval: "warn",
+    waiting_tool: "live",
+    retrying: "live",
+    completed: "ok",
+    failed: "bad",
+    cancelled: "bad",
+    expired: "bad",
 };
 
-export function savedStatus(status: string): { label: string; tone: Tone } {
-    return SAVED_STATUSES[status] ?? { label: status, tone: "" };
+const SAVED_LABELS = catalog<Record<string, string>>({
+    en: {
+        queued: "queued",
+        running: "running",
+        waiting_approval: "waiting for approval",
+        waiting_tool: "waiting for a tool",
+        retrying: "retrying",
+        completed: "completed",
+        failed: "failed",
+        cancelled: "stopped",
+        expired: "expired",
+    },
+    it: {
+        queued: "in coda",
+        running: "in corso",
+        waiting_approval: "attende approvazione",
+        waiting_tool: "attende un tool",
+        retrying: "riprova",
+        completed: "completata",
+        failed: "fallita",
+        cancelled: "fermata",
+        expired: "scaduta",
+    },
+});
+
+export function savedStatus(status: string, lang: Lang = "en"): { label: string; tone: Tone } {
+    const label = SAVED_LABELS[lang][status];
+    return label ? { label, tone: SAVED_TONES[status] ?? "" } : { label: status, tone: "" };
 }
 
-export const SAVED_STATUS_FILTERS: { value: string; label: string }[] = [
-    { value: "", label: "tutti" },
-    { value: "completed", label: "completate" },
-    { value: "failed,expired", label: "fallite o scadute" },
-    { value: "cancelled", label: "fermate" },
-    { value: "waiting_approval", label: "in attesa di approvazione" },
-    { value: "queued,running,waiting_tool,retrying", label: "in corso" },
-];
+const STATUS_FILTER_VALUES = [
+    "",
+    "completed",
+    "failed,expired",
+    "cancelled",
+    "waiting_approval",
+    "queued,running,waiting_tool,retrying",
+] as const;
+
+const STATUS_FILTER_LABELS = catalog<Record<(typeof STATUS_FILTER_VALUES)[number], string>>({
+    en: {
+        "": "all",
+        completed: "completed",
+        "failed,expired": "failed or expired",
+        cancelled: "stopped",
+        waiting_approval: "waiting for approval",
+        "queued,running,waiting_tool,retrying": "running",
+    },
+    it: {
+        "": "tutti",
+        completed: "completate",
+        "failed,expired": "fallite o scadute",
+        cancelled: "fermate",
+        waiting_approval: "in attesa di approvazione",
+        "queued,running,waiting_tool,retrying": "in corso",
+    },
+});
+
+export function savedStatusFilters(lang: Lang): { value: string; label: string }[] {
+    return STATUS_FILTER_VALUES.map((value) => ({ value, label: STATUS_FILTER_LABELS[lang][value] }));
+}

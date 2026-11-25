@@ -26,8 +26,8 @@ import {
     historyParams,
     localTime,
     meters,
-    SAVED_STATUS_FILTERS,
     savedStatus,
+    savedStatusFilters,
     trackedFromLive,
     treeRows,
     usd,
@@ -35,6 +35,7 @@ import {
     type LiveView,
     type RunUsage,
 } from "@/lib/nucleo/runs";
+import { catalog, useLanguage, useText } from "@/lib/i18n";
 import { roleName } from "@/lib/nucleo/engine";
 import { runHref } from "@/lib/routes";
 
@@ -75,11 +76,112 @@ interface RunStats {
     };
 }
 
+const TEXT = catalog({
+    en: {
+        title: "RUNS",
+        resume: "Resume the agents",
+        stopAll: "STOP EVERYTHING",
+        halted: "Engine stopped: new runs are refused until you resume.",
+        live: "RUNNING",
+        noLive: "No run in progress.",
+        subagent: "subagent",
+        stopping: "stopping",
+        running: "running",
+        limitsOf: (id: string) => `Limits of run ${id}`,
+        stoppingButton: "Stopping…",
+        stop: "Stop the run",
+        spent: "spent this month",
+        perRun: (cost: string) => `Limit per run ${cost}`,
+        activeTime: "active time",
+        failedTools: "failed tools",
+        modifiedFiles: "modified files",
+        noLimit: "no limit",
+        estimated: "Some costs are estimated: set the prices of the models in use in Settings.",
+        history: "HISTORY",
+        search: "Search",
+        searchPlaceholder: "text of the task or id of the run",
+        status: "Status",
+        period: "Period",
+        days: (days: number) => (days === 1 ? "last day" : days === 366 ? "last year" : `last ${days} days`),
+        withSubagents: "subagents too",
+        noRuns: "No run with these filters.",
+        task: "Task",
+        start: "Start",
+        model: "Model",
+        tool: "Tool",
+        tokens: "Tokens",
+        cost: "Cost",
+        time: "Time",
+        role: (role: string) => `role ${role}`,
+        failed: (count: number) => `${count} failed`,
+        more: (count: number) => `${count} more`,
+        of: (shown: number, total: number) => `${shown} of ${total}`,
+        spend: "SPEND",
+        lastDays: (days: number) => `last ${days} days`,
+        byRole: "BY ROLE",
+        byModel: "BY MODEL",
+        noSpend: "No spend.",
+        failedTitle: "FAILED TOOLS",
+        noFailed: "No failed tool.",
+        inferences: "INFERENCES PER DAY",
+        noInferences: "No model calls.",
+    },
+    it: {
+        title: "RUN",
+        resume: "Riprendi gli agenti",
+        stopAll: "FERMA TUTTO",
+        halted: "Motore fermato: le nuove run sono rifiutate finché non riprendi.",
+        live: "IN CORSO",
+        noLive: "Nessuna run in corso.",
+        subagent: "sub-agente",
+        stopping: "si sta fermando",
+        running: "in corso",
+        limitsOf: (id: string) => `Limiti della run ${id}`,
+        stoppingButton: "Si sta fermando…",
+        stop: "Ferma la run",
+        spent: "speso nel mese",
+        perRun: (cost: string) => `Limite per run ${cost}`,
+        activeTime: "tempo attivo",
+        failedTools: "tool falliti",
+        modifiedFiles: "file modificati",
+        noLimit: "senza limite",
+        estimated: "Alcuni costi sono stimati: imposta i prezzi dei modelli in uso nelle Impostazioni.",
+        history: "STORICO",
+        search: "Cerca",
+        searchPlaceholder: "testo del compito o id della run",
+        status: "Stato",
+        period: "Periodo",
+        days: (days: number) => (days === 1 ? "ultimo giorno" : days === 366 ? "ultimo anno" : `ultimi ${days} giorni`),
+        withSubagents: "anche i sub-agenti",
+        noRuns: "Nessuna run con questi filtri.",
+        task: "Compito",
+        start: "Inizio",
+        model: "Modello",
+        tool: "Tool",
+        tokens: "Token",
+        cost: "Costo",
+        time: "Tempo",
+        role: (role: string) => `ruolo ${role}`,
+        failed: (count: number) => `${count} falliti`,
+        more: (count: number) => `Altre ${count}`,
+        of: (shown: number, total: number) => `${shown} di ${total}`,
+        spend: "SPESA",
+        lastDays: (days: number) => `ultimi ${days} giorni`,
+        byRole: "PER RUOLO",
+        byModel: "PER MODELLO",
+        noSpend: "Nessuna spesa.",
+        failedTitle: "TOOL FALLITI",
+        noFailed: "Nessun tool fallito.",
+        inferences: "INFERENZE PER GIORNO",
+        noInferences: "Nessuna chiamata ai modelli.",
+    },
+});
+
 const SEARCH_DEBOUNCE_MS = 300;
 const DAYS = [1, 7, 30, 90, 366];
 
 function Status({ status }: { status: string }) {
-    const { label, tone } = savedStatus(status);
+    const { label, tone } = savedStatus(status, useLanguage());
     return (
         <span className={styles.badge} data-tone={tone || undefined}>
             {label}
@@ -89,6 +191,8 @@ function Status({ status }: { status: string }) {
 
 // Renders the run monitor, the history and the spend dashboard
 export default function RunsPage() {
+    const lang = useLanguage();
+    const t = useText(TEXT);
     const [live, setLive] = useState<LiveView | null>(null);
     const [stats, setStats] = useState<RunStats | null>(null);
     const [history, setHistory] = useState<History | null>(null);
@@ -181,16 +285,16 @@ export default function RunsPage() {
     return (
         <div className={styles.page}>
             <div className={styles.head}>
-                <h1 className={styles.title}>RUN</h1>
+                <h1 className={styles.title}>{t.title}</h1>
                 <LiveBadge state={liveState} />
                 <div className={styles.headEnd}>
                     {live?.halted ? (
                         <button type="button" onClick={() => act("/api/runs/resume")} disabled={busy} className={`${styles.btn} ${styles.ok}`}>
-                            Riprendi gli agenti
+                            {t.resume}
                         </button>
                     ) : (
                         <button type="button" onClick={() => act("/api/runs/stop-all")} disabled={busy} className={`${styles.btn} ${styles.danger}`}>
-                            FERMA TUTTO
+                            {t.stopAll}
                         </button>
                     )}
                 </div>
@@ -198,15 +302,17 @@ export default function RunsPage() {
 
             {error && <p className={styles.error}>{error}</p>}
             {live?.halted && (
-                <p className={styles.warn}>Motore fermato: le nuove run sono rifiutate finché non riprendi. {live.halt_reason}</p>
+                <p className={styles.warn}>
+                    {t.halted} {live.halt_reason}
+                </p>
             )}
 
             <section className={styles.section} aria-labelledby="live-title">
                 <h2 id="live-title" className={styles.h2}>
-                    IN CORSO <span>{live?.runs.length || ""}</span>
+                    {t.live} <span>{live?.runs.length || ""}</span>
                 </h2>
                 {!live || live.runs.length === 0 ? (
-                    <p className={styles.muted}>Nessuna run in corso.</p>
+                    <p className={styles.muted}>{t.noLive}</p>
                 ) : (
                     <div className={styles.grid}>
                         {treeRows(live.runs, (run) => run.started_at).map(({ run, depth }) => {
@@ -222,13 +328,13 @@ export default function RunsPage() {
                                         <Link href={runHref(run.run_id)} className={`${styles.link} ${styles.mono}`}>
                                             {run.run_id.slice(0, 8)}
                                         </Link>
-                                        {run.parent_run_id && <span className={styles.badge}>sub-agente</span>}
+                                        {run.parent_run_id && <span className={styles.badge}>{t.subagent}</span>}
                                         <span className={styles.badge} data-tone={run.cancelling ? "bad" : "live"}>
-                                            {run.cancelling ? "si sta fermando" : "in corso"}
+                                            {run.cancelling ? t.stopping : t.running}
                                         </span>
                                     </div>
                                     {run.task && <p className={styles.muted}>{run.task}</p>}
-                                    <RunMeters items={meters(tracked, live.limits, now)} label={`Limiti della run ${run.run_id}`} />
+                                    <RunMeters items={meters(tracked, live.limits, now, lang)} label={t.limitsOf(run.run_id)} />
                                     <div className={styles.row}>
                                         <button
                                             type="button"
@@ -236,7 +342,7 @@ export default function RunsPage() {
                                             disabled={busy || run.cancelling}
                                             className={`${styles.btn} ${styles.danger}`}
                                         >
-                                            {run.cancelling ? "Si sta fermando…" : "Ferma la run"}
+                                            {run.cancelling ? t.stoppingButton : t.stop}
                                         </button>
                                     </div>
                                 </article>
@@ -254,7 +360,7 @@ export default function RunsPage() {
                     <div className={styles.card}>
                         <ul className={styles.meters}>
                             <li data-level={spentRatio >= 1 ? "over" : spentRatio >= 0.8 ? "warn" : "ok"}>
-                                <span>speso nel mese</span>
+                                <span>{t.spent}</span>
                                 <span className={styles.bar} aria-hidden="true">
                                     <i style={{ width: `${spentRatio * 100}%` }} />
                                 </span>
@@ -264,17 +370,21 @@ export default function RunsPage() {
                             </li>
                         </ul>
                         <p className={styles.muted}>
-                            Limite per run {usd(budget.max_run_cost)}
+                            {t.perRun(usd(budget.max_run_cost))}
                             {live?.limits && (
                                 <>
-                                    {" · "}tempo attivo {live.limits.max_run_seconds > 0 ? duration(live.limits.max_run_seconds) : "senza limite"}
-                                    {" · "}tool falliti {live.limits.max_failed_tool_calls || "senza limite"}
-                                    {" · "}file modificati {live.limits.max_files_modified || "senza limite"}
+                                    {" · "}
+                                    {t.activeTime}{" "}
+                                    {live.limits.max_run_seconds > 0 ? duration(live.limits.max_run_seconds) : t.noLimit}
+                                    {" · "}
+                                    {t.failedTools} {live.limits.max_failed_tool_calls || t.noLimit}
+                                    {" · "}
+                                    {t.modifiedFiles} {live.limits.max_files_modified || t.noLimit}
                                 </>
                             )}
                         </p>
                         {stats?.cost_estimated && (
-                            <p className={styles.warn}>Alcuni costi sono stimati: imposta i prezzi dei modelli in uso nelle Impostazioni.</p>
+                            <p className={styles.warn}>{t.estimated}</p>
                         )}
                     </div>
                 </section>
@@ -282,22 +392,22 @@ export default function RunsPage() {
 
             <section className={styles.section} aria-labelledby="history-title">
                 <h2 id="history-title" className={styles.h2}>
-                    STORICO <span>{history ? history.total : ""}</span>
+                    {t.history} <span>{history ? history.total : ""}</span>
                 </h2>
                 <form className={styles.filters} role="search" onSubmit={(event) => event.preventDefault()}>
                     <label className={`${styles.field} ${styles.grow}`}>
-                        Cerca
+                        {t.search}
                         <input
                             type="search"
-                            placeholder="testo del compito o id della run"
+                            placeholder={t.searchPlaceholder}
                             value={search}
                             onChange={(event) => setSearch(event.target.value)}
                         />
                     </label>
                     <label className={styles.field}>
-                        Stato
+                        {t.status}
                         <select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}>
-                            {SAVED_STATUS_FILTERS.map((option) => (
+                            {savedStatusFilters(lang).map((option) => (
                                 <option key={option.value} value={option.value}>
                                     {option.label}
                                 </option>
@@ -305,11 +415,11 @@ export default function RunsPage() {
                         </select>
                     </label>
                     <label className={styles.field}>
-                        Periodo
+                        {t.period}
                         <select value={filters.days} onChange={(event) => setFilters({ ...filters, days: Number(event.target.value) })}>
                             {DAYS.map((days) => (
                                 <option key={days} value={days}>
-                                    {days === 1 ? "ultimo giorno" : days === 366 ? "ultimo anno" : `ultimi ${days} giorni`}
+                                    {t.days(days)}
                                 </option>
                             ))}
                         </select>
@@ -320,26 +430,26 @@ export default function RunsPage() {
                             checked={filters.subagents}
                             onChange={(event) => setFilters({ ...filters, subagents: event.target.checked })}
                         />
-                        anche i sub-agenti
+                        {t.withSubagents}
                     </label>
                 </form>
 
                 {history && history.runs.length === 0 ? (
-                    <p className={styles.muted}>Nessuna run con questi filtri.</p>
+                    <p className={styles.muted}>{t.noRuns}</p>
                 ) : (
                     <div className={styles.tableWrap}>
                         <table className={styles.table}>
                             <thead>
                                 <tr>
                                     <th>Run</th>
-                                    <th>Compito</th>
-                                    <th>Stato</th>
-                                    <th>Inizio</th>
-                                    <th className={styles.num}>Modello</th>
-                                    <th className={styles.num}>Tool</th>
-                                    <th className={styles.num}>Token</th>
-                                    <th className={styles.num}>Costo</th>
-                                    <th className={styles.num}>Tempo</th>
+                                    <th>{t.task}</th>
+                                    <th>{t.status}</th>
+                                    <th>{t.start}</th>
+                                    <th className={styles.num}>{t.model}</th>
+                                    <th className={styles.num}>{t.tool}</th>
+                                    <th className={styles.num}>{t.tokens}</th>
+                                    <th className={styles.num}>{t.cost}</th>
+                                    <th className={styles.num}>{t.time}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -352,11 +462,11 @@ export default function RunsPage() {
                                             </Link>
                                             {run.parent_run_id && (
                                                 <span className={styles.sub}>
-                                                    {["sub-agente", roleName(run.chosen_role)].filter(Boolean).join(" · ")}
+                                                    {[t.subagent, roleName(run.chosen_role)].filter(Boolean).join(" · ")}
                                                 </span>
                                             )}
                                             {!run.parent_run_id && run.chosen_role && (
-                                                <span className={styles.sub}>ruolo {roleName(run.chosen_role)}</span>
+                                                <span className={styles.sub}>{t.role(roleName(run.chosen_role))}</span>
                                             )}
                                         </td>
                                         <td className={styles.task}>
@@ -366,11 +476,11 @@ export default function RunsPage() {
                                         <td>
                                             <Status status={run.status} />
                                         </td>
-                                        <td className={styles.mono}>{localTime(run.created_at)}</td>
+                                        <td className={styles.mono}>{localTime(run.created_at, lang)}</td>
                                         <td className={styles.num}>{run.usage.model_calls}</td>
                                         <td className={styles.num}>
                                             {run.usage.tool_calls}
-                                            {run.usage.failed_tool_calls > 0 && <span className={styles.sub}>{run.usage.failed_tool_calls} falliti</span>}
+                                            {run.usage.failed_tool_calls > 0 && <span className={styles.sub}>{t.failed(run.usage.failed_tool_calls)}</span>}
                                         </td>
                                         <td className={styles.num}>{run.usage.total_tokens}</td>
                                         <td className={styles.num}>{usd(run.usage.cost)}</td>
@@ -384,10 +494,10 @@ export default function RunsPage() {
                 {history && history.runs.length < history.total && (
                     <div className={styles.row}>
                         <button type="button" className={styles.btn} onClick={() => void more()}>
-                            Altre {Math.min(HISTORY_PAGE_SIZE, history.total - history.runs.length)}
+                            {t.more(Math.min(HISTORY_PAGE_SIZE, history.total - history.runs.length))}
                         </button>
                         <span className={styles.muted}>
-                            {history.runs.length} di {history.total}
+                            {t.of(history.runs.length, history.total)}
                         </span>
                     </div>
                 )}
@@ -396,19 +506,19 @@ export default function RunsPage() {
             {stats && (
                 <section className={styles.section} aria-labelledby="spend-title">
                     <h2 id="spend-title" className={styles.h2}>
-                        SPESA <span>ultimi {stats.days} giorni</span>
+                        {t.spend} <span>{t.lastDays(stats.days)}</span>
                     </h2>
                     <div className={styles.grid}>
                         {(
                             [
-                                ["Per ruolo", stats.cost_by_role],
-                                ["Per modello", stats.cost_by_model],
+                                [t.byRole, stats.cost_by_role],
+                                [t.byModel, stats.cost_by_model],
                             ] as const
                         ).map(([title, costs]) => (
                             <div key={title} className={styles.card}>
-                                <h3 className={styles.h2}>{title.toUpperCase()}</h3>
+                                <h3 className={styles.h2}>{title}</h3>
                                 {Object.keys(costs).length === 0 ? (
-                                    <p className={styles.muted}>Nessuna spesa.</p>
+                                    <p className={styles.muted}>{t.noSpend}</p>
                                 ) : (
                                     <ul className={styles.lines}>
                                         {Object.entries(costs).map(([name, cost]) => (
@@ -422,10 +532,10 @@ export default function RunsPage() {
                         ))}
                         <div className={styles.card}>
                             <h3 className={styles.h2}>
-                                TOOL FALLITI <span>{stats.failed_tool_calls.total}</span>
+                                {t.failedTitle} <span>{stats.failed_tool_calls.total}</span>
                             </h3>
                             {stats.failed_tool_calls.total === 0 ? (
-                                <p className={styles.muted}>Nessun tool fallito.</p>
+                                <p className={styles.muted}>{t.noFailed}</p>
                             ) : (
                                 <ul className={styles.lines}>
                                     {Object.entries(stats.failed_tool_calls.by_tool).map(([tool, count]) => (
@@ -437,9 +547,9 @@ export default function RunsPage() {
                             )}
                         </div>
                         <div className={styles.card}>
-                            <h3 className={styles.h2}>INFERENZE PER GIORNO</h3>
+                            <h3 className={styles.h2}>{t.inferences}</h3>
                             {Object.keys(stats.inferences_per_day).length === 0 ? (
-                                <p className={styles.muted}>Nessuna chiamata ai modelli.</p>
+                                <p className={styles.muted}>{t.noInferences}</p>
                             ) : (
                                 <ul className={styles.lines}>
                                     {Object.entries(stats.inferences_per_day).map(([day, models]) => (

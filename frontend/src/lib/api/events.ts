@@ -20,7 +20,9 @@ export type ControlEventType =
     | "approval.decided"
     | "run.resumed"
     // Every run event, pushed live for the Nucleo (F1).
-    | "engine.event";
+    | "engine.event"
+    // The language, the voice or the voice notice changed (ADR-034).
+    | "interface.changed";
 
 export interface ControlEvent {
     type: string;

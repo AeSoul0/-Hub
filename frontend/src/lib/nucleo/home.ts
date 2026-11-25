@@ -1,27 +1,50 @@
 /**
  * @file frontend/src/lib/nucleo/home.ts
- * @description Italian text of the CASA page (F7): device types, states and
- * the backend's errors.
+ * @description Text of the Home page (F7) in each interface language: device
+ * types, states and the backend's errors.
  */
 
 import type { DeviceFormat, DeviceState, DeviceType, KnownState } from "@/lib/api/home";
+import { catalog, localeOf, type Lang } from "@/lib/i18n";
 
-export const TYPE_LABEL: Record<DeviceType, string> = {
-    light: "Luce",
-    lock: "Serratura",
-};
+export const TYPE_LABEL = catalog<Record<DeviceType, string>>({
+    en: { light: "Light", lock: "Lock" },
+    it: { light: "Luce", lock: "Serratura" },
+});
 
 export const FORMAT_LABEL: Record<DeviceFormat, string> = {
     zigbee2mqtt: "Zigbee2MQTT",
     tasmota: "Tasmota",
 };
 
-const STATE_LABEL: Record<DeviceState, string> = {
-    on: "accesa",
-    off: "spenta",
-    locked: "chiusa a chiave",
-    unlocked: "aperta",
-};
+const TEXT = catalog({
+    en: {
+        states: { on: "on", off: "off", locked: "locked", unlocked: "unlocked" } as Record<DeviceState, string>,
+        unknown: "state unknown",
+        level: (brightness: number) => ` at ${brightness}%`,
+        noCommand: "No command since ÆHub started.",
+        told: (time: string) => `Reported by the device at ${time}.`,
+        unclear: (time: string) => `The device answered at ${time}, but the answer is not clear.`,
+        byAgent: "by the agent",
+        byHere: "from here",
+        lastCommand: (time: string, who: string) => `Last command at ${time}, ${who}: the device did not confirm it.`,
+    },
+    it: {
+        states: { on: "accesa", off: "spenta", locked: "chiusa a chiave", unlocked: "aperta" } as Record<
+            DeviceState,
+            string
+        >,
+        unknown: "stato sconosciuto",
+        level: (brightness: number) => ` al ${brightness}%`,
+        noCommand: "Nessun comando da quando ÆHub è partito.",
+        told: (time: string) => `Detto dal dispositivo alle ${time}.`,
+        unclear: (time: string) => `Il dispositivo ha risposto alle ${time}, ma la risposta non si capisce.`,
+        byAgent: "dall'agente",
+        byHere: "da qui",
+        lastCommand: (time: string, who: string) =>
+            `Ultimo comando alle ${time}, ${who}: il dispositivo non l'ha confermato.`,
+    },
+});
 
 export function stateTone(state: DeviceState | null): "ok" | "warn" | undefined {
     if (state === "on" || state === "locked") {
@@ -30,30 +53,29 @@ export function stateTone(state: DeviceState | null): "ok" | "warn" | undefined 
     return state === "unlocked" ? "warn" : undefined;
 }
 
-export function stateLabel(known: KnownState): string {
+export function stateLabel(known: KnownState, lang: Lang = "en"): string {
+    const t = TEXT[lang];
     if (!known.state) {
-        return "stato sconosciuto";
+        return t.unknown;
     }
-    const level = known.brightness !== undefined && known.state === "on" ? ` al ${known.brightness}%` : "";
-    return `${STATE_LABEL[known.state]}${level}`;
+    const level = known.brightness !== undefined && known.state === "on" ? t.level(known.brightness) : "";
+    return `${t.states[known.state]}${level}`;
 }
 
-function clock(at: string): string {
-    return new Date(at).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+function clock(at: string, lang: Lang): string {
+    return new Date(at).toLocaleTimeString(localeOf(lang), { hour: "2-digit", minute: "2-digit" });
 }
 
 /** Where a state comes from: a command sent is not proof the device obeyed. */
-export function stateSource(known: KnownState): string {
+export function stateSource(known: KnownState, lang: Lang = "en"): string {
+    const t = TEXT[lang];
     if (!known.at) {
-        return "Nessun comando da quando ÆHub è partito.";
+        return t.noCommand;
     }
     if (known.read) {
-        return known.state
-            ? `Detto dal dispositivo alle ${clock(known.at)}.`
-            : `Il dispositivo ha risposto alle ${clock(known.at)}, ma la risposta non si capisce.`;
+        return known.state ? t.told(clock(known.at, lang)) : t.unclear(clock(known.at, lang));
     }
-    const who = known.by === "agent" ? "dall'agente" : "da qui";
-    return `Ultimo comando alle ${clock(known.at)}, ${who}: il dispositivo non l'ha confermato.`;
+    return t.lastCommand(clock(known.at, lang), known.by === "agent" ? t.byAgent : t.byHere);
 }
 
 const ERRORS: [RegExp, string][] = [
@@ -71,7 +93,11 @@ const ERRORS: [RegExp, string][] = [
     [/^The home tools are not available/, "Gli strumenti della casa non sono disponibili."],
 ];
 
-export function homeError(message: string): string {
+/** A home error in the interface language; English is the backend's own text. */
+export function homeError(message: string, lang: Lang = "en"): string {
+    if (lang === "en") {
+        return message;
+    }
     for (const [pattern, text] of ERRORS) {
         if (pattern.test(message)) {
             return text;

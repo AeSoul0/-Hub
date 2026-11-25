@@ -308,8 +308,14 @@ def elevenlabs_voices() -> List[Dict[str, str]]:
         raise VoiceUnavailable(f"ElevenLabs answered {response.status_code}: {_cloud_error(response)}")
 
     voices = []
+    listed = response.json().get("voices") or []
 
-    for voice in response.json().get("voices") or []:
+    # The language of each voice, for the notice of the interface (ADR-034).
+    from app.core.interface import remember_elevenlabs_languages
+
+    remember_elevenlabs_languages(listed)
+
+    for voice in listed:
         voice_id = str(voice.get("voice_id") or "")
 
         if not re.fullmatch(r"[A-Za-z0-9]{8,64}", voice_id):
