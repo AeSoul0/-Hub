@@ -95,6 +95,14 @@ Untrusted tool output (web, files, MCP, imported skills) reaches the model
 inside an `<untrusted_tool_output>` fence; after it, every HIGH-risk action
 needs an approval.
 
+### MCP servers
+`skills/mcp_bridge.py` (ADR-033) lists the tools of the allowed MCP servers
+(Streamable HTTP; https, or http only to this computer) as
+`mcp_<server>_<tool>` in the `mcp` skill. Each one is HIGH risk and asks for
+approval on every call until the owner lowers it (`AEHUB_MCP_TOOL_RISK`); its
+output is always untrusted. Each call opens its own connection, with the
+host's token from the keyring when there is one.
+
 ### Models, routing and circuit breakers
 Every model call goes through one `ModelProvider`, `PydanticAIAdapter`
 (ADR-032): Pydantic AI makes exactly one request per turn and returns the

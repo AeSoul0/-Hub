@@ -26,7 +26,8 @@ sidecar dell'app desktop (PostgreSQL e API su `127.0.0.1`).
 - `app/skills/`: le skill e i loro tool:
   - web, browser, sandbox, file, memoria, documenti e casa;
   - deleghe;
-  - skill importate `SKILL.md`, ponte MCP;
+  - skill importate `SKILL.md`;
+  - client MCP (ADR-033): i tool dei server consentiti, a rischio alto finché non lo abbassi;
   - indice delle skill.
 - `app/voice/`: voce locale (faster-whisper, Piper) ed ElevenLabs facoltativo.
 - `app/home/`: dispositivi di casa via MQTT.

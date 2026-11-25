@@ -54,6 +54,7 @@ SECRETS = (
     ("AEHUB_MQTT_PASSWORD", "MQTT broker password", "home devices (optional)"),
     ("AEHUB_LOCAL_API_KEY", "Local server key", "models with the local provider (optional)"),
     ("ELEVENLABS_API_KEY", "ElevenLabs API key", "the cloud voice (optional)"),
+    ("AEHUB_MCP_TOKENS", "MCP server tokens", "MCP servers that need a login, as host=token (optional, ADR-033)"),
 )
 
 SETUP_HINT = "Add it with: python scripts/aehub.py setup, then restart with: python scripts/aehub.py up."

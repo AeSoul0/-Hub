@@ -76,6 +76,8 @@ MANAGEMENT = {
     # skills imported as SKILL.md text. A skill never runs from here: the
     # agent reads an enabled one through the use_skill tool, untrusted.
     ("GET", "/api/tools"),
+    # ADR-033: connect again to the allowed MCP servers (owner only).
+    ("POST", "/api/tools/mcp/refresh"),
     ("GET", "/api/skills"),
     ("GET", "/api/skills/{skill_id}"),
     ("POST", "/api/skills/import"),

@@ -262,6 +262,18 @@ SPECS: Tuple[SettingSpec, ...] = (
         help="Comma-separated http(s) URLs of the MCP servers the bridge may connect to. Empty: none.",
         pattern=r"https?://[^\s,@/]+(/[^\s,@]*)?(,https?://[^\s,@/]+(/[^\s,@]*)?)*",
     ),
+    SettingSpec(
+        name="AEHUB_MCP_TOOL_RISK",
+        group="tools",
+        label="Risk of MCP tools",
+        kind="text",
+        default="",
+        help=(
+            "Comma-separated tool=low|medium|high. An MCP tool not listed is high and asks for "
+            "approval on every call (ADR-033)."
+        ),
+        pattern=r"mcp_[A-Za-z0-9_]+=(low|medium|high)(,mcp_[A-Za-z0-9_]+=(low|medium|high))*",
+    ),
     # Memory and documents (F6, ADR-027): read on every use, so a change
     # applies to the next run, recall or sync without a restart.
     SettingSpec(

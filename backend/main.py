@@ -174,11 +174,19 @@ async def lifespan(
 
     voice_sweeper = asyncio.create_task(release_idle_voice())
 
+    # The tools of the allowed MCP servers (ADR-033), listed in the
+    # background: a slow server does not hold the startup.
+    from app.skills.mcp_bridge import configured_mcp_servers, refresh_mcp_servers
+
+    mcp_refresh = asyncio.create_task(refresh_mcp_servers()) if configured_mcp_servers() else None
+
     try:
         yield
 
     finally:
         voice_sweeper.cancel()
+        if mcp_refresh is not None:
+            mcp_refresh.cancel()
         shutdown_telemetry()
 
 

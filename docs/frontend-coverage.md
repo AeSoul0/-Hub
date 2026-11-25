@@ -9,7 +9,7 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 - ⏸ vuol dire **sospesa**: riguarda solo l'app desktop (Tauri), sospesa dal 2026-11-24. Non conta né tra le coperte né tra le mancanti.
 
 **Ultimo aggiornamento:** Q1, `agent_engine/runtime.py` diviso in moduli (2026-11-25): solo spostamento di codice, nessuna route o impostazione cambiata.
-**Copertura:** 51 righe su 51, cioè **100%**, più 2 righe sospese (⏸). F10 ha confrontato la tabella con tutte le route e tutte le impostazioni del backend: l'[indice](#indice-ogni-route-e-ogni-impostazione) in fondo dice quale riga copre ciascuna, e un test in CI lo tiene allineato al codice.
+**Copertura:** 53 righe su 53, cioè **100%**, più 2 righe sospese (⏸). F10 ha confrontato la tabella con tutte le route e tutte le impostazioni del backend: l'[indice](#indice-ogni-route-e-ogni-impostazione) in fondo dice quale riga copre ciascuna, e un test in CI lo tiene allineato al codice.
 
 ## Conversazione e voce
 
@@ -64,6 +64,8 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 | 31 | Server MCP consentiti | STRUMENTI → Confini | ✓ | F5 |
 | 32 | Selezione dei tool (indice delle skill) | STRUMENTI → Indice delle skill; i tool scelti nella vista della run | ✓ | F5 |
 | 33 | Cartelle consentite ai tool | STRUMENTI → Confini, in sola lettura (parametro di avvio: si sceglie dal launcher) | ✓ | F5 |
+| 52 | Client MCP: stato di ogni server consentito (collegato e con quanti tool, o l'errore; token sì o no) e il pulsante per ricollegarsi (`POST /api/tools/mcp/refresh`) | STRUMENTI → Server MCP | ✓ | ADR-033 |
+| 53 | Rischio dei tool MCP: alto (approvazione a ogni chiamata) finché non lo abbassi, tool per tool (`AEHUB_MCP_TOOL_RISK`) | STRUMENTI → la scheda Server MCP del catalogo, un menu per tool | ✓ | ADR-033 |
 | 34 | Registro di audit, con la provenienza | Control Plane → SICUREZZA | ✓ | M11, F5 |
 
 ## Memoria e documenti
@@ -181,7 +183,8 @@ F10 (2026-11-24, aggiornato in P1): l'elenco viene dal codice (`tests/security/t
 | `GET /api/system/events/export` | 45 |
 | `GET /api/system/logs` | 50 |
 | `POST /api/system/updates/check` | 43 |
-| `GET /api/tools` | 28, 29, 31–33 |
+| `GET /api/tools` | 28, 29, 31–33, 52, 53 |
+| `POST /api/tools/mcp/refresh` | 52 |
 | `GET /api/voice` | 4, 5, 8, 9 |
 | `GET /api/voice/elevenlabs/voices` | 5 |
 | `POST /api/voice/speak` | 6 |
@@ -213,7 +216,8 @@ F10 (2026-11-24, aggiornato in P1): l'elenco viene dal codice (`tests/security/t
 | `AEHUB_EMBEDDING_MODEL` | 36 |
 | `AEHUB_FORCE_ROLE` | 18 |
 | `AEHUB_LOCAL_BASE_URL` | 24 |
-| `AEHUB_MCP_ALLOWED_SERVERS` | 31 |
+| `AEHUB_MCP_ALLOWED_SERVERS` | 31, 52 |
+| `AEHUB_MCP_TOOL_RISK` | 53 |
 | `AEHUB_MEMORY_ENABLED` | 36 |
 | `AEHUB_MEMORY_MIN_SIMILARITY` | 36 |
 | `AEHUB_MODEL_PRICES` | 21 |
@@ -271,6 +275,7 @@ F10 (2026-11-24, aggiornato in P1): l'elenco viene dal codice (`tests/security/t
 | `ELEVENLABS_API_KEY` | chiave della voce cloud, nel keyring | 5 |
 | `AEHUB_LOCAL_API_KEY` | chiave del server locale, nel keyring | 24 |
 | `AEHUB_MQTT_PASSWORD` | password del broker, nel keyring | 40 |
+| `AEHUB_MCP_TOKENS` | token dei server MCP con login (`host=token`), nel keyring | 52 |
 | `AEHUB_APP_VERSION` | versione passata dall'app desktop, mostrata in STATO | 43 |
 | `AEHUB_LAUNCHER` | segnale interno del launcher del desktop | S1 (sospesa) |
 | `AEHUB_DESKTOP_DB_PASSWORD` | password del PostgreSQL incorporato, nel keyring, mai mostrata | S1 (sospesa) |

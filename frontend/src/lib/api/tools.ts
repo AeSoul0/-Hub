@@ -8,6 +8,10 @@
  * neither shows it to the model nor runs it. Imported SKILL.md skills start
  * off; the agent reads an enabled one through the use_skill tool, as
  * untrusted content.
+ *
+ * MCP tools (ADR-033) are high risk and ask for approval on every call until
+ * the owner lowers one: AEHUB_MCP_TOOL_RISK, tool=low|medium. The servers are
+ * reconnected with POST /api/tools/mcp/refresh.
  */
 
 export type Risk = "low" | "medium" | "high";
@@ -34,6 +38,20 @@ export interface SkillGroup {
     tools: ToolInfo[];
 }
 
+export type McpState = "waiting" | "connected" | "error";
+
+/** What the last connection to an allowed MCP server found. */
+export interface McpServerStatus {
+    url: string;
+    name: string;
+    state: McpState;
+    tools: string[];
+    error: string | null;
+    checked_at: string | null;
+    /** A token for its host is in the keyring (AEHUB_MCP_TOKENS). */
+    token: boolean;
+}
+
 export interface ToolsView {
     skills: SkillGroup[];
     /** Every name in AEHUB_DISABLED_TOOLS, also of tools no longer registered. */
@@ -43,6 +61,11 @@ export interface ToolsView {
         directories: { path: string; exists: boolean }[];
         api_hosts: string[];
         mcp_servers: string[];
+    };
+    mcp: {
+        servers: McpServerStatus[];
+        /** The risks the owner lowered (AEHUB_MCP_TOOL_RISK); any other MCP tool is high. */
+        risk: Record<string, Risk>;
     };
     sandbox: { docker: boolean; image: string; memory_limit: string; network: boolean };
     sources: Record<string, "database" | "environment" | "default">;
@@ -98,4 +121,18 @@ export function serversValue(rows: string[]): string | null {
 /** A server URL the backend will accept: http(s), a host, no credentials or spaces. */
 export function validServer(url: string): boolean {
     return /^https?:\/\/[^\s,@/]+(\/[^\s,@]*)?$/.test(url.trim());
+}
+
+/** AEHUB_MCP_TOOL_RISK after setting one MCP tool's risk; high is the default, so it is not written. */
+export function riskValue(current: Record<string, Risk>, tool: string, risk: Risk): string | null {
+    const next = { ...current };
+    if (risk === "high") {
+        delete next[tool];
+    } else {
+        next[tool] = risk;
+    }
+    const entries = Object.keys(next)
+        .sort()
+        .map((name) => `${name}=${next[name]}`);
+    return entries.length ? entries.join(",") : null;
 }
