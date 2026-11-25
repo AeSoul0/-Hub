@@ -2,7 +2,7 @@
 # API FRAMEWORK
 # ==============================================================================
 
-fastapi>=0.104.0
+fastapi>=0.157.0
 uvicorn>=0.23.2
 # Pydantic AI 2 needs pydantic 2.12 or newer (P1, ADR-032).
 pydantic>=2.12
