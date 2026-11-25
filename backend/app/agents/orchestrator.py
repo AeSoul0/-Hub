@@ -148,7 +148,7 @@ def clean_text_for_speech(
 async def execute_slash_command(
     cmd: str,
     session_id: str,
-) -> dict[str, str]:
+) -> dict[str, Any]:
     """
     Execute a slash command. Only /stop exists: /clear, /precise, /creative,
     /deep and /fast wrote session settings nobody read, so they never had an
@@ -178,6 +178,42 @@ async def execute_slash_command(
 # ==============================================================================
 
 
+async def _instant_reply(
+    text: str,
+    principal: Any,
+    session_id: str,
+    input_channel: str,
+) -> Optional[dict[str, Any]]:
+    """The reply of an instant command, or None to go on with the engine."""
+    from app.instant.runner import try_instant
+
+    try:
+        instant = await try_instant(text, principal, session_id, input_channel)
+    except Exception:  # noqa: BLE001 - the fast path must never cost the command: the engine takes it
+        logger.exception("Instant command failed before running; the engine takes it")
+        return None
+    if instant is None:
+        return None
+
+    await event_bus.publish(
+        session_id,
+        "log",
+        f"[System] Instant command {instant['tool']} in {instant['ms']} ms",
+    )
+    reply = clean_text_for_speech(instant["text"])
+    base64_audio, audio_mime = await speak(reply)
+    return {
+        "transcription": reply,
+        "audio_base64": base64_audio,
+        "audio_mime": audio_mime,
+        "instant": {
+            "tool": instant["tool"],
+            "ms": instant["ms"],
+            "success": instant["success"],
+        },
+    }
+
+
 async def generate_ai_response(
     user_intent: str | list,
     system_prompt: str,
@@ -186,7 +222,7 @@ async def generate_ai_response(
     principal: Optional[Any] = None,
     input_channel: str = "text",
     role: Optional[str] = None,
-) -> dict[str, str]:
+) -> dict[str, Any]:
     """
     Delegate an authenticated interaction to the native Aurora runtime.
 
@@ -243,6 +279,13 @@ async def generate_ai_response(
         )
 
     del ui_context
+
+    # V1 (ADR-035): a simple command ("apri Spotify", "accendi la luce della
+    # cucina") runs at once, without the engine. Anything else returns None.
+    if isinstance(user_intent, str):
+        instant = await _instant_reply(intent_str, principal, session_id, input_channel)
+        if instant is not None:
+            return instant
 
     await event_bus.publish(
         session_id,

@@ -114,6 +114,11 @@ def _check_value(name: str, value: str) -> Optional[str]:
 
             parse_prices(value)
 
+        elif spec.kind == "apps":
+            from app.instant.apps import parse_apps
+
+            parse_apps(value)
+
         elif spec.kind == "price_pair":
             from app.agent_engine.pricing import parse_price_pair
 

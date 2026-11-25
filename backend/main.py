@@ -154,6 +154,11 @@ async def lifespan(
 
     refresh_home_tools()
 
+    # The apps the owner listed in Settings (V1, ADR-035), now that the
+    # stored settings are loaded.
+    if skill_registry.get_skill("apps") is not None:
+        skill_registry.refresh_skill("apps")
+
     # One line per problem (Critic equal to a Worker, missing provider key,
     # missing prices, ...). The API still starts, so the Settings page can
     # fix what it can; the engine refuses runs while routing is invalid.

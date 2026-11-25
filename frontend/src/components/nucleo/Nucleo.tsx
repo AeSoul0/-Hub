@@ -49,6 +49,8 @@ interface ChatLine {
     who: "me" | "aehub" | "system";
     text: string;
     channel?: "voice" | "text";
+    // "instant · 8 ms" when the reply came without the model (ADR-035).
+    note?: string;
 }
 
 interface Reply {
@@ -56,6 +58,8 @@ interface Reply {
     transcription?: string;
     audio_base64?: string;
     audio_mime?: string;
+    // Set when the command ran at once, without the engine (ADR-035).
+    instant?: { tool: string; ms: number; success: boolean };
 }
 
 interface Budget {
@@ -68,6 +72,7 @@ const TEXT = catalog({
         denied: "denied · the call does not start",
         allowed: "allowed",
         commandFailed: "The command did not start:",
+        instant: "instant",
         micUnavailable: "Microphone not available:",
         micMissing: "The microphone is not available in this browser.",
         nothingHeard: "I heard nothing: try again closer to the microphone.",
@@ -111,6 +116,7 @@ const TEXT = catalog({
         denied: "negata · la chiamata non parte",
         allowed: "consentita",
         commandFailed: "Il comando non è partito:",
+        instant: "istantaneo",
         micUnavailable: "Microfono non disponibile:",
         micMissing: "Il microfono non è disponibile in questo browser.",
         nothingHeard: "Non ho sentito niente: riprova più vicino al microfono.",
@@ -221,9 +227,9 @@ export default function Nucleo() {
     const chatList = useStickToBottom(chat.length);
     const logList = useStickToBottom(state.log.length);
 
-    const say = useCallback((who: ChatLine["who"], line: string, channel?: ChatLine["channel"]) => {
+    const say = useCallback((who: ChatLine["who"], line: string, channel?: ChatLine["channel"], note?: string) => {
         chatId.current += 1;
-        const entry = { id: chatId.current, who, text: line, channel };
+        const entry = { id: chatId.current, who, text: line, channel, note };
         setChat((current) => [...current.slice(-(CHAT_LIMIT - 1)), entry]);
     }, []);
 
@@ -392,13 +398,14 @@ export default function Nucleo() {
     const handleReply = useCallback(
         async (reply: Reply) => {
             if (reply.transcription) {
-                say("aehub", reply.transcription);
+                const note = reply.instant ? `${t.instant} · ${reply.instant.ms} ms` : undefined;
+                say("aehub", reply.transcription, undefined, note);
             }
             if (reply.audio_base64) {
                 await playAudio(reply.audio_base64);
             }
         },
-        [say, playAudio],
+        [say, playAudio, t.instant],
     );
 
     const send = async (command: string) => {
@@ -612,6 +619,7 @@ export default function Nucleo() {
                                 <span className={styles.who}>
                                     {line.who === "me" ? t.me : line.who === "system" ? t.system : "ÆHub"}
                                     {line.channel ? ` · ${t.channels[line.channel]}` : ""}
+                                    {line.note ? ` · ${line.note}` : ""}
                                 </span>
                                 <p>{line.who === "aehub" ? <CitedText text={line.text} /> : line.text}</p>
                             </li>
