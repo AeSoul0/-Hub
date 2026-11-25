@@ -15,19 +15,35 @@ import type { ProviderName, RoleName, SettingField, SettingSource } from "@/lib/
 
 export const ROLES: RoleName[] = ["architect", "research", "critic", "fast_worker", "triage"];
 export const IMPLEMENTER_ROLES: RoleName[] = ["architect", "research", "fast_worker", "triage"];
-export const PROVIDERS: ProviderName[] = ["openai", "openrouter", "local", "groq", "anthropic", "google"];
+export const PROVIDERS: ProviderName[] = [
+    "openai",
+    "openrouter",
+    "local",
+    "groq",
+    "anthropic",
+    "google",
+];
 /** Always offered in the role editor. */
 export const BASE_PROVIDERS: ProviderName[] = ["openai", "openrouter", "local"];
 
 export const ROLE_INFO: Record<RoleName, { title: string; job: string }> = {
-    architect: { title: "Architect", job: "Compiti lunghi: codice, progettazione, refactoring, debug." },
+    architect: {
+        title: "Architect",
+        job: "Compiti lunghi: codice, progettazione, refactoring, debug.",
+    },
     research: { title: "Research", job: "Ricerche, analisi e confronti." },
     critic: {
         title: "Critic · supervisore",
         job: "Controlla il risultato di ogni run e lo fa rifare se non va. Usa un modello diverso da tutti gli altri ruoli.",
     },
-    fast_worker: { title: "Fast Worker", job: "Lavori ripetitivi: test, documenti, conversioni, estrazioni." },
-    triage: { title: "Triage", job: "Richieste brevi e semplici: qui vanno i modelli più economici." },
+    fast_worker: {
+        title: "Fast Worker",
+        job: "Lavori ripetitivi: test, documenti, conversioni, estrazioni.",
+    },
+    triage: {
+        title: "Triage",
+        job: "Richieste brevi e semplici: qui vanno i modelli più economici.",
+    },
 };
 
 export const PROVIDER_LABELS: Record<ProviderName, string> = {
@@ -46,10 +62,11 @@ export const PROVIDER_LABELS: Record<ProviderName, string> = {
  */
 export function offeredProviders(
     providers: Partial<Record<ProviderName, { key: boolean }>>,
-    used: ProviderName[] = [],
+    used: ProviderName[] = []
 ): ProviderName[] {
     return PROVIDERS.filter(
-        (provider) => BASE_PROVIDERS.includes(provider) || providers[provider]?.key || used.includes(provider),
+        (provider) =>
+            BASE_PROVIDERS.includes(provider) || providers[provider]?.key || used.includes(provider)
     );
 }
 
@@ -179,7 +196,10 @@ export function criticConflicts(chains: Chains): { role: RoleName; model: string
     for (const role of IMPLEMENTER_ROLES) {
         for (const target of chains[role]) {
             const model = target.model.trim();
-            if (critic.has(model) && !shared.some((entry) => entry.role === role && entry.model === model)) {
+            if (
+                critic.has(model) &&
+                !shared.some((entry) => entry.role === role && entry.model === model)
+            ) {
                 shared.push({ role, model });
             }
         }
@@ -189,7 +209,9 @@ export function criticConflicts(chains: Chains): { role: RoleName; model: string
 
 /** Roles whose custom chain has no model left: the backend refuses them too. */
 export function emptyRoles(chains: Chains, custom: Record<RoleName, boolean>): RoleName[] {
-    return ROLES.filter((role) => custom[role] && !chains[role].some((target) => target.model.trim()));
+    return ROLES.filter(
+        (role) => custom[role] && !chains[role].some((target) => target.model.trim())
+    );
 }
 
 /** "128k", "1M" context windows. */
@@ -197,7 +219,9 @@ export function contextLabel(tokens: number | null): string {
     if (!tokens) {
         return "";
     }
-    return tokens >= 1_000_000 ? `${+(tokens / 1_000_000).toFixed(1)}M` : `${Math.round(tokens / 1000)}k`;
+    return tokens >= 1_000_000
+        ? `${+(tokens / 1_000_000).toFixed(1)}M`
+        : `${Math.round(tokens / 1000)}k`;
 }
 
 /** Italian name and use of each key; the backend's English is the fallback. */
@@ -207,7 +231,48 @@ export const SECRET_TEXT: Record<string, { label: string; use: string }> = {
     GROQ_API_KEY: { label: "Groq", use: "modelli del provider groq (facoltativa)" },
     ANTHROPIC_API_KEY: { label: "Anthropic", use: "modelli del provider anthropic (facoltativa)" },
     GEMINI_API_KEY: { label: "Google Gemini", use: "modelli del provider google (facoltativa)" },
-    AEHUB_LOCAL_API_KEY: { label: "Server locale", use: "provider local, se il server la chiede (facoltativa)" },
+    AEHUB_LOCAL_API_KEY: {
+        label: "Server locale",
+        use: "provider local, se il server la chiede (facoltativa)",
+    },
     AEHUB_MQTT_PASSWORD: { label: "Broker MQTT", use: "dispositivi di casa (facoltativa)" },
     ELEVENLABS_API_KEY: { label: "ElevenLabs", use: "voce nel cloud (facoltativa)" },
+    AEHUB_MCP_TOKENS: {
+        label: "Token MCP",
+        use: "server MCP con login, come host=token,host=token (facoltativa)",
+    },
 };
+
+type IssueParams = Record<string, string>;
+
+const SETUP =
+    "Aggiungila con python scripts/aehub.py setup, poi riavvia con python scripts/aehub.py up.";
+
+/** Each configuration issue in Italian, from its code and values; unknown codes keep the backend text. */
+const ISSUE_TEXT: Partial<Record<string, (p: IssueParams) => string>> = {
+    routing_invalid: (p) => `I modelli per ruolo non sono validi: ${p.error}`,
+    provider_key_missing: (p) =>
+        `Il provider ${p.provider} serve a ${p.roles}, ma manca la chiave ${p.key}. ${SETUP}`,
+    price_missing: (p) =>
+        `Manca il prezzo di ${p.models}: il costo si stima con quello di un modello non in elenco (${p.price} USD per 1M token), quindi spesa e budget sono approssimati.`,
+    run_cost_above_budget: (p) =>
+        `Una run può costare fino a ${p.run_cost} USD, più del budget mensile di ${p.monthly} USD.`,
+    workspace_missing: (p) =>
+        `La cartella di lavoro ${p.folder} non esiste: i tool sui file non funzioneranno. Si sceglie con python scripts/aehub.py setup.`,
+    workspace_read_only: (p) => `Nella cartella di lavoro ${p.folder} non si può scrivere.`,
+    voice_disabled: (p) =>
+        p.packages
+            ? `La voce ha bisogno di ${p.packages}: installa i requisiti del backend.`
+            : "La voce è spenta (AEHUB_VOICE=off).",
+    voice_cloud_key_missing: () =>
+        "È scelta la voce di ElevenLabs, ma manca la chiave ELEVENLABS_API_KEY: le risposte le legge Piper.",
+    voice_cloud_voice_missing: () =>
+        "È scelta la voce di ElevenLabs, ma non è selezionata nessuna voce: le risposte le legge Piper.",
+    home_devices_invalid: (p) => `I dispositivi di casa sono spenti: ${p.error}`,
+    home_broker_missing: (p) => `${p.devices} dispositivi di casa dichiarati, ma: ${p.error}`,
+};
+
+export function issueText(issue: { code: string; message: string; params?: IssueParams }): string {
+    const text = ISSUE_TEXT[issue.code];
+    return text && issue.params !== undefined ? text(issue.params) : issue.message;
+}

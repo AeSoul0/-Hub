@@ -13,8 +13,10 @@ import { useCallback, useEffect, useState } from "react";
 
 import { ApiError, getJson, postJson, putJson } from "@/lib/api/client";
 
-export type SettingGroup = "models" | "prices" | "limits" | "engine" | "voice" | "tools" | "memory" | "documents" | "home";
-export type SettingKind = "text" | "roles" | "prices" | "price_pair" | "number" | "integer" | "ratio" | "choice";
+export type SettingGroup =
+    "models" | "prices" | "limits" | "engine" | "voice" | "tools" | "memory" | "documents" | "home";
+export type SettingKind =
+    "text" | "roles" | "prices" | "price_pair" | "number" | "integer" | "ratio" | "choice";
 export type SettingSource = "database" | "environment" | "default";
 export type Severity = "error" | "warning" | "info";
 
@@ -41,8 +43,11 @@ export interface SecretStatus {
 export interface ConfigIssue {
     code: string;
     severity: Severity;
+    /** English, for the log; the pages show issueText(issue). */
     message: string;
     setting: string | null;
+    /** The values inside the message (provider, folder, packages, …). */
+    params?: Record<string, string>;
 }
 
 export interface RoutedModel {
@@ -146,7 +151,7 @@ export function useSettings() {
 /** Build AEHUB_MODEL_PRICES from the current JSON plus edited rows. */
 export function mergePrices(
     current: string,
-    rows: Record<string, { input: string; output: string }>,
+    rows: Record<string, { input: string; output: string }>
 ): string {
     let table: Record<string, { input: number; output: number }> = {};
 
@@ -182,14 +187,18 @@ export function useProviderModels(providers: ProviderName[]) {
         let active = true;
         for (const provider of wanted.split(",").filter(Boolean) as ProviderName[]) {
             getJson<{ models: ProviderModel[] }>(`/api/settings/provider-models/${provider}`)
-                .then((result) => active && setModels((current) => ({ ...current, [provider]: result.models })))
+                .then(
+                    (result) =>
+                        active &&
+                        setModels((current) => ({ ...current, [provider]: result.models }))
+                )
                 .catch(
                     (err: unknown) =>
                         active &&
                         setMissing((current) => ({
                             ...current,
                             [provider]: err instanceof Error ? err.message : String(err),
-                        })),
+                        }))
                 );
         }
         return () => {

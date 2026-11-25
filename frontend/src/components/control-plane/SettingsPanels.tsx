@@ -9,7 +9,7 @@ import React, { useState } from "react";
 
 import styles from "@/components/control-plane/control.module.css";
 import type { ConfigIssue, RoutedModel, SecretStatus, Severity } from "@/lib/api/settings";
-import { SECRET_TEXT } from "@/lib/nucleo/models";
+import { SECRET_TEXT, issueText } from "@/lib/nucleo/models";
 
 const SEVERITY: Record<Severity, { label: string; tone: string }> = {
     error: { label: "blocca le run", tone: "bad" },
@@ -24,34 +24,59 @@ export function IssueList({ issues }: { issues: ConfigIssue[] }) {
         return <p className={styles.muted}>La configurazione non ha problemi.</p>;
     }
 
-    const ordered = [...issues].sort((a, b) => ORDER.indexOf(a.severity) - ORDER.indexOf(b.severity));
+    const ordered = [...issues].sort(
+        (a, b) => ORDER.indexOf(a.severity) - ORDER.indexOf(b.severity)
+    );
 
     return (
-        <ul className={`${styles.plain} ${styles.stack}`} style={{ gap: 8 }} aria-label="Problemi della configurazione">
+        <ul
+            className={`${styles.plain} ${styles.stack}`}
+            style={{ gap: 8 }}
+            aria-label="Problemi della configurazione"
+        >
             {ordered.map((issue) => (
-                <li key={issue.code} className={styles.issue} data-tone={SEVERITY[issue.severity].tone || undefined}>
-                    <span className={styles.badge} data-tone={SEVERITY[issue.severity].tone || undefined}>
+                <li
+                    key={issue.code}
+                    className={styles.issue}
+                    data-tone={SEVERITY[issue.severity].tone || undefined}
+                >
+                    <span
+                        className={styles.badge}
+                        data-tone={SEVERITY[issue.severity].tone || undefined}
+                    >
                         {SEVERITY[issue.severity].label}
                     </span>
-                    <span>{issue.message}</span>
+                    <span>{issueText(issue)}</span>
                 </li>
             ))}
         </ul>
     );
 }
 
-export function SecretList({ secrets, desktop = false }: { secrets: SecretStatus[]; desktop?: boolean }) {
+export function SecretList({
+    secrets,
+    desktop = false,
+}: {
+    secrets: SecretStatus[];
+    desktop?: boolean;
+}) {
     return (
         <div className={styles.stack} style={{ gap: 10 }}>
             <ul className={styles.lines} aria-label="Chiavi">
                 {secrets.map((secret) => {
-                    const text = SECRET_TEXT[secret.name] ?? { label: secret.label, use: secret.used_for };
+                    const text = SECRET_TEXT[secret.name] ?? {
+                        label: secret.label,
+                        use: secret.used_for,
+                    };
                     return (
                         <li key={secret.name}>
                             <span>
                                 <b>{text.label}</b> · {text.use}
                             </span>
-                            <span className={styles.badge} data-tone={secret.configured ? "ok" : undefined}>
+                            <span
+                                className={styles.badge}
+                                data-tone={secret.configured ? "ok" : undefined}
+                            >
                                 {secret.configured ? "impostata" : "mancante"}
                             </span>
                         </li>
@@ -60,13 +85,14 @@ export function SecretList({ secrets, desktop = false }: { secrets: SecretStatus
             </ul>
             {desktop ? (
                 <p className={styles.help}>
-                    Le chiavi restano nel portachiavi del sistema e non si rivedono più: scrivine una nuova qui sotto
-                    per sostituirla.
+                    Le chiavi restano nel portachiavi del sistema e non si rivedono più: scrivine
+                    una nuova qui sotto per sostituirla.
                 </p>
             ) : (
                 <p className={styles.help}>
-                    Le chiavi restano nel portachiavi del sistema, mai nel browser o in un file. Per aggiungerne o
-                    cambiarne una: <code className={styles.mono}>python scripts/aehub.py setup</code>, poi{" "}
+                    Le chiavi restano nel portachiavi del sistema, mai nel browser o in un file. Per
+                    aggiungerne o cambiarne una:{" "}
+                    <code className={styles.mono}>python scripts/aehub.py setup</code>, poi{" "}
                     <code className={styles.mono}>python scripts/aehub.py up</code>.
                 </p>
             )}
@@ -105,7 +131,7 @@ export function PriceTable({
     catalog?: CatalogPrices;
 }) {
     const [rows, setRows] = useState<PriceRows>(() =>
-        Object.fromEntries(models.map((entry) => [entry.model, priceOf(pricesJson, entry.model)])),
+        Object.fromEntries(models.map((entry) => [entry.model, priceOf(pricesJson, entry.model)]))
     );
 
     if (models.length === 0) {
@@ -115,7 +141,9 @@ export function PriceTable({
     const update = (model: string, side: "input" | "output", value: string) =>
         setRows((current) => ({ ...current, [model]: { ...current[model], [side]: value } }));
 
-    const fillable = models.filter((entry) => catalog[entry.model] && !rows[entry.model]?.input && !rows[entry.model]?.output);
+    const fillable = models.filter(
+        (entry) => catalog[entry.model] && !rows[entry.model]?.input && !rows[entry.model]?.output
+    );
 
     const fill = () =>
         setRows((current) => {
@@ -158,8 +186,14 @@ export function PriceTable({
                                             aria-label={`Prezzo ${side} di ${entry.model}`}
                                             inputMode="decimal"
                                             value={rows[entry.model]?.[side] ?? ""}
-                                            placeholder={catalog[entry.model] ? String(catalog[entry.model][side]) : ""}
-                                            onChange={(event) => update(entry.model, side, event.target.value)}
+                                            placeholder={
+                                                catalog[entry.model]
+                                                    ? String(catalog[entry.model][side])
+                                                    : ""
+                                            }
+                                            onChange={(event) =>
+                                                update(entry.model, side, event.target.value)
+                                            }
                                             className={`${styles.input} ${styles.narrow}`}
                                         />
                                     </td>

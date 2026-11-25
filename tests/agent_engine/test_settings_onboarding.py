@@ -205,6 +205,13 @@ def test_check_configuration_explains_what_to_fix(monkeypatch, tmp_path):
     missing_key = next(issue for issue in issues if issue.code == "provider_key_missing")
     assert "OPENAI_API_KEY" in missing_key.message
     assert "scripts/aehub.py setup" in missing_key.message
+    # The values of the message, for the Italian text of the frontend.
+    assert missing_key.params == {"provider": "openai", "roles": missing_key.params["roles"], "key": "OPENAI_API_KEY"}
+    assert missing_key.to_dict()["params"]["key"] == "OPENAI_API_KEY"
+    voice = next(issue for issue in issues if issue.code == "voice_disabled")
+    assert voice.params == {}
+    workspace = next(issue for issue in issues if issue.code == "workspace_missing")
+    assert workspace.params["folder"] in workspace.message
 
     unpriced = next(issue for issue in issues if issue.code == "price_missing")
     assert "critic-model" in unpriced.message and "worker-model" in unpriced.message
