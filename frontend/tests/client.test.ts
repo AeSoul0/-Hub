@@ -2,11 +2,16 @@
  * @file frontend/tests/client.test.ts
  * @description Tests of the API client: requests, errors and the session token.
  */
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { ApiError, deleteJson, getJson } from "@/lib/api/client";
 
 import { stubFetch } from "./helpers";
+
+import { chooseLanguage } from "@/lib/i18n";
+
+// These tests read the Italian interface; interface.test.tsx covers the English default.
+beforeEach(() => chooseLanguage("it"));
 
 describe("API client", () => {
     it("sends the session cookie", async () => {

@@ -4,13 +4,18 @@
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import DesktopKeys from "@/components/control-plane/DesktopKeys";
 import type { SecretStatus } from "@/lib/api/settings";
 import { runHref } from "@/lib/routes";
 
 import { stubFetch } from "./helpers";
+
+import { chooseLanguage } from "@/lib/i18n";
+
+// These tests read the Italian interface; interface.test.tsx covers the English default.
+beforeEach(() => chooseLanguage("it"));
 
 const SECRETS: SecretStatus[] = [
     { name: "OPENAI_API_KEY", label: "OpenAI API key", used_for: "openai", configured: true },

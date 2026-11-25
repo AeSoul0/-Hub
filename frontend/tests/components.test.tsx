@@ -4,13 +4,18 @@
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import ApprovalCard, { type ApprovalRequest } from "@/components/control-plane/ApprovalCard";
 import AuthGate, { LoginForm } from "@/components/control-plane/AuthGate";
 import RunDetailView, { type RunDetail } from "@/components/control-plane/RunDetailView";
 
 import { stubFetch } from "./helpers";
+
+import { chooseLanguage } from "@/lib/i18n";
+
+// These tests read the Italian interface; interface.test.tsx covers the English default.
+beforeEach(() => chooseLanguage("it"));
 
 const NOW = Date.parse("2026-10-23T12:00:00Z");
 
@@ -106,6 +111,9 @@ describe("ApprovalCard", () => {
 });
 
 describe("LoginForm and AuthGate", () => {
+    // The login was in English before the language choice: it stays tested in English.
+    beforeEach(() => chooseLanguage("en"));
+
     it("reports a wrong key", async () => {
         stubFetch({ "POST /api/auth/login": () => ({ status: 401, body: { detail: "Unauthorized" } }) });
         const onSignedIn = vi.fn();
@@ -128,7 +136,9 @@ describe("LoginForm and AuthGate", () => {
 
         await waitFor(() => expect(onSignedIn).toHaveBeenCalledTimes(1));
         expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toEqual({ key: "secret" });
-        expect(window.localStorage.length).toBe(0);
+        // Only the interface language is kept in the browser, never the key.
+        expect(Object.keys(window.localStorage)).toEqual(["aehub.language"]);
+        expect(window.localStorage.getItem("aehub.language")).toBe("en");
     });
 
     it("shows the login form without a session and the page with one", async () => {

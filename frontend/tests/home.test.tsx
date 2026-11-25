@@ -4,7 +4,7 @@
  */
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import React from "react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import HomePage from "@/app/control-plane/home/page";
 import {
@@ -20,6 +20,11 @@ import {
 import { homeError, stateLabel, stateSource } from "@/lib/nucleo/home";
 
 import { stubFetch } from "./helpers";
+
+import { chooseLanguage } from "@/lib/i18n";
+
+// These tests read the Italian interface; interface.test.tsx covers the English default.
+beforeEach(() => chooseLanguage("it"));
 
 const LIGHT: HomeDevice = {
     id: "living_light",
@@ -111,8 +116,8 @@ describe("the plain logic of the home", () => {
         const command = { state: "on" as const, at: "2026-10-30T10:00:00+00:00", by: "agent" };
         const sent = knownState({ ...LIGHT, command });
         expect(sent.read).toBe(false);
-        expect(stateSource(sent)).toContain("non l'ha confermato");
-        expect(stateSource(sent)).toContain("dall'agente");
+        expect(stateSource(sent, "it")).toContain("non l'ha confermato");
+        expect(stateSource(sent, "it")).toContain("dall'agente");
 
         const older = { state: "off" as const, at: "2026-10-30T09:00:00+00:00" };
         expect(knownState({ ...LIGHT, command, reading: older }).state).toBe("on");
@@ -120,15 +125,15 @@ describe("the plain logic of the home", () => {
         const newer = { state: "off" as const, at: "2026-10-30T11:00:00+00:00" };
         const read = knownState({ ...LIGHT, command, reading: newer });
         expect(read.state).toBe("off");
-        expect(stateSource(read)).toContain("Detto dal dispositivo");
+        expect(stateSource(read, "it")).toContain("Detto dal dispositivo");
 
-        expect(stateLabel(knownState(LIGHT))).toBe("stato sconosciuto");
-        expect(stateLabel({ state: "on", brightness: 40, at: null, read: false })).toBe("accesa al 40%");
+        expect(stateLabel(knownState(LIGHT), "it")).toBe("stato sconosciuto");
+        expect(stateLabel({ state: "on", brightness: 40, at: null, read: false }, "it")).toBe("accesa al 40%");
     });
 
     it("translates the backend's errors and keeps the others", () => {
-        expect(homeError("The device did not answer.")).toBe("Il dispositivo non ha risposto.");
-        expect(homeError("device 'x': declared twice.")).toBe("device 'x': declared twice.");
+        expect(homeError("The device did not answer.", "it")).toBe("Il dispositivo non ha risposto.");
+        expect(homeError("device 'x': declared twice.", "it")).toBe("device 'x': declared twice.");
     });
 });
 

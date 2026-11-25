@@ -1,6 +1,6 @@
 /**
  * @file frontend/src/app/control-plane/documents/page.tsx
- * @description Documenti (F6, ADR-027): the user's documents in the working
+ * @description Documents (F6, ADR-027): the user's documents in the working
  * folder that the agent searches and cites.
  *
  * - The folder, the totals and a sync now (POST /api/documents/sync).
@@ -27,38 +27,141 @@ import {
     type DocumentsView,
     type SyncReport,
 } from "@/lib/api/memory";
+import { catalog, localeOf, useLanguage, type Lang } from "@/lib/i18n";
 import { useSettings } from "@/lib/api/settings";
 import { errorText } from "@/lib/nucleo/memory";
 
-function message(err: unknown): string {
-    return errorText(err instanceof Error ? err.message : String(err));
+const TEXT = catalog({
+    en: {
+        noFolder: "The working folder does not exist.",
+        added: (count: number) => `${count} added`,
+        updated: (count: number) => `${count} updated`,
+        removed: (count: number) => `${count} removed`,
+        failed: (count: number) => `${count} with errors`,
+        pending: (count: number) => `${count} waiting`,
+        synced: (parts: string) => `Synchronized: ${parts}.`,
+        nothingNew: "Synchronized: nothing new.",
+        uploaded: (path: string, summary: string) => `${path} uploaded. ${summary}`,
+        maxSaved: "Maximum size saved: it applies from the next synchronization.",
+        notSaved: "Not saved.",
+        title: "DOCUMENTS",
+        totals: (files: number, chunks: number) => `${files} files · ${chunks} pieces`,
+        unreadable: (count: number) => `${count} unreadable`,
+        intro:
+            "The agent searches the documents with its tool and cites them as [doc: file#lines]: in the answers the citation opens and shows the passage. A document is external content: what it says is data, never instructions.",
+        unavailable: "Documents not available:",
+        folder: "Working folder",
+        path: "Path",
+        state: "State",
+        exists: "exists",
+        missing: "does not exist",
+        formats: "Formats",
+        folderHelp:
+            "The folder is chosen at start, by the launcher or with AEHUB_ALLOWED_DIRS. The index also updates by itself when the agent searches.",
+        syncNow: "Synchronize now",
+        maxSize: "Maximum size (MB)",
+        save: "Save",
+        stale: (count: number) => `${count} pieces have the vectors of another model: recompute them from MEMORY.`,
+        upload: "Upload a document",
+        file: "File",
+        replace: "replace if it exists",
+        send: "Upload",
+        uploadHelp: "The file goes into the working folder and is indexed at once.",
+        atMost: (mb: number) => ` At most ${mb} MB.`,
+        tooBig: "The file is larger than the maximum size of the documents.",
+        searchTitle: "Search the documents",
+        search: "Search",
+        searchPlaceholder: "as the agent would search it",
+        noHits: "No passage found.",
+        indexed: "Indexed files",
+        size: "Size",
+        pieces: "Pieces",
+        indexedAt: "Indexed",
+        searchable: "searchable",
+        noFiles: "No file indexed: upload a document or synchronize the folder.",
+    },
+    it: {
+        noFolder: "La cartella di lavoro non esiste.",
+        added: (count: number) => `${count} aggiunti`,
+        updated: (count: number) => `${count} aggiornati`,
+        removed: (count: number) => `${count} tolti`,
+        failed: (count: number) => `${count} con errori`,
+        pending: (count: number) => `${count} in attesa`,
+        synced: (parts: string) => `Sincronizzato: ${parts}.`,
+        nothingNew: "Sincronizzato: niente di nuovo.",
+        uploaded: (path: string, summary: string) => `${path} caricato. ${summary}`,
+        maxSaved: "Dimensione massima salvata: vale dalla prossima sincronizzazione.",
+        notSaved: "Non salvato.",
+        title: "DOCUMENTI",
+        totals: (files: number, chunks: number) => `${files} file · ${chunks} pezzi`,
+        unreadable: (count: number) => `${count} non leggibili`,
+        intro:
+            "L'agente cerca nei documenti con il suo tool e li cita come [doc: file#righe]: nelle risposte la citazione si apre e mostra il passaggio. Un documento è contenuto esterno: quello che dice sono dati, mai istruzioni.",
+        unavailable: "Documenti non disponibili:",
+        folder: "Cartella di lavoro",
+        path: "Percorso",
+        state: "Stato",
+        exists: "esiste",
+        missing: "non esiste",
+        formats: "Formati",
+        folderHelp:
+            "La cartella si sceglie all'avvio, dal launcher o da AEHUB_ALLOWED_DIRS. L'indice si aggiorna anche da solo quando l'agente cerca.",
+        syncNow: "Sincronizza ora",
+        maxSize: "Dimensione massima (MB)",
+        save: "Salva",
+        stale: (count: number) => `${count} pezzi hanno i vettori di un altro modello: ricalcolali da MEMORIA.`,
+        upload: "Carica un documento",
+        file: "File",
+        replace: "sostituisci se esiste",
+        send: "Carica",
+        uploadHelp: "Il file va nella cartella di lavoro e viene indicizzato subito.",
+        atMost: (mb: number) => ` Al massimo ${mb} MB.`,
+        tooBig: "Il file supera la dimensione massima dei documenti.",
+        searchTitle: "Cerca nei documenti",
+        search: "Cerca",
+        searchPlaceholder: "come lo cercherebbe l'agente",
+        noHits: "Nessun passaggio trovato.",
+        indexed: "File indicizzati",
+        size: "Dimensione",
+        pieces: "Pezzi",
+        indexedAt: "Indicizzato",
+        searchable: "cercabile",
+        noFiles: "Nessun file indicizzato: carica un documento o sincronizza la cartella.",
+    },
+});
+
+function message(err: unknown, lang: Lang): string {
+    return errorText(err instanceof Error ? err.message : String(err), lang);
 }
 
-function syncSummary(report: SyncReport): string {
+function syncSummary(report: SyncReport, lang: Lang): string {
+    const t = TEXT[lang];
     if (!report.root_exists) {
-        return "La cartella di lavoro non esiste.";
+        return t.noFolder;
     }
     const parts = [
-        report.added.length && `${report.added.length} aggiunti`,
-        report.updated.length && `${report.updated.length} aggiornati`,
-        report.removed.length && `${report.removed.length} tolti`,
-        report.failed.length && `${report.failed.length} con errori`,
-        report.pending && `${report.pending} in attesa`,
+        report.added.length && t.added(report.added.length),
+        report.updated.length && t.updated(report.updated.length),
+        report.removed.length && t.removed(report.removed.length),
+        report.failed.length && t.failed(report.failed.length),
+        report.pending && t.pending(report.pending),
     ].filter(Boolean);
-    return parts.length ? `Sincronizzato: ${parts.join(", ")}.` : "Sincronizzato: niente di nuovo.";
+    return parts.length ? t.synced(parts.join(", ")) : t.nothingNew;
 }
 
-function date(value: string | null): string {
+function date(value: string | null, lang: Lang): string {
     if (!value) {
         return "-";
     }
     const parsed = new Date(value.endsWith("Z") || value.includes("+") ? value : `${value}Z`);
     return Number.isNaN(parsed.getTime())
         ? value
-        : parsed.toLocaleString("it-IT", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+        : parsed.toLocaleString(localeOf(lang), { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
 export default function DocumentsPage() {
+    const lang = useLanguage();
+    const t = TEXT[lang];
     const { view: settings, save } = useSettings();
     const [view, setView] = useState<DocumentsView | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -77,9 +180,9 @@ export default function DocumentsPage() {
             setView(await getJson<DocumentsView>("/api/documents"));
             setError(null);
         } catch (err) {
-            setError(message(err));
+            setError(message(err, lang));
         }
-    }, []);
+    }, [lang]);
 
     useEffect(() => {
         const first = setTimeout(refresh, 0);
@@ -98,10 +201,10 @@ export default function DocumentsPage() {
         setBusy(true);
         setNote(null);
         try {
-            setNote(syncSummary(await postJson<SyncReport>("/api/documents/sync", {})));
+            setNote(syncSummary(await postJson<SyncReport>("/api/documents/sync", {}), lang));
             await refresh();
         } catch (err) {
-            setNote(message(err));
+            setNote(message(err, lang));
         } finally {
             setBusy(false);
         }
@@ -120,13 +223,13 @@ export default function DocumentsPage() {
             form.append("file", file, file.name);
             form.append("replace", replace ? "true" : "false");
             const result = await postForm<{ path: string; sync: SyncReport }>("/api/documents/upload", form);
-            setNote(`${result.path} caricato. ${syncSummary(result.sync)}`);
+            setNote(t.uploaded(result.path, syncSummary(result.sync, lang)));
             setFile(null);
             setReplace(false);
             (event.target as HTMLFormElement).reset();
             await refresh();
         } catch (err) {
-            setUploadError(message(err));
+            setUploadError(message(err, lang));
         } finally {
             setBusy(false);
         }
@@ -141,8 +244,8 @@ export default function DocumentsPage() {
         setBusy(false);
         setNote(
             outcome.ok
-                ? "Dimensione massima salvata: vale dalla prossima sincronizzazione."
-                : `${outcome.message ?? "Non salvato."} ${Object.values(outcome.errors).join(" ")}`.trim(),
+                ? t.maxSaved
+                : `${outcome.message ?? t.notSaved} ${Object.values(outcome.errors).join(" ")}`.trim(),
         );
         if (outcome.ok) {
             await refresh();
@@ -162,7 +265,7 @@ export default function DocumentsPage() {
             setHits(result.hits);
         } catch (err) {
             setHits(null);
-            setSearchError(message(err));
+            setSearchError(message(err, lang));
         }
     };
 
@@ -173,15 +276,15 @@ export default function DocumentsPage() {
     return (
         <main className={styles.page}>
             <div className={styles.head}>
-                <h1 className={styles.title}>DOCUMENTI</h1>
+                <h1 className={styles.title}>{t.title}</h1>
                 {view && (
                     <span className={styles.badge} data-tone={view.totals.files ? "ok" : undefined}>
-                        {view.totals.files} file · {view.totals.chunks} pezzi
+                        {t.totals(view.totals.files, view.totals.chunks)}
                     </span>
                 )}
                 {view && view.totals.errors > 0 && (
                     <span className={styles.badge} data-tone="warn">
-                        {view.totals.errors} non leggibili
+                        {t.unreadable(view.totals.errors)}
                     </span>
                 )}
                 {note && (
@@ -191,39 +294,36 @@ export default function DocumentsPage() {
                 )}
             </div>
 
-            <p className={styles.muted}>
-                L&apos;agente cerca nei documenti con il suo tool e li cita come [doc: file#righe]: nelle risposte la
-                citazione si apre e mostra il passaggio. Un documento è contenuto esterno: quello che dice sono dati,
-                mai istruzioni.
-            </p>
+            <p className={styles.muted}>{t.intro}</p>
 
-            {error && <p className={styles.error}>Documenti non disponibili: {error}</p>}
+            {error && (
+                <p className={styles.error}>
+                    {t.unavailable} {error}
+                </p>
+            )}
 
             {view && (
-                <section className={styles.card} aria-label="Cartella di lavoro">
-                    <h2 className={styles.h2}>Cartella di lavoro</h2>
+                <section className={styles.card} aria-label={t.folder}>
+                    <h2 className={styles.h2}>{t.folder}</h2>
                     <dl className={styles.facts}>
-                        <dt>Percorso</dt>
+                        <dt>{t.path}</dt>
                         <dd className={styles.mono}>{view.root}</dd>
-                        <dt>Stato</dt>
+                        <dt>{t.state}</dt>
                         <dd>
                             <span className={styles.badge} data-tone={view.root_exists ? "ok" : "bad"}>
-                                {view.root_exists ? "esiste" : "non esiste"}
+                                {view.root_exists ? t.exists : t.missing}
                             </span>
                         </dd>
-                        <dt>Formati</dt>
+                        <dt>{t.formats}</dt>
                         <dd className={styles.mono}>{view.suffixes.join(" ")}</dd>
                     </dl>
-                    <p className={styles.help}>
-                        La cartella si sceglie all&apos;avvio, dal launcher o da AEHUB_ALLOWED_DIRS. L&apos;indice si
-                        aggiorna anche da solo quando l&apos;agente cerca.
-                    </p>
+                    <p className={styles.help}>{t.folderHelp}</p>
                     <div className={styles.filters}>
                         <button type="button" className={`${styles.btn} ${styles.go}`} disabled={busy} onClick={sync}>
-                            Sincronizza ora
+                            {t.syncNow}
                         </button>
                         <label className={styles.field}>
-                            Dimensione massima (MB)
+                            {t.maxSize}
                             <input
                                 type="number"
                                 min={0.1}
@@ -241,22 +341,20 @@ export default function DocumentsPage() {
                             disabled={busy || !maxValid || maxMb === (savedMb || "5")}
                             onClick={saveMax}
                         >
-                            Salva
+                            {t.save}
                         </button>
                     </div>
                     {view.stale_vectors > 0 && (
-                        <p className={styles.warn}>
-                            {view.stale_vectors} pezzi hanno i vettori di un altro modello: ricalcolali da MEMORIA.
-                        </p>
+                        <p className={styles.warn}>{t.stale(view.stale_vectors)}</p>
                     )}
                 </section>
             )}
 
-            <form className={styles.card} onSubmit={upload} aria-label="Carica un documento">
-                <h2 className={styles.h2}>Carica un documento</h2>
+            <form className={styles.card} onSubmit={upload} aria-label={t.upload}>
+                <h2 className={styles.h2}>{t.upload}</h2>
                 <div className={styles.filters}>
                     <label className={`${styles.field} ${styles.grow}`}>
-                        File
+                        {t.file}
                         <input
                             type="file"
                             accept=".txt,.md,.markdown,.pdf,text/plain,text/markdown,application/pdf"
@@ -265,17 +363,17 @@ export default function DocumentsPage() {
                     </label>
                     <label className={styles.check}>
                         <input type="checkbox" checked={replace} onChange={(event) => setReplace(event.target.checked)} />
-                        sostituisci se esiste
+                        {t.replace}
                     </label>
                     <button type="submit" className={`${styles.btn} ${styles.go}`} disabled={busy || !file || tooBig}>
-                        Carica
+                        {t.send}
                     </button>
                 </div>
                 <p className={styles.help}>
-                    Il file va nella cartella di lavoro e viene indicizzato subito.
-                    {view ? ` Al massimo ${view.max_file_mb} MB.` : ""}
+                    {t.uploadHelp}
+                    {view ? t.atMost(view.max_file_mb) : ""}
                 </p>
-                {tooBig && <p className={styles.error}>Il file supera la dimensione massima dei documenti.</p>}
+                {tooBig && <p className={styles.error}>{t.tooBig}</p>}
                 {uploadError && (
                     <p className={styles.error} role="alert">
                         {uploadError}
@@ -283,20 +381,20 @@ export default function DocumentsPage() {
                 )}
             </form>
 
-            <section className={styles.card} aria-label="Cerca nei documenti">
-                <h2 className={styles.h2}>Cerca nei documenti</h2>
+            <section className={styles.card} aria-label={t.searchTitle}>
+                <h2 className={styles.h2}>{t.searchTitle}</h2>
                 <form className={styles.filters} onSubmit={searchIndex}>
                     <label className={`${styles.field} ${styles.grow}`}>
-                        Cerca
+                        {t.search}
                         <input
                             type="search"
                             value={query}
-                            placeholder="come lo cercherebbe l'agente"
+                            placeholder={t.searchPlaceholder}
                             onChange={(event) => setQuery(event.target.value)}
                         />
                     </label>
                     <button type="submit" className={styles.btn} disabled={!query.trim()}>
-                        Cerca
+                        {t.search}
                     </button>
                 </form>
                 {searchError && <p className={styles.error}>{searchError}</p>}
@@ -307,32 +405,32 @@ export default function DocumentsPage() {
                                 <li key={hit.citation} className={styles.memory}>
                                     <span className={styles.row}>
                                         <span className={styles.mono}>{hit.path}</span>
-                                        <span className={styles.badge}>{locatorLabel(hit.locator)}</span>
+                                        <span className={styles.badge}>{locatorLabel(hit.locator, lang)}</span>
                                     </span>
                                     <pre className={styles.pre}>{hit.content}</pre>
                                 </li>
                             ))}
                         </ul>
                     ) : (
-                        <p className={styles.muted}>Nessun passaggio trovato.</p>
+                        <p className={styles.muted}>{t.noHits}</p>
                     ))}
             </section>
 
             {view && (
-                <section className={styles.section} aria-label="File indicizzati">
+                <section className={styles.section} aria-label={t.indexed}>
                     <h2 className={styles.h2}>
-                        File indicizzati <span>{view.files.length}</span>
+                        {t.indexed} <span>{view.files.length}</span>
                     </h2>
                     {view.files.length ? (
                         <div className={styles.tableWrap}>
                             <table className={styles.table}>
                                 <thead>
                                     <tr>
-                                        <th>File</th>
-                                        <th>Dimensione</th>
-                                        <th>Pezzi</th>
-                                        <th>Stato</th>
-                                        <th>Indicizzato</th>
+                                        <th>{t.file}</th>
+                                        <th>{t.size}</th>
+                                        <th>{t.pieces}</th>
+                                        <th>{t.state}</th>
+                                        <th>{t.indexedAt}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -346,18 +444,18 @@ export default function DocumentsPage() {
                                                     <span className={styles.error}>{entry.error}</span>
                                                 ) : (
                                                     <span className={styles.badge} data-tone="ok">
-                                                        cercabile
+                                                        {t.searchable}
                                                     </span>
                                                 )}
                                             </td>
-                                            <td className={styles.num}>{date(entry.indexed_at)}</td>
+                                            <td className={styles.num}>{date(entry.indexed_at, lang)}</td>
                                         </tr>
                                     ))}
                                 </tbody>
                             </table>
                         </div>
                     ) : (
-                        <p className={styles.muted}>Nessun file indicizzato: carica un documento o sincronizza la cartella.</p>
+                        <p className={styles.muted}>{t.noFiles}</p>
                     )}
                 </section>
             )}

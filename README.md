@@ -18,7 +18,7 @@
 - **Limits you set.** Cost per run and per month, active time, failed tool calls, subagents and modified files; a stop button for one run or for all of them.
 - **Memory and documents.** Facts, preferences and rules across sessions; search over the documents of your working folder, with cited sources. Content from the web, files or MCP is untrusted: it never becomes a rule, and after reading it every HIGH-risk action needs an approval.
 - **Voice and home.** Speech recognition and synthesis run on this machine (faster-whisper, Piper); lights and locks through your MQTT broker.
-- **An interface for everything.** The Nucleo (home) and the Control Plane, in Italian, cover every route and setting of the backend (`docs/frontend-coverage.md`).
+- **An interface for everything.** The Nucleo (home) and the Control Plane cover every route and setting of the backend (`docs/frontend-coverage.md`). They are in English by default, or in Italian (Settings → Language, or ask Aurora); the voice keeps the language of the voice you choose, and a notice says when the two differ (ADR-034).
 
 It is not a multi-user service: there is one owner, and every port listens on `127.0.0.1`.
 

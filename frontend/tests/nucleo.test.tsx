@@ -22,6 +22,11 @@ import {
 
 import { installEventSource, stubFetch } from "./helpers";
 
+import { chooseLanguage } from "@/lib/i18n";
+
+// These tests read the Italian interface; interface.test.tsx covers the English default.
+beforeEach(() => chooseLanguage("it"));
+
 const quiet = { listening: false, speaking: false, sending: false };
 
 const LIMITS = { max_run_cost: 2, max_run_seconds: 900, max_failed_tool_calls: 10, max_files_modified: 20, monthly_budget: 30 };

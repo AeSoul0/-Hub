@@ -1,6 +1,6 @@
 /**
  * @file frontend/src/app/control-plane/memory/page.tsx
- * @description Memoria (M11, rewritten in F6, ADR-027): what the assistant
+ * @description Memory (M11, rewritten in F6, ADR-027): what the assistant
  * remembers across sessions, and how it remembers.
  *
  * - Settings (PUT /api/settings, no restart): memory on or off, the
@@ -28,17 +28,107 @@ import {
     type TrustFilter,
 } from "@/lib/api/memory";
 import { useSettings } from "@/lib/api/settings";
+import { catalog, useLanguage, type Lang } from "@/lib/i18n";
 import { EMBEDDERS, KIND_TEXT, USER_KINDS, errorText } from "@/lib/nucleo/memory";
 
-function message(err: unknown): string {
-    return errorText(err instanceof Error ? err.message : String(err));
+function message(err: unknown, lang: Lang): string {
+    return errorText(err instanceof Error ? err.message : String(err), lang);
 }
 
-const SAVED_TEXT: Partial<Record<MemoryKind, string>> = {
-    fact: "Fatto salvato.",
-    preference: "Preferenza salvata: vale da ogni prossima run.",
-    rule: "Regola salvata: vale da ogni prossima run.",
-};
+const TEXT = catalog({
+    en: {
+        saved: { fact: "Fact saved.", preference: "Preference saved: it applies from every next run.", rule: "Rule saved: it applies from every next run." } as Partial<Record<MemoryKind, string>>,
+        memorySaved: "Memory saved.",
+        nowYours: "It is now your memory.",
+        updated: "Memory updated.",
+        forgotten: "Memory forgotten.",
+        purged: (count: number) => `${count} untrusted memories forgotten.`,
+        reembedded: (memories: number, documents: number) =>
+            `Vectors recomputed: ${memories} memories, ${documents} pieces of documents.`,
+        settingsSaved: "Memory settings saved: they apply from the next run.",
+        notSaved: "Not saved.",
+        title: "MEMORY",
+        on: "on",
+        off: "off",
+        count: (count: number) => `${count} memories`,
+        untrusted: (count: number) => `${count} untrusted`,
+        unavailable: "Memory not available:",
+        how: "How it remembers",
+        longTerm: "Long-term memory",
+        similarity: "Minimum similarity",
+        help: "When on, every run recalls the useful memories and saves what it learns. The higher the similarity, the fewer memories recalled by meaning (the same words always count).",
+        model: "Model (384 dimensions)",
+        save: "Save",
+        cancel: "Cancel",
+        stale: (count: number) =>
+            `${count} memories have the vectors of another model: they are found only by words until you recompute them.`,
+        recompute: "Recompute the vectors",
+        add: "Add a memory",
+        kind: "Kind",
+        text: "Text",
+        factExample: "e.g. My car is a red Panda.",
+        ruleExample: "e.g. Answer in English, with five-line summaries.",
+        written: "Written by you, it counts as trusted.",
+        memories: "Memories",
+        search: "Search",
+        searchPlaceholder: "words or meaning",
+        all: "all",
+        source: "Source",
+        allSources: "all",
+        trusted: "trusted",
+        untrustedOption: "untrusted",
+        untrustedHelp:
+            "Untrusted memories were written after reading the web, files or MCP servers: they are recalled as data, never as instructions.",
+        confirmPurge: (count: number) => `Confirm: forget ${count}`,
+        purge: "Forget the untrusted ones",
+    },
+    it: {
+        saved: { fact: "Fatto salvato.", preference: "Preferenza salvata: vale da ogni prossima run.", rule: "Regola salvata: vale da ogni prossima run." } as Partial<Record<MemoryKind, string>>,
+        memorySaved: "Ricordo salvato.",
+        nowYours: "Ora è un tuo ricordo.",
+        updated: "Ricordo aggiornato.",
+        forgotten: "Ricordo dimenticato.",
+        purged: (count: number) => `${count} ricordi non affidabili dimenticati.`,
+        reembedded: (memories: number, documents: number) =>
+            `Vettori ricalcolati: ${memories} ricordi, ${documents} pezzi di documenti.`,
+        settingsSaved: "Impostazioni della memoria salvate: valgono dalla prossima run.",
+        notSaved: "Non salvato.",
+        title: "MEMORIA",
+        on: "accesa",
+        off: "spenta",
+        count: (count: number) => `${count} ricordi`,
+        untrusted: (count: number) => `${count} non affidabili`,
+        unavailable: "Memoria non disponibile:",
+        how: "Come ricorda",
+        longTerm: "Memoria a lungo termine",
+        similarity: "Somiglianza minima",
+        help: "Accesa, ogni run richiama i ricordi utili e salva quello che impara. Più alta la somiglianza, meno ricordi richiamati per significato (le parole uguali valgono sempre).",
+        model: "Modello (384 dimensioni)",
+        save: "Salva",
+        cancel: "Annulla",
+        stale: (count: number) =>
+            `${count} ricordi hanno i vettori di un altro modello: si trovano solo per parole finché non li ricalcoli.`,
+        recompute: "Ricalcola i vettori",
+        add: "Aggiungi un ricordo",
+        kind: "Tipo",
+        text: "Testo",
+        factExample: "es. La mia auto è una Panda rossa.",
+        ruleExample: "es. Rispondi in italiano, con riassunti di cinque righe.",
+        written: "Scritto da te, conta come affidabile.",
+        memories: "Ricordi",
+        search: "Cerca",
+        searchPlaceholder: "parole o significato",
+        all: "tutti",
+        source: "Fonte",
+        allSources: "tutte",
+        trusted: "affidabili",
+        untrustedOption: "non affidabili",
+        untrustedHelp:
+            "I ricordi non affidabili sono stati scritti dopo aver letto web, file o server MCP: si richiamano come dati, mai come istruzioni.",
+        confirmPurge: (count: number) => `Conferma: dimentica ${count}`,
+        purge: "Dimentica i non affidabili",
+    },
+});
 
 interface MemoryForm {
     enabled: boolean;
@@ -48,6 +138,8 @@ interface MemoryForm {
 }
 
 export default function MemoryPage() {
+    const lang = useLanguage();
+    const t = TEXT[lang];
     const { view: settings, save } = useSettings();
     const [data, setData] = useState<MemoryView | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -95,9 +187,9 @@ export default function MemoryPage() {
             setData(await getJson<MemoryView>("/api/memory", { params }));
             setError(null);
         } catch (err) {
-            setError(message(err));
+            setError(message(err, lang));
         }
-    }, [kind, trust, search]);
+    }, [kind, trust, search, lang]);
 
     useEffect(() => {
         const first = setTimeout(refresh, 0);
@@ -112,7 +204,7 @@ export default function MemoryPage() {
             await refresh();
             return true;
         } catch (err) {
-            setNote(message(err));
+            setNote(message(err, lang));
             return false;
         } finally {
             setBusy(false);
@@ -124,33 +216,33 @@ export default function MemoryPage() {
         void act(async () => {
             await postJson("/api/memory", { content: draft.trim(), kind: draftKind });
             setDraft("");
-            return SAVED_TEXT[draftKind] ?? "Ricordo salvato.";
+            return t.saved[draftKind] ?? t.memorySaved;
         });
     };
 
     const update = (memory: Memory, changes: MemoryChanges) =>
         act(async () => {
             await putJson(`/api/memory/${encodeURIComponent(memory.id)}`, changes);
-            return changes.trusted ? "Ora è un tuo ricordo." : "Ricordo aggiornato.";
+            return changes.trusted ? t.nowYours : t.updated;
         });
 
     const forget = (memory: Memory) =>
         void act(async () => {
             await deleteJson(`/api/memory/${encodeURIComponent(memory.id)}`);
-            return "Ricordo dimenticato.";
+            return t.forgotten;
         });
 
     const purge = () =>
         void act(async () => {
             const result = await deleteJson<{ deleted: number }>("/api/memory", { params: { scope: "untrusted" } });
             setConfirmPurge(false);
-            return `${result.deleted} ricordi non affidabili dimenticati.`;
+            return t.purged(result.deleted);
         });
 
     const reembed = () =>
         void act(async () => {
             const result = await postJson<{ memories: number; documents: number }>("/api/memory/reembed", {});
-            return `Vettori ricalcolati: ${result.memories} ricordi, ${result.documents} pezzi di documenti.`;
+            return t.reembedded(result.memories, result.documents);
         });
 
     const similarity = Number(form?.similarity);
@@ -186,8 +278,8 @@ export default function MemoryPage() {
         setBusy(false);
         setNote(
             outcome.ok
-                ? "Impostazioni della memoria salvate: valgono dalla prossima run."
-                : `${outcome.message ?? "Non salvato."} ${Object.values(outcome.errors).join(" ")}`.trim(),
+                ? t.settingsSaved
+                : `${outcome.message ?? t.notSaved} ${Object.values(outcome.errors).join(" ")}`.trim(),
         );
         if (outcome.ok) {
             await refresh();
@@ -199,16 +291,16 @@ export default function MemoryPage() {
     return (
         <main className={styles.page}>
             <div className={styles.head}>
-                <h1 className={styles.title}>MEMORIA</h1>
+                <h1 className={styles.title}>{t.title}</h1>
                 {status && (
                     <>
                         <span className={styles.badge} data-tone={status.enabled ? "ok" : undefined}>
-                            {status.enabled ? "accesa" : "spenta"}
+                            {status.enabled ? t.on : t.off}
                         </span>
-                        <span className={styles.badge}>{status.total} ricordi</span>
+                        <span className={styles.badge}>{t.count(status.total)}</span>
                         {status.untrusted > 0 && (
                             <span className={styles.badge} data-tone="warn">
-                                {status.untrusted} non affidabili
+                                {t.untrusted(status.untrusted)}
                             </span>
                         )}
                     </>
@@ -220,11 +312,15 @@ export default function MemoryPage() {
                 )}
             </div>
 
-            {error && <p className={styles.error}>Memoria non disponibile: {error}</p>}
+            {error && (
+                <p className={styles.error}>
+                    {t.unavailable} {error}
+                </p>
+            )}
 
             {form && (
-                <section className={styles.card} aria-label="Come ricorda">
-                    <h2 className={styles.h2}>Come ricorda</h2>
+                <section className={styles.card} aria-label={t.how}>
+                    <h2 className={styles.h2}>{t.how}</h2>
                     <div className={styles.filters}>
                         <label className={styles.check}>
                             <span className={styles.switch}>
@@ -232,15 +328,15 @@ export default function MemoryPage() {
                                     type="checkbox"
                                     role="switch"
                                     checked={form.enabled}
-                                    aria-label="Memoria a lungo termine"
+                                    aria-label={t.longTerm}
                                     onChange={(event) => setForm({ ...form, enabled: event.target.checked })}
                                 />
                                 <span aria-hidden="true" />
                             </span>
-                            {form.enabled ? "accesa" : "spenta"}
+                            {form.enabled ? t.on : t.off}
                         </label>
                         <label className={styles.field}>
-                            Somiglianza minima
+                            {t.similarity}
                             <input
                                 type="number"
                                 min={0.05}
@@ -253,13 +349,10 @@ export default function MemoryPage() {
                             />
                         </label>
                     </div>
-                    <p className={styles.help}>
-                        Accesa, ogni run richiama i ricordi utili e salva quello che impara. Più alta la somiglianza,
-                        meno ricordi richiamati per significato (le parole uguali valgono sempre).
-                    </p>
+                    <p className={styles.help}>{t.help}</p>
 
                     <div className={styles.row} role="radiogroup" aria-label="Embedding">
-                        {Object.entries(EMBEDDERS).map(([name, info]) => (
+                        {Object.entries(EMBEDDERS[lang]).map(([name, info]) => (
                             <label key={name} className={styles.check}>
                                 <input
                                     type="radio"
@@ -271,10 +364,10 @@ export default function MemoryPage() {
                             </label>
                         ))}
                     </div>
-                    <p className={styles.help}>{EMBEDDERS[form.embedder]?.help}</p>
+                    <p className={styles.help}>{EMBEDDERS[lang][form.embedder]?.help}</p>
                     {form.embedder === "sentence-transformers" && (
                         <label className={`${styles.field} ${styles.grow}`} style={{ maxWidth: 420 }}>
-                            Modello (384 dimensioni)
+                            {t.model}
                             <input
                                 value={form.model}
                                 spellCheck={false}
@@ -291,65 +384,60 @@ export default function MemoryPage() {
                             disabled={busy || !dirty || !similarityValid || !modelValid}
                             onClick={saveSettings}
                         >
-                            Salva
+                            {t.save}
                         </button>
                         {dirty && (
                             <button type="button" className={styles.btn} onClick={() => saved && setForm(saved)}>
-                                Annulla
+                                {t.cancel}
                             </button>
                         )}
                     </div>
 
                     {status && status.stale_vectors > 0 && (
                         <div className={styles.issue} data-tone="warn">
-                            <span>
-                                {status.stale_vectors} ricordi hanno i vettori di un altro modello: si trovano solo per
-                                parole finché non li ricalcoli.
-                            </span>
+                            <span>{t.stale(status.stale_vectors)}</span>
                             <button type="button" className={styles.linkBtn} disabled={busy} onClick={reembed}>
-                                Ricalcola i vettori
+                                {t.recompute}
                             </button>
                         </div>
                     )}
                 </section>
             )}
 
-            <form className={styles.card} onSubmit={add} aria-label="Aggiungi un ricordo">
-                <h2 className={styles.h2}>Aggiungi un ricordo</h2>
+            <form className={styles.card} onSubmit={add} aria-label={t.add}>
+                <h2 className={styles.h2}>{t.add}</h2>
                 <div className={styles.filters}>
                     <label className={styles.field}>
-                        Tipo
+                        {t.kind}
                         <select value={draftKind} onChange={(event) => setDraftKind(event.target.value as MemoryKind)}>
                             {USER_KINDS.map((item) => (
                                 <option key={item} value={item}>
-                                    {KIND_TEXT[item].label}
+                                    {KIND_TEXT[lang][item].label}
                                 </option>
                             ))}
                         </select>
                     </label>
                     <label className={`${styles.field} ${styles.grow}`}>
-                        Testo
+                        {t.text}
                         <input
                             value={draft}
                             maxLength={1200}
-                            placeholder={
-                                draftKind === "fact"
-                                    ? "es. La mia auto è una Panda rossa."
-                                    : "es. Rispondi in italiano, con riassunti di cinque righe."
-                            }
+                            placeholder={draftKind === "fact" ? t.factExample : t.ruleExample}
                             onChange={(event) => setDraft(event.target.value)}
                         />
                     </label>
                     <button type="submit" className={`${styles.btn} ${styles.go}`} disabled={busy || !draft.trim()}>
-                        Salva
+                        {t.save}
                     </button>
                 </div>
-                <p className={styles.help}>{KIND_TEXT[draftKind].help} Scritto da te, conta come affidabile.</p>
+                <p className={styles.help}>
+                    {KIND_TEXT[lang][draftKind].help} {t.written}
+                </p>
             </form>
 
-            <section className={styles.section} aria-label="Ricordi">
+            <section className={styles.section} aria-label={t.memories}>
                 <h2 className={styles.h2}>
-                    Ricordi <span>{data?.memories.length ?? 0}</span>
+                    {t.memories} <span>{data?.memories.length ?? 0}</span>
                 </h2>
                 <form
                     className={styles.filters}
@@ -359,11 +447,11 @@ export default function MemoryPage() {
                     }}
                 >
                     <label className={`${styles.field} ${styles.grow}`}>
-                        Cerca
+                        {t.search}
                         <input
                             type="search"
                             value={query}
-                            placeholder="parole o significato"
+                            placeholder={t.searchPlaceholder}
                             onChange={(event) => {
                                 setQuery(event.target.value);
                                 if (!event.target.value.trim()) {
@@ -373,35 +461,32 @@ export default function MemoryPage() {
                         />
                     </label>
                     <label className={styles.field}>
-                        Tipo
+                        {t.kind}
                         <select value={kind} onChange={(event) => setKind(event.target.value as MemoryKind | "")}>
-                            <option value="">tutti</option>
+                            <option value="">{t.all}</option>
                             {(["fact", "preference", "rule", "episode"] as MemoryKind[]).map((item) => (
                                 <option key={item} value={item}>
-                                    {KIND_TEXT[item].label}
+                                    {KIND_TEXT[lang][item].label}
                                 </option>
                             ))}
                         </select>
                     </label>
                     <label className={styles.field}>
-                        Fonte
+                        {t.source}
                         <select value={trust} onChange={(event) => setTrust(event.target.value as TrustFilter)}>
-                            <option value="all">tutte</option>
-                            <option value="trusted">affidabili</option>
-                            <option value="untrusted">non affidabili</option>
+                            <option value="all">{t.allSources}</option>
+                            <option value="trusted">{t.trusted}</option>
+                            <option value="untrusted">{t.untrustedOption}</option>
                         </select>
                     </label>
                     <button type="submit" className={styles.btn}>
-                        Cerca
+                        {t.search}
                     </button>
                 </form>
 
                 {status && status.untrusted > 0 && (
                     <div className={styles.issue} data-tone="warn">
-                        <span>
-                            I ricordi non affidabili sono stati scritti dopo aver letto web, file o server MCP: si
-                            richiamano come dati, mai come istruzioni.
-                        </span>
+                        <span>{t.untrustedHelp}</span>
                         {confirmPurge ? (
                             <>
                                 <button
@@ -410,15 +495,15 @@ export default function MemoryPage() {
                                     disabled={busy}
                                     onClick={purge}
                                 >
-                                    Conferma: dimentica {status.untrusted}
+                                    {t.confirmPurge(status.untrusted)}
                                 </button>
                                 <button type="button" className={styles.linkBtn} onClick={() => setConfirmPurge(false)}>
-                                    Annulla
+                                    {t.cancel}
                                 </button>
                             </>
                         ) : (
                             <button type="button" className={styles.linkBtn} onClick={() => setConfirmPurge(true)}>
-                                Dimentica i non affidabili
+                                {t.purge}
                             </button>
                         )}
                     </div>

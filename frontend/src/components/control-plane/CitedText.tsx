@@ -12,11 +12,19 @@ import React, { useState } from "react";
 import styles from "@/components/control-plane/control.module.css";
 import { getJson } from "@/lib/api/client";
 import { locatorLabel, splitCitations, type Passage } from "@/lib/api/memory";
+import { catalog, useLanguage } from "@/lib/i18n";
 import { errorText } from "@/lib/nucleo/memory";
+
+const TEXT = catalog({
+    en: { passage: "Cited passage", loading: "Loading the passage…" },
+    it: { passage: "Passaggio citato", loading: "Carico il passaggio…" },
+});
 
 type Open = { key: string; passage?: Passage; error?: string };
 
 export default function CitedText({ text, className }: { text: string; className?: string }) {
+    const lang = useLanguage();
+    const t = TEXT[lang];
     const [open, setOpen] = useState<Open | null>(null);
     const parts = splitCitations(text);
 
@@ -34,7 +42,7 @@ export default function CitedText({ text, className }: { text: string; className
             const passage = await getJson<Passage>("/api/documents/passage", { params: { path, locator } });
             setOpen({ key, passage });
         } catch (err) {
-            setOpen({ key, error: errorText(err instanceof Error ? err.message : String(err)) });
+            setOpen({ key, error: errorText(err instanceof Error ? err.message : String(err), lang) });
         }
     };
 
@@ -51,26 +59,26 @@ export default function CitedText({ text, className }: { text: string; className
                         type="button"
                         className={styles.cite}
                         aria-expanded={open?.key === key}
-                        title={`${part.path}, ${locatorLabel(part.locator)}`}
+                        title={`${part.path}, ${locatorLabel(part.locator, lang)}`}
                         onClick={() => void show(key, part.path, part.locator)}
                     >
-                        {part.path.split("/").pop()} · {locatorLabel(part.locator)}
+                        {part.path.split("/").pop()} · {locatorLabel(part.locator, lang)}
                     </button>
                 );
             })}
             {open && (
-                <span className={styles.passage} role="note" aria-label="Passaggio citato">
+                <span className={styles.passage} role="note" aria-label={t.passage}>
                     {open.passage ? (
                         <>
                             <span className={styles.sub}>
-                                {open.passage.path} · {locatorLabel(open.passage.locator)}
+                                {open.passage.path} · {locatorLabel(open.passage.locator, lang)}
                             </span>
                             {open.passage.content}
                         </>
                     ) : open.error ? (
                         <span className={styles.error}>{open.error}</span>
                     ) : (
-                        <span className={styles.muted}>Carico il passaggio…</span>
+                        <span className={styles.muted}>{t.loading}</span>
                     )}
                 </span>
             )}

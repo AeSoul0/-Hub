@@ -4,7 +4,7 @@
  */
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import React from "react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import RunsPage from "@/app/control-plane/runs/page";
 import RunDetailView, { type RunDetail } from "@/components/control-plane/RunDetailView";
@@ -14,6 +14,11 @@ import { attemptText, describe as describeEvent, roleName, type EngineEvent } fr
 import { EMPTY_USAGE, meters, toUsage, treeRows, type TrackedRun } from "@/lib/nucleo/runs";
 
 import { installEventSource, stubFetch } from "./helpers";
+
+import { chooseLanguage } from "@/lib/i18n";
+
+// These tests read the Italian interface; interface.test.tsx covers the English default.
+beforeEach(() => chooseLanguage("it"));
 
 const LIMITS = {
     max_run_cost: 2,
@@ -87,23 +92,23 @@ describe("the Critic's verdicts", () => {
             attempt: 1,
             details: { max_attempts: 3, retry_instruction: "Answer in one word." },
         });
-        expect(describeEvent(rejected)).toMatchObject({
+        expect(describeEvent(rejected, "it")).toMatchObject({
             detail: "tentativo 1 di 3 · respinto · Answer in one word.",
             kind: "critic",
         });
-        expect(describeEvent(engine("checker.accepted", { attempt: 2, details: { max_attempts: 3 } })).detail).toBe(
+        expect(describeEvent(engine("checker.accepted", { attempt: 2, details: { max_attempts: 3 } }), "it").detail).toBe(
             "tentativo 2 di 3 · accettato",
         );
-        expect(describeEvent(engine("retry.requested", { attempt: 2, details: { max_attempts: 3 } })).detail).toBe(
+        expect(describeEvent(engine("retry.requested", { attempt: 2, details: { max_attempts: 3 } }), "it").detail).toBe(
             "tentativo 2 di 3",
         );
 
-        const failed = describeEvent(engine("checker.failed", { attempt: 1, details: { max_attempts: 3, reason: "Cannot be fixed." } }));
+        const failed = describeEvent(engine("checker.failed", { attempt: 1, details: { max_attempts: 3, reason: "Cannot be fixed." } }), "it");
         expect(failed).toMatchObject({ detail: "tentativo 1 di 3 · bocciato · Cannot be fixed.", kind: "deny" });
 
         // An older event without the attempt still reads.
-        expect(attemptText(engine("checker.accepted"))).toBe("");
-        expect(describeEvent(engine("checker.accepted")).detail).toBe("accettato");
+        expect(attemptText(engine("checker.accepted"), "it")).toBe("");
+        expect(describeEvent(engine("checker.accepted"), "it").detail).toBe("accettato");
     });
 
     it("show in the run timeline", () => {
@@ -148,7 +153,7 @@ describe("the run tree", () => {
     });
 
     it("counts the subagents of a run that may delegate", () => {
-        const byKey = (run: TrackedRun, limits = LIMITS) => Object.fromEntries(meters(run, limits, 0).map((item) => [item.key, item]));
+        const byKey = (run: TrackedRun, limits = LIMITS) => Object.fromEntries(meters(run, limits, 0, "it").map((item) => [item.key, item]));
 
         expect(byKey(tracked()).subagents).toMatchObject({ text: "1 / 3", level: "ok" });
         // A subagent cannot delegate, and with the limit at 0 nobody can.

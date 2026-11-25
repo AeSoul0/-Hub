@@ -4,7 +4,7 @@
  */
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import React from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import DocumentsPage from "@/app/control-plane/documents/page";
 import MemoryPage from "@/app/control-plane/memory/page";
@@ -22,6 +22,11 @@ import {
 import { errorText } from "@/lib/nucleo/memory";
 
 import { stubFetch } from "./helpers";
+
+import { chooseLanguage } from "@/lib/i18n";
+
+// These tests read the Italian interface; interface.test.tsx covers the English default.
+beforeEach(() => chooseLanguage("it"));
 
 function memory(id: string, extra: Partial<Memory> = {}): Memory {
     return {
@@ -85,15 +90,15 @@ describe("memory helpers", () => {
             ".",
         ]);
         expect(splitCitations("No citation here.")).toEqual(["No citation here."]);
-        expect(locatorLabel("L1-3")).toBe("righe 1-3");
-        expect(locatorLabel("p2")).toBe("pagina 2");
+        expect(locatorLabel("L1-3", "it")).toBe("righe 1-3");
+        expect(locatorLabel("p2", "it")).toBe("pagina 2");
         expect(memoryOn("0")).toBe(false);
         expect(memoryOn("off")).toBe(false);
         expect(memoryOn("1")).toBe(true);
         expect(memoryOn("on")).toBe(true);
         expect(formatSize(2048)).toBe("2.0 KB");
-        expect(errorText("The same memory already exists.")).toBe("Lo stesso ricordo c'è già.");
-        expect(errorText("Input rejected: jailbreak pattern")).toMatch(/cambiare le istruzioni/);
+        expect(errorText("The same memory already exists.", "it")).toBe("Lo stesso ricordo c'è già.");
+        expect(errorText("Input rejected: jailbreak pattern", "it")).toMatch(/cambiare le istruzioni/);
     });
 });
 

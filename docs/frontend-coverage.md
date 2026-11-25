@@ -9,7 +9,7 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 - ⏸ vuol dire **sospesa**: riguarda solo l'app desktop (Tauri), sospesa dal 2026-11-24. Non conta né tra le coperte né tra le mancanti.
 
 **Ultimo aggiornamento:** Q1, `agent_engine/runtime.py` diviso in moduli (2026-11-25): solo spostamento di codice, nessuna route o impostazione cambiata.
-**Copertura:** 53 righe su 53, cioè **100%**, più 2 righe sospese (⏸). F10 ha confrontato la tabella con tutte le route e tutte le impostazioni del backend: l'[indice](#indice-ogni-route-e-ogni-impostazione) in fondo dice quale riga copre ciascuna, e un test in CI lo tiene allineato al codice.
+**Copertura:** 55 righe su 55, cioè **100%**, più 2 righe sospese (⏸). F10 ha confrontato la tabella con tutte le route e tutte le impostazioni del backend: l'[indice](#indice-ogni-route-e-ogni-impostazione) in fondo dice quale riga copre ciascuna, e un test in CI lo tiene allineato al codice.
 
 ## Conversazione e voce
 
@@ -66,6 +66,8 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 | 33 | Cartelle consentite ai tool | STRUMENTI → Confini, in sola lettura (parametro di avvio: si sceglie dal launcher) | ✓ | F5 |
 | 52 | Client MCP: stato di ogni server consentito (collegato e con quanti tool, o l'errore; token sì o no) e il pulsante per ricollegarsi (`POST /api/tools/mcp/refresh`) | STRUMENTI → Server MCP | ✓ | ADR-033 |
 | 53 | Rischio dei tool MCP: alto (approvazione a ogni chiamata) finché non lo abbassi, tool per tool (`AEHUB_MCP_TOOL_RISK`) | STRUMENTI → la scheda Server MCP del catalogo, un menu per tool | ✓ | ADR-033 |
+| 54 | Lingua dell'interfaccia: inglese (predefinita) o italiano (`AEHUB_UI_LANGUAGE`, `GET /api/interface`); la cambia anche Aurora | IMPOSTAZIONI → Lingua; ogni pagina cambia subito | ✓ | ADR-034 |
+| 55 | Avviso quando la voce scelta parla un'altra lingua dell'interfaccia, con "non mostrare più" (`AEHUB_VOICE_LANGUAGE_WARNING`); lo riattivano IMPOSTAZIONI o Aurora | Avviso su ogni pagina; IMPOSTAZIONI → Lingua | ✓ | ADR-034 |
 | 34 | Registro di audit, con la provenienza | Control Plane → SICUREZZA | ✓ | M11, F5 |
 
 ## Memoria e documenti
@@ -150,6 +152,7 @@ F10 (2026-11-24, aggiornato in P1): l'elenco viene dal codice (`tests/security/t
 | `PUT /api/home/devices` | 39 |
 | `POST /api/home/devices/{device_id}/command` | 39 |
 | `POST /api/home/devices/{device_id}/state` | 39 |
+| `GET /api/interface` | 54, 55 |
 | `DELETE /api/memory` | 35 |
 | `GET /api/memory` | 35 |
 | `POST /api/memory` | 35 |
@@ -237,8 +240,10 @@ F10 (2026-11-24, aggiornato in P1): l'elenco viene dal codice (`tests/security/t
 | `AEHUB_TOOL_TOP_K` | 32 |
 | `AEHUB_TTS_ENGINE` | 5 |
 | `AEHUB_TTS_VOICE` | 5 |
+| `AEHUB_UI_LANGUAGE` | 54 |
 | `AEHUB_VOICE` | 9 |
 | `AEHUB_VOICE_IDLE_MINUTES` | 9 |
+| `AEHUB_VOICE_LANGUAGE_WARNING` | 55 |
 | `OPENAI_MODEL` | 19, 20 |
 
 ### Parametri di avvio (SISTEMA, sola lettura)

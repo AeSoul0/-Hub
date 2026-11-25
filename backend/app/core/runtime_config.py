@@ -38,7 +38,7 @@ class SettingSpec:
     """
 
     name: str
-    group: Literal["models", "prices", "limits", "engine", "voice", "tools", "memory", "documents", "home"]
+    group: Literal["models", "prices", "limits", "engine", "voice", "tools", "memory", "documents", "home", "interface"]
     label: str
     kind: Literal["text", "roles", "prices", "price_pair", "number", "integer", "ratio", "choice"]
     default: str
@@ -376,6 +376,26 @@ SPECS: Tuple[SettingSpec, ...] = (
         default="eleven_flash_v2_5",
         help="eleven_flash_v2_5 is the fastest and cheapest; eleven_multilingual_v2 sounds richer.",
         pattern=r"[a-z0-9_]{3,64}",
+    ),
+    # The interface (ADR-034): the language of the pages, and the notice when
+    # the chosen voice speaks another one. Aurora can change both.
+    SettingSpec(
+        name="AEHUB_UI_LANGUAGE",
+        group="interface",
+        label="Interface language",
+        kind="choice",
+        default="en",
+        help="Language of the pages: en (English) or it (Italian). The voice keeps its own language.",
+        options=("en", "it"),
+    ),
+    SettingSpec(
+        name="AEHUB_VOICE_LANGUAGE_WARNING",
+        group="interface",
+        label="Voice language notice",
+        kind="choice",
+        default="on",
+        help="on: a notice says when the chosen voice speaks another language than the interface.",
+        options=("on", "off"),
     ),
     # Voice on or off, and when its models leave memory (F9, ADR-030).
     SettingSpec(

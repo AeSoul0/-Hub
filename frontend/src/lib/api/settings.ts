@@ -14,7 +14,8 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError, getJson, postJson, putJson } from "@/lib/api/client";
 
 export type SettingGroup =
-    "models" | "prices" | "limits" | "engine" | "voice" | "tools" | "memory" | "documents" | "home";
+    "models" | "prices" | "limits" | "engine" | "voice" | "tools" | "memory" | "documents" | "home"
+    | "interface";
 export type SettingKind =
     "text" | "roles" | "prices" | "price_pair" | "number" | "integer" | "ratio" | "choice";
 export type SettingSource = "database" | "environment" | "default";

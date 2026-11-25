@@ -1,49 +1,61 @@
 /**
  * @file frontend/src/lib/nucleo/memory.ts
- * @description Italian text of the MEMORIA and DOCUMENTI pages (F6): kinds
- * and sources of a memory, the embedders, and the backend's errors.
+ * @description Text of the Memory and Documents pages (F6) in each interface
+ * language: kinds and sources of a memory, the embedders, and the backend's
+ * errors.
  */
 
 import type { MemoryKind } from "@/lib/api/memory";
+import { catalog, type Lang } from "@/lib/i18n";
 
-export const KIND_TEXT: Record<MemoryKind, { label: string; help: string }> = {
-    fact: { label: "fatto", help: "Si ricorda quando il compito gli somiglia." },
-    preference: { label: "preferenza", help: "Entra in ogni run, se è affidabile." },
-    rule: { label: "regola", help: "Entra in ogni run, se è affidabile." },
-    episode: { label: "episodio", help: "Il riassunto di una run accettata." },
-};
+export const KIND_TEXT = catalog<Record<MemoryKind, { label: string; help: string }>>({
+    en: {
+        fact: { label: "fact", help: "Recalled when the task resembles it." },
+        preference: { label: "preference", help: "Goes into every run, if it is trusted." },
+        rule: { label: "rule", help: "Goes into every run, if it is trusted." },
+        episode: { label: "episode", help: "The summary of an accepted run." },
+    },
+    it: {
+        fact: { label: "fatto", help: "Si ricorda quando il compito gli somiglia." },
+        preference: { label: "preferenza", help: "Entra in ogni run, se è affidabile." },
+        rule: { label: "regola", help: "Entra in ogni run, se è affidabile." },
+        episode: { label: "episodio", help: "Il riassunto di una run accettata." },
+    },
+});
 
 export const USER_KINDS: MemoryKind[] = ["fact", "preference", "rule"];
 
-export function kindLabel(kind: string): string {
-    return KIND_TEXT[kind as MemoryKind]?.label ?? kind;
+export function kindLabel(kind: string, lang: Lang = "en"): string {
+    return KIND_TEXT[lang][kind as MemoryKind]?.label ?? kind;
 }
 
-export function sourceText(source: string | null | undefined): string {
-    switch (source) {
-        case "user":
-            return "scritto da te";
-        case "user-edit":
-            return "modificato da te";
-        case "agent":
-            return "salvato dall'agente";
-        default:
-            return source ?? "";
-    }
+const SOURCES = catalog<Record<string, string>>({
+    en: { user: "written by you", "user-edit": "edited by you", agent: "saved by the agent" },
+    it: { user: "scritto da te", "user-edit": "modificato da te", agent: "salvato dall'agente" },
+});
+
+export function sourceText(source: string | null | undefined, lang: Lang = "en"): string {
+    return (source && SOURCES[lang][source]) || (source ?? "");
 }
 
-export const EMBEDDERS: Record<string, { label: string; help: string }> = {
-    "sentence-transformers": {
-        label: "Modello locale",
-        help: "Trova i ricordi per significato. Il modello (~90 MB) si scarica al primo uso e gira su questo computer.",
+export const EMBEDDERS = catalog<Record<string, { label: string; help: string }>>({
+    en: {
+        "sentence-transformers": {
+            label: "Local model",
+            help: "Finds memories by meaning. The model (~90 MB) is downloaded the first time and runs on this computer.",
+        },
+        hash: { label: "Hash, without a model", help: "No download, but it finds almost only the same words." },
     },
-    hash: {
-        label: "Hash, senza modello",
-        help: "Niente download, ma trova quasi solo le parole uguali.",
+    it: {
+        "sentence-transformers": {
+            label: "Modello locale",
+            help: "Trova i ricordi per significato. Il modello (~90 MB) si scarica al primo uso e gira su questo computer.",
+        },
+        hash: { label: "Hash, senza modello", help: "Niente download, ma trova quasi solo le parole uguali." },
     },
-};
+});
 
-/** Italian text of the memory and documents errors the backend returns (English). */
+/** Italian text of the memory and documents errors the backend returns (in English). */
 const ERRORS: [RegExp, string | ((match: RegExpMatchArray) => string)][] = [
     [/must not contain credentials or secrets/, "Un ricordo non può contenere password, chiavi o token."],
     [/already exists/, "Lo stesso ricordo c'è già."],
@@ -61,15 +73,23 @@ const ERRORS: [RegExp, string | ((match: RegExpMatchArray) => string)][] = [
     [/not in the document index/, "Questa citazione non è nell'indice dei documenti."],
 ];
 
-export function errorText(message: string): string {
+const GUARDRAIL = catalog({
+    en: "The text looks like an attempt to change the agent's instructions: it is not saved.",
+    it: "Il testo sembra un tentativo di cambiare le istruzioni dell'agente: non viene salvato.",
+});
+
+/** A memory or documents error in the interface language; English is the backend's own text. */
+export function errorText(message: string, lang: Lang = "en"): string {
+    // Guardrail refusals ("Input rejected: ...") get a plain sentence in any language.
+    const refused = /Input rejected|jailbreak|injection/i.test(message);
+    if (lang === "en") {
+        return refused ? GUARDRAIL.en : message;
+    }
     for (const [pattern, text] of ERRORS) {
         const match = message.match(pattern);
         if (match) {
             return typeof text === "string" ? text : text(match);
         }
     }
-    // Guardrail refusals ("Input rejected: ...") read the same in any language.
-    return /Input rejected|jailbreak|injection/i.test(message)
-        ? "Il testo sembra un tentativo di cambiare le istruzioni dell'agente: non viene salvato."
-        : message;
+    return refused ? GUARDRAIL.it : message;
 }

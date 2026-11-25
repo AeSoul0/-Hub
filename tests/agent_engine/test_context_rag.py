@@ -176,7 +176,10 @@ async def test_fifty_tool_calls_stay_in_budget_and_keep_the_goal(
     skill = ShardSkill(output_chars=3000)
     agent_infrastructure.use_skills(skill)
 
-    budget = ContextBudget(total=12_000, snapshot_every=10)
+    # Ten 3000-character outputs fit beside L0, which since ADR-034 also
+    # holds the app context (about 100 tokens): 12,500 keeps the snapshot
+    # on the tenth call, as the test means.
+    budget = ContextBudget(total=12_500, snapshot_every=10)
     worker = fake_model.adapter(
         [
             fake_model.function_call(f"call_{n}", "read_shard", {"shard": f"shard-{n:02d}"})

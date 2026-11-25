@@ -95,6 +95,15 @@ Untrusted tool output (web, files, MCP, imported skills) reaches the model
 inside an `<untrusted_tool_output>` fence; after it, every HIGH-risk action
 needs an approval.
 
+### The app itself
+On every turn the worker gets, after its fixed contract, a short context
+about the app (`core/interface.app_context`, ADR-034): what ÆHub is, its
+pages, the interface language, the language of the chosen voice and whether
+the notice about the two is on. The `interface` skill lets Aurora change the
+interface language and that notice (`set_interface_language`,
+`set_voice_language_warning`): low risk, saved and audited like a change
+from Settings, and every open page switches at once.
+
 ### MCP servers
 `skills/mcp_bridge.py` (ADR-033) lists the tools of the allowed MCP servers
 (Streamable HTTP; https, or http only to this computer) as

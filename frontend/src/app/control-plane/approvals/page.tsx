@@ -18,9 +18,24 @@ import LiveBadge from "@/components/control-plane/LiveBadge";
 import styles from "@/components/control-plane/control.module.css";
 import { getJson, postJson } from "@/lib/api/client";
 import { useLiveRefresh } from "@/lib/api/events";
+import { catalog, useText } from "@/lib/i18n";
+
+const TEXT = catalog({
+    en: {
+        title: "APPROVALS",
+        intro: "Each decision covers one call only, with the arguments shown: there is no permanent consent. Without an answer, the call is denied when it expires.",
+        none: "No approval waiting.",
+    },
+    it: {
+        title: "APPROVAZIONI",
+        intro: "Ogni decisione vale per una sola chiamata, con gli argomenti mostrati: non esiste un consenso permanente. Senza risposta, alla scadenza la chiamata viene negata.",
+        none: "Nessuna approvazione in attesa.",
+    },
+});
 
 // Renders the approvals interface where users can decide pending tool calls
 export default function ApprovalsPage() {
+    const t = useText(TEXT);
     const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [busyId, setBusyId] = useState<string | null>(null);
@@ -64,19 +79,16 @@ export default function ApprovalsPage() {
     return (
         <div className={styles.page}>
             <div className={styles.head}>
-                <h1 className={styles.title}>APPROVAZIONI</h1>
+                <h1 className={styles.title}>{t.title}</h1>
                 <LiveBadge state={live} />
             </div>
 
-            <p className={styles.muted}>
-                Ogni decisione vale per una sola chiamata, con gli argomenti mostrati: non esiste un consenso permanente. Senza
-                risposta, alla scadenza la chiamata viene negata.
-            </p>
+            <p className={styles.muted}>{t.intro}</p>
 
             {error && <p className={styles.error}>{error}</p>}
 
             {approvals.length === 0 ? (
-                <p className={styles.muted}>Nessuna approvazione in attesa.</p>
+                <p className={styles.muted}>{t.none}</p>
             ) : (
                 <div className={styles.stack}>
                     {approvals.map((item) => (

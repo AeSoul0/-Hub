@@ -14,7 +14,18 @@ import React, { useEffect, useState } from "react";
 import styles from "@/components/control-plane/control.module.css";
 import { ApiError, getJson, putJson } from "@/lib/api/client";
 import type { SecretStatus } from "@/lib/api/settings";
+import { catalog, useLanguage } from "@/lib/i18n";
 import { SECRET_TEXT } from "@/lib/nucleo/models";
+
+const TEXT = catalog({
+    en: { saved: "Saved in the system keyring.", form: "Add keys", replace: "replace", save: "Save the keys" },
+    it: {
+        saved: "Salvate nel portachiavi del sistema.",
+        form: "Aggiungi chiavi",
+        replace: "sostituisci",
+        save: "Salva le chiavi",
+    },
+});
 
 /** Whether this frontend runs inside the desktop app. */
 export function useDesktopMode(): boolean {
@@ -34,6 +45,8 @@ export function useDesktopMode(): boolean {
 }
 
 export default function DesktopKeys({ secrets, onSaved }: { secrets: SecretStatus[]; onSaved: () => void }) {
+    const lang = useLanguage();
+    const t = TEXT[lang];
     const [values, setValues] = useState<Record<string, string>>({});
     const [message, setMessage] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
@@ -52,7 +65,7 @@ export default function DesktopKeys({ secrets, onSaved }: { secrets: SecretStatu
         try {
             await putJson("/api/desktop/secrets", changes);
             setValues({});
-            setMessage("Salvate nel portachiavi del sistema.");
+            setMessage(t.saved);
             onSaved();
         } catch (err) {
             setMessage(err instanceof ApiError ? err.message : String(err));
@@ -62,22 +75,22 @@ export default function DesktopKeys({ secrets, onSaved }: { secrets: SecretStatu
     };
 
     return (
-        <form onSubmit={submit} className={styles.filters} aria-label="Aggiungi chiavi">
+        <form onSubmit={submit} className={styles.filters} aria-label={t.form}>
             {secrets.map((secret) => (
                 <label key={secret.name} className={styles.field}>
-                    {SECRET_TEXT[secret.name]?.label ?? secret.label}
+                    {SECRET_TEXT[lang][secret.name]?.label ?? secret.label}
                     <input
                         type="password"
                         autoComplete="off"
                         name={secret.name}
-                        placeholder={secret.configured ? "sostituisci" : ""}
+                        placeholder={secret.configured ? t.replace : ""}
                         value={values[secret.name] ?? ""}
                         onChange={(event) => setValues({ ...values, [secret.name]: event.target.value })}
                     />
                 </label>
             ))}
             <button type="submit" disabled={busy} className={`${styles.btn} ${styles.go}`}>
-                Salva le chiavi
+                {t.save}
             </button>
             {message && (
                 <p className={styles.muted} role="status">

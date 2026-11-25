@@ -1,6 +1,6 @@
 /**
  * @file frontend/src/components/control-plane/HomeDeviceCard.tsx
- * @description One home device on the CASA page (F7): what is known of its
+ * @description One home device on the Home page (F7): what is known of its
  * state, its commands and, for a device declared here, edit and remove.
  *
  * Opening a door is the only action with a second step: the confirmation is
@@ -12,7 +12,60 @@ import React, { useState } from "react";
 
 import styles from "@/components/control-plane/control.module.css";
 import { ACTION_TOOL, knownState, type HomeAction, type HomeDevice, type HomeToolStatus } from "@/lib/api/home";
+import { catalog, useLanguage } from "@/lib/i18n";
 import { FORMAT_LABEL, stateLabel, stateSource, stateTone, TYPE_LABEL } from "@/lib/nucleo/home";
+
+const TEXT = catalog({
+    en: {
+        fromFile: "from the file",
+        addedHere: "added from here",
+        turnOnLabel: (name: string) => `Turn on ${name}`,
+        turnOn: "Turn on",
+        turnOffLabel: (name: string) => `Turn off ${name}`,
+        turnOff: "Turn off",
+        brightness: "Brightness",
+        reallyOpen: (name: string) => `Really open ${name}? This confirmation stays in the log as the approval.`,
+        confirmOpen: "Confirm: open",
+        cancel: "Cancel",
+        lockLabel: (name: string) => `Lock ${name}`,
+        lock: "Lock",
+        openLabel: (name: string) => `Open ${name}`,
+        open: "Open",
+        toolOff: "Off in TOOLS: it does not start from here.",
+        readLabel: (name: string) => `Read the state of ${name}`,
+        read: "Read the state",
+        confirmRemove: "Confirm: remove",
+        editLabel: (name: string) => `Edit ${name}`,
+        edit: "Edit",
+        removeLabel: (name: string) => `Remove ${name}`,
+        remove: "Remove",
+    },
+    it: {
+        fromFile: "dal file",
+        addedHere: "aggiunto da qui",
+        turnOnLabel: (name: string) => `Accendi ${name}`,
+        turnOn: "Accendi",
+        turnOffLabel: (name: string) => `Spegni ${name}`,
+        turnOff: "Spegni",
+        brightness: "Luminosità",
+        reallyOpen: (name: string) =>
+            `Apri davvero ${name}? Questa conferma resta nel registro come approvazione.`,
+        confirmOpen: "Conferma: apri",
+        cancel: "Annulla",
+        lockLabel: (name: string) => `Chiudi a chiave ${name}`,
+        lock: "Chiudi a chiave",
+        openLabel: (name: string) => `Apri ${name}`,
+        open: "Apri",
+        toolOff: "Spento in STRUMENTI: da qui non parte.",
+        readLabel: (name: string) => `Leggi lo stato di ${name}`,
+        read: "Leggi lo stato",
+        confirmRemove: "Conferma: togli",
+        editLabel: (name: string) => `Modifica ${name}`,
+        edit: "Modifica",
+        removeLabel: (name: string) => `Togli ${name}`,
+        remove: "Togli",
+    },
+});
 
 interface HomeDeviceCardProps {
     device: HomeDevice;
@@ -36,6 +89,8 @@ export default function HomeDeviceCard({
     onEdit,
     onRemove,
 }: HomeDeviceCardProps) {
+    const lang = useLanguage();
+    const t = TEXT[lang];
     const [confirmingOpen, setConfirmingOpen] = useState(false);
     const [confirmingRemove, setConfirmingRemove] = useState(false);
     const [level, setLevel] = useState<number | null>(null);
@@ -50,16 +105,16 @@ export default function HomeDeviceCard({
             <div className={styles.deviceHead}>
                 <span className={styles.deviceName}>{device.name}</span>
                 <span className={styles.badge} data-tone={stateTone(known.state)}>
-                    {stateLabel(known)}
+                    {stateLabel(known, lang)}
                 </span>
             </div>
 
             <p className={styles.muted}>
-                {TYPE_LABEL[device.type]} · {FORMAT_LABEL[device.format]} ·{" "}
-                {device.source === "file" ? "dal file" : "aggiunto da qui"}
+                {TYPE_LABEL[lang][device.type]} · {FORMAT_LABEL[device.format]} ·{" "}
+                {device.source === "file" ? t.fromFile : t.addedHere}
             </p>
             <p className={styles.deviceTopic}>{device.topic}</p>
-            <p className={styles.help}>{stateSource(known)}</p>
+            <p className={styles.help}>{stateSource(known, lang)}</p>
 
             {device.type === "light" ? (
                 <>
@@ -68,24 +123,25 @@ export default function HomeDeviceCard({
                             type="button"
                             className={styles.btn}
                             disabled={blocked("on")}
-                            aria-label={`Accendi ${device.name}`}
+                            aria-label={t.turnOnLabel(device.name)}
                             onClick={() => onCommand(device, "on", level === null ? undefined : { brightness: level })}
                         >
-                            Accendi
+                            {t.turnOn}
                         </button>
                         <button
                             type="button"
                             className={styles.btn}
                             disabled={blocked("off")}
-                            aria-label={`Spegni ${device.name}`}
+                            aria-label={t.turnOffLabel(device.name)}
                             onClick={() => onCommand(device, "off")}
                         >
-                            Spegni
+                            {t.turnOff}
                         </button>
                     </div>
                     {device.format === "zigbee2mqtt" && (
                         <label className={styles.field}>
-                            Luminosità{level === null ? "" : ` ${level}%`}
+                            {t.brightness}
+                            {level === null ? "" : ` ${level}%`}
                             <input
                                 type="range"
                                 min={0}
@@ -98,9 +154,7 @@ export default function HomeDeviceCard({
                 </>
             ) : confirmingOpen ? (
                 <div className={styles.stack}>
-                    <p className={styles.warn}>
-                        Apri davvero {device.name}? Questa conferma resta nel registro come approvazione.
-                    </p>
+                    <p className={styles.warn}>{t.reallyOpen(device.name)}</p>
                     <div className={styles.row}>
                         <button
                             type="button"
@@ -111,10 +165,10 @@ export default function HomeDeviceCard({
                                 onCommand(device, "unlock", { confirm: true });
                             }}
                         >
-                            Conferma: apri
+                            {t.confirmOpen}
                         </button>
                         <button type="button" className={styles.linkBtn} onClick={() => setConfirmingOpen(false)}>
-                            Annulla
+                            {t.cancel}
                         </button>
                     </div>
                 </div>
@@ -124,34 +178,34 @@ export default function HomeDeviceCard({
                         type="button"
                         className={styles.btn}
                         disabled={blocked("lock")}
-                        aria-label={`Chiudi a chiave ${device.name}`}
+                        aria-label={t.lockLabel(device.name)}
                         onClick={() => onCommand(device, "lock")}
                     >
-                        Chiudi a chiave
+                        {t.lock}
                     </button>
                     <button
                         type="button"
                         className={`${styles.btn} ${styles.danger}`}
                         disabled={blocked("unlock")}
-                        aria-label={`Apri ${device.name}`}
+                        aria-label={t.openLabel(device.name)}
                         onClick={() => setConfirmingOpen(true)}
                     >
-                        Apri
+                        {t.open}
                     </button>
                 </div>
             )}
 
-            {actions.some(off) && <p className={styles.warn}>Spento in STRUMENTI: da qui non parte.</p>}
+            {actions.some(off) && <p className={styles.warn}>{t.toolOff}</p>}
 
             <div className={styles.row}>
                 <button
                     type="button"
                     className={styles.linkBtn}
                     disabled={busy || offline}
-                    aria-label={`Leggi lo stato di ${device.name}`}
+                    aria-label={t.readLabel(device.name)}
                     onClick={() => onRead(device)}
                 >
-                    Leggi lo stato
+                    {t.read}
                 </button>
                 {device.source === "app" &&
                     (confirmingRemove ? (
@@ -162,10 +216,10 @@ export default function HomeDeviceCard({
                                 disabled={busy}
                                 onClick={() => onRemove(device)}
                             >
-                                Conferma: togli
+                                {t.confirmRemove}
                             </button>
                             <button type="button" className={styles.linkBtn} onClick={() => setConfirmingRemove(false)}>
-                                Annulla
+                                {t.cancel}
                             </button>
                         </>
                     ) : (
@@ -174,19 +228,19 @@ export default function HomeDeviceCard({
                                 type="button"
                                 className={styles.linkBtn}
                                 disabled={busy}
-                                aria-label={`Modifica ${device.name}`}
+                                aria-label={t.editLabel(device.name)}
                                 onClick={() => onEdit(device)}
                             >
-                                Modifica
+                                {t.edit}
                             </button>
                             <button
                                 type="button"
                                 className={styles.linkBtn}
                                 disabled={busy}
-                                aria-label={`Togli ${device.name}`}
+                                aria-label={t.removeLabel(device.name)}
                                 onClick={() => setConfirmingRemove(true)}
                             >
-                                Togli
+                                {t.remove}
                             </button>
                         </>
                     ))}

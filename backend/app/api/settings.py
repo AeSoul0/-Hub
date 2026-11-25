@@ -21,6 +21,7 @@ Secrets are not editable here: the launcher keeps them in the OS keyring.
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any, Dict, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -29,6 +30,8 @@ from pydantic import BaseModel, Field
 from app.core.security import Principal, resolve_principal
 from app.domain.models.identity import RoleEnum
 
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api/settings",
@@ -88,8 +91,41 @@ async def update_settings(
             ) from exc
 
         _apply_mcp_changes(update.values)
+        await _announce_interface(update.values, principal)
 
         return settings_view(db)
+
+
+INTERFACE_SETTINGS = {
+    "AEHUB_UI_LANGUAGE",
+    "AEHUB_VOICE_LANGUAGE_WARNING",
+    "AEHUB_VOICE",
+    "AEHUB_TTS_ENGINE",
+    "AEHUB_TTS_VOICE",
+    "AEHUB_ELEVENLABS_VOICE",
+}
+
+
+async def _announce_interface(changes: Dict[str, Any], principal: Principal) -> None:
+    """
+    The language, the voice or the notice changed: every open page switches
+    at once (ADR-034).
+    """
+    if not INTERFACE_SETTINGS.intersection(changes):
+        return
+
+    from app.core.event_bus import event_bus
+    from app.core.interface import interface_state
+
+    try:
+        await event_bus.publish(
+            "control-plane",
+            "interface.changed",
+            interface_state(),
+            workspace_id=principal.workspace_id,
+        )
+    except Exception as exc:  # noqa: BLE001 - the setting is saved; the pages read it again on their next load
+        logger.warning("interface.changed not sent: %s", exc)
 
 
 _mcp_refreshes: set = set()

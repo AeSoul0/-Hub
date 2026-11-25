@@ -6,6 +6,7 @@
 import Link from "next/link";
 import React from "react";
 
+import { catalog, useLanguage, useText } from "@/lib/i18n";
 import { roleName } from "@/lib/nucleo/engine";
 import { EMPTY_USAGE, localTime, meters, savedStatus, toUsage, usd, type RunLimits, type TrackedRun } from "@/lib/nucleo/runs";
 import { runHref } from "@/lib/routes";
@@ -92,6 +93,99 @@ function chosenRole(task: unknown): string | null {
     return null;
 }
 
+const TEXT = catalog({
+    en: {
+        trusted: "trusted",
+        untrusted: "untrusted",
+        untrustedTitle: "Data for the model, never instructions",
+        overview: "Overview",
+        status: "Status",
+        stop: "Stop the run",
+        created: "Created",
+        attempts: "Attempts / turn",
+        parent: "Parent run",
+        role: "Role",
+        chosenBy: (role: string, byParent: boolean) =>
+            `${role}, chosen ${byParent ? "by the parent run" : "for the command"}`,
+        byTriage: "chosen by the triage",
+        usage: "Usage",
+        usageText: (calls: number, tools: number, tokens: number) =>
+            `${calls} model calls · ${tools} tools · ${tokens} tokens`,
+        subagentsCost: (count: number, cost: string) => ` · ${count} subagents for ${cost}`,
+        context: "Context",
+        readUntrusted: "read untrusted content",
+        onlyTrusted: "trusted content only",
+        chosenTools: "Chosen tools",
+        none: "none",
+        allTools: "all: the skill index did not narrow them",
+        limits: "Limits of the run",
+        task: "Task",
+        subagents: "Subagents",
+        subagentsOf: "Subagents of the run",
+        subagent: "subagent",
+        waiting: "Waiting for approval",
+        then: "Then:",
+        decide: "Decide in Approvals →",
+        outcome: "Outcome",
+        toolResults: "Tool results",
+        noResults: "No tool has answered yet.",
+        failed: "failed",
+        wrote: (file: string) => `wrote ${file}`,
+        audit: "Audit",
+        noAudit: "No tool call recorded.",
+        time: "Time",
+        tool: "Tool",
+        risk: "Risk",
+        decision: "Decision",
+        result: "Result",
+    },
+    it: {
+        trusted: "affidabile",
+        untrusted: "non affidabile",
+        untrustedTitle: "Dati per il modello, mai istruzioni",
+        overview: "Panoramica",
+        status: "Stato",
+        stop: "Ferma la run",
+        created: "Creata",
+        attempts: "Tentativi / turno",
+        parent: "Run padre",
+        role: "Ruolo",
+        chosenBy: (role: string, byParent: boolean) =>
+            `${role}, scelto ${byParent ? "dalla run padre" : "per il comando"}`,
+        byTriage: "scelto dal triage",
+        usage: "Consumo",
+        usageText: (calls: number, tools: number, tokens: number) =>
+            `${calls} chiamate al modello · ${tools} tool · ${tokens} token`,
+        subagentsCost: (count: number, cost: string) => ` · ${count} sub-agenti per ${cost}`,
+        context: "Contesto",
+        readUntrusted: "ha letto contenuti non affidabili",
+        onlyTrusted: "solo contenuti affidabili",
+        chosenTools: "Tool scelti",
+        none: "nessuno",
+        allTools: "tutti: l'indice delle skill non li ha ristretti",
+        limits: "Limiti della run",
+        task: "Compito",
+        subagents: "Sub-agenti",
+        subagentsOf: "Sub-agenti della run",
+        subagent: "sub-agente",
+        waiting: "Attende approvazione",
+        then: "Poi:",
+        decide: "Decidi in Approvazioni →",
+        outcome: "Esito",
+        toolResults: "Risultati dei tool",
+        noResults: "Nessun tool ha ancora risposto.",
+        failed: "fallito",
+        wrote: (file: string) => `ha scritto ${file}`,
+        audit: "Audit",
+        noAudit: "Nessuna chiamata a tool registrata.",
+        time: "Ora",
+        tool: "Tool",
+        risk: "Rischio",
+        decision: "Decisione",
+        result: "Risultato",
+    },
+});
+
 // Statuses a run can still be cancelled from.
 const CANCELLABLE = new Set(["queued", "running", "waiting_approval", "waiting_tool", "retrying"]);
 
@@ -109,13 +203,14 @@ function text(value: unknown): string {
 }
 
 export function TrustBadge({ trusted }: { trusted: boolean }) {
+    const t = useText(TEXT);
     return trusted ? (
         <span className={styles.badge} data-tone="ok">
-            affidabile
+            {t.trusted}
         </span>
     ) : (
-        <span className={styles.badge} data-tone="warn" title="Dati per il modello, mai istruzioni">
-            non affidabile
+        <span className={styles.badge} data-tone="warn" title={t.untrustedTitle}>
+            {t.untrusted}
         </span>
     );
 }
@@ -143,8 +238,10 @@ export default function RunDetailView({
     timeline?: React.ReactNode;
     onCancel?: () => void;
 }) {
+    const lang = useLanguage();
+    const t = TEXT[lang];
     const usage = toUsage(run.usage) ?? EMPTY_USAGE;
-    const status = savedStatus(run.status);
+    const status = savedStatus(run.status, lang);
     const role = chosenRole(run.task);
     const subagents = run.subagents ?? [];
     const tracked: TrackedRun = {
@@ -161,29 +258,29 @@ export default function RunDetailView({
 
     return (
         <div className={styles.stack}>
-            <Section title="Panoramica">
+            <Section title={t.overview}>
                 <div className={styles.card}>
                     <dl className={styles.facts}>
-                        <dt>Stato</dt>
+                        <dt>{t.status}</dt>
                         <dd data-testid="run-status" className={styles.row}>
                             <span className={styles.badge} data-tone={status.tone || undefined}>
                                 {status.label}
                             </span>
                             {onCancel && CANCELLABLE.has(run.status) && (
                                 <button type="button" onClick={onCancel} className={`${styles.btn} ${styles.danger}`}>
-                                    Ferma la run
+                                    {t.stop}
                                 </button>
                             )}
                         </dd>
-                        <dt>Creata</dt>
-                        <dd className={styles.mono}>{localTime(run.created_at)}</dd>
-                        <dt>Tentativi / turno</dt>
+                        <dt>{t.created}</dt>
+                        <dd className={styles.mono}>{localTime(run.created_at, lang)}</dd>
+                        <dt>{t.attempts}</dt>
                         <dd className={styles.mono}>
                             {run.attempts} / {run.turn ?? "-"}
                         </dd>
                         {run.parent_run_id && (
                             <>
-                                <dt>Run padre</dt>
+                                <dt>{t.parent}</dt>
                                 <dd>
                                     <Link href={runHref(run.parent_run_id)} className={`${styles.link} ${styles.mono}`}>
                                         {run.parent_run_id}
@@ -191,46 +288,40 @@ export default function RunDetailView({
                                 </dd>
                             </>
                         )}
-                        <dt>Ruolo</dt>
-                        <dd>
-                            {role
-                                ? `${roleName(role)}, scelto ${run.parent_run_id ? "dalla run padre" : "per il comando"}`
-                                : "scelto dal triage"}
-                        </dd>
-                        <dt>Consumo</dt>
+                        <dt>{t.role}</dt>
+                        <dd>{role ? t.chosenBy(roleName(role), Boolean(run.parent_run_id)) : t.byTriage}</dd>
+                        <dt>{t.usage}</dt>
                         <dd className={styles.mono}>
-                            {usage.model_calls} chiamate al modello · {usage.tool_calls} tool · {usage.total_tokens} token
-                            {usage.subagents > 0 && ` · ${usage.subagents} sub-agenti per ${usd(usage.subagent_cost)}`}
+                            {t.usageText(usage.model_calls, usage.tool_calls, usage.total_tokens)}
+                            {usage.subagents > 0 && t.subagentsCost(usage.subagents, usd(usage.subagent_cost))}
                         </dd>
-                        <dt>Contesto</dt>
-                        <dd>{run.untrusted_context ? "ha letto contenuti non affidabili" : "solo contenuti affidabili"}</dd>
-                        <dt>Tool scelti</dt>
+                        <dt>{t.context}</dt>
+                        <dd>{run.untrusted_context ? t.readUntrusted : t.onlyTrusted}</dd>
+                        <dt>{t.chosenTools}</dt>
                         <dd className={run.exposed_tools ? styles.mono : undefined}>
-                            {run.exposed_tools
-                                ? run.exposed_tools.join(", ") || "nessuno"
-                                : "tutti: l'indice delle skill non li ha ristretti"}
+                            {run.exposed_tools ? run.exposed_tools.join(", ") || t.none : t.allTools}
                         </dd>
                     </dl>
-                    <RunMeters items={meters(tracked, limits, 0)} label="Limiti della run" />
+                    <RunMeters items={meters(tracked, limits, 0, lang)} label={t.limits} />
                 </div>
             </Section>
 
-            <Section title="Compito">
+            <Section title={t.task}>
                 <pre className={styles.pre}>{text(run.task)}</pre>
             </Section>
 
             {subagents.length > 0 && (
-                <Section title="Sub-agenti" count={subagents.length}>
+                <Section title={t.subagents} count={subagents.length}>
                     <div className={styles.card}>
-                        <ul className={styles.subagents} aria-label="Sub-agenti della run">
+                        <ul className={styles.subagents} aria-label={t.subagentsOf}>
                             {subagents.map((child) => {
-                                const childStatus = savedStatus(child.status);
+                                const childStatus = savedStatus(child.status, lang);
                                 return (
                                     <li key={child.run_id}>
                                         <Link href={runHref(child.run_id)} className={`${styles.link} ${styles.mono}`}>
                                             {child.run_id.slice(0, 8)}
                                         </Link>
-                                        <span className={styles.badge}>{roleName(child.role) || "sub-agente"}</span>
+                                        <span className={styles.badge}>{roleName(child.role) || t.subagent}</span>
                                         <span className={styles.badge} data-tone={childStatus.tone || undefined}>
                                             {childStatus.label}
                                         </span>
@@ -245,15 +336,17 @@ export default function RunDetailView({
             )}
 
             {run.pending_tool_call && (
-                <Section title="Attende approvazione">
+                <Section title={t.waiting}>
                     <div className={`${styles.card} ${styles.amber}`}>
                         <p className={styles.mono}>{run.pending_tool_call.tool_name}</p>
                         <pre className={styles.pre}>{JSON.stringify(run.pending_tool_call.arguments, null, 2)}</pre>
                         {run.queued_tool_calls.length > 0 && (
-                            <p className={styles.muted}>Poi: {run.queued_tool_calls.map((call) => call.tool_name).join(", ")}</p>
+                            <p className={styles.muted}>
+                                {t.then} {run.queued_tool_calls.map((call) => call.tool_name).join(", ")}
+                            </p>
                         )}
                         <Link href="/control-plane/approvals" className={styles.link}>
-                            Decidi in Approvazioni →
+                            {t.decide}
                         </Link>
                     </div>
                 </Section>
@@ -262,7 +355,7 @@ export default function RunDetailView({
             {timeline}
 
             {(run.result !== null || run.error || run.errors.length > 0) && (
-                <Section title="Esito">
+                <Section title={t.outcome}>
                     {run.result !== null && (
                         <pre className={styles.pre}>
                             <CitedText text={text(run.result)} />
@@ -282,9 +375,9 @@ export default function RunDetailView({
                 </Section>
             )}
 
-            <Section title="Risultati dei tool" count={run.observations.length}>
+            <Section title={t.toolResults} count={run.observations.length}>
                 {run.observations.length === 0 ? (
-                    <p className={styles.muted}>Nessun tool ha ancora risposto.</p>
+                    <p className={styles.muted}>{t.noResults}</p>
                 ) : (
                     <ol className={`${styles.section} ${styles.plain}`}>
                         {run.observations.map((observation, index) => (
@@ -294,11 +387,11 @@ export default function RunDetailView({
                                     <TrustBadge trusted={observation.trusted} />
                                     {!observation.succeeded && (
                                         <span className={styles.badge} data-tone="bad">
-                                            fallito
+                                            {t.failed}
                                         </span>
                                     )}
                                     {observation.modified_file && (
-                                        <span className={`${styles.muted} ${styles.mono}`}>ha scritto {observation.modified_file}</span>
+                                        <span className={`${styles.muted} ${styles.mono}`}>{t.wrote(observation.modified_file)}</span>
                                     )}
                                 </div>
                                 <pre className={styles.pre}>{observation.content}</pre>
@@ -308,19 +401,19 @@ export default function RunDetailView({
                 )}
             </Section>
 
-            <Section title="Audit" count={run.audit.length}>
+            <Section title={t.audit} count={run.audit.length}>
                 {run.audit.length === 0 ? (
-                    <p className={styles.muted}>Nessuna chiamata a tool registrata.</p>
+                    <p className={styles.muted}>{t.noAudit}</p>
                 ) : (
                     <div className={styles.tableWrap}>
                         <table className={styles.table}>
                             <thead>
                                 <tr>
-                                    <th>Ora</th>
-                                    <th>Tool</th>
-                                    <th>Rischio</th>
-                                    <th>Decisione</th>
-                                    <th>Risultato</th>
+                                    <th>{t.time}</th>
+                                    <th>{t.tool}</th>
+                                    <th>{t.risk}</th>
+                                    <th>{t.decision}</th>
+                                    <th>{t.result}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -332,7 +425,7 @@ export default function RunDetailView({
                                         <td className={styles.mono}>{entry.decision ?? "-"}</td>
                                         <td>
                                             <span className={styles.badge} data-tone={entry.success ? "ok" : "bad"}>
-                                                {entry.success ? "ok" : (entry.error ?? "fallito")}
+                                                {entry.success ? "ok" : (entry.error ?? t.failed)}
                                             </span>
                                         </td>
                                     </tr>

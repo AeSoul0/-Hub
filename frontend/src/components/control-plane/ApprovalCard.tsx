@@ -9,6 +9,27 @@ import React from "react";
 import { runHref } from "@/lib/routes";
 
 import styles from "./control.module.css";
+import { catalog, useText } from "@/lib/i18n";
+
+const TEXT = catalog({
+    en: {
+        approvalFor: (tool: string) => `Approval for ${tool}`,
+        expiresIn: (seconds: number) => `expires in ${seconds} s`,
+        expired: "expired",
+        noArguments: (hash: string) => `Arguments not available (hash ${hash}…): open the run before allowing.`,
+        allow: "Allow once",
+        deny: "Deny",
+    },
+    it: {
+        approvalFor: (tool: string) => `Approvazione per ${tool}`,
+        expiresIn: (seconds: number) => `scade tra ${seconds} s`,
+        expired: "scaduta",
+        noArguments: (hash: string) =>
+            `Argomenti non disponibili (hash ${hash}…): apri la run prima di consentire.`,
+        allow: "Consenti una volta",
+        deny: "Nega",
+    },
+});
 
 export interface ApprovalRequest {
     id: string;
@@ -42,18 +63,19 @@ export default function ApprovalCard({
     busy: boolean;
     onDecide: (id: string, decision: Decision) => void;
 }) {
+    const t = useText(TEXT);
     const remaining = secondsLeft(item.expires_at, now);
     const disabled = busy || remaining === 0;
     const high = item.risk.toUpperCase() === "HIGH";
 
     return (
-        <article className={`${styles.card} ${high ? styles.amber : ""}`} aria-label={`Approvazione per ${item.tool}`}>
+        <article className={`${styles.card} ${high ? styles.amber : ""}`} aria-label={t.approvalFor(item.tool)}>
             <div className={styles.row}>
                 <span className={styles.mono}>{item.tool}</span>
                 <span className={styles.badge} data-tone={high ? "warn" : undefined}>
                     {item.risk.toUpperCase()}
                 </span>
-                <span className={styles.muted}>{remaining > 0 ? `scade tra ${remaining} s` : "scaduta"}</span>
+                <span className={styles.muted}>{remaining > 0 ? t.expiresIn(remaining) : t.expired}</span>
                 {item.run_id && (
                     <Link href={runHref(item.run_id)} className={`${styles.link} ${styles.mono} ${styles.small}`} title={item.run_id}>
                         run {item.run_id.slice(0, 8)}
@@ -64,17 +86,15 @@ export default function ApprovalCard({
             {item.arguments ? (
                 <pre className={styles.pre}>{JSON.stringify(item.arguments, null, 2)}</pre>
             ) : (
-                <p className={styles.warn}>
-                    Argomenti non disponibili (hash {item.arguments_hash.slice(0, 12)}…): apri la run prima di consentire.
-                </p>
+                <p className={styles.warn}>{t.noArguments(item.arguments_hash.slice(0, 12))}</p>
             )}
 
             <div className={styles.row}>
                 <button type="button" onClick={() => onDecide(item.id, "allow")} disabled={disabled} className={`${styles.btn} ${styles.go}`}>
-                    Consenti una volta
+                    {t.allow}
                 </button>
                 <button type="button" onClick={() => onDecide(item.id, "deny")} disabled={disabled} className={`${styles.btn} ${styles.danger}`}>
-                    Nega
+                    {t.deny}
                 </button>
             </div>
         </article>
