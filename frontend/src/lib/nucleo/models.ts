@@ -15,7 +15,9 @@ import type { ProviderName, RoleName, SettingField, SettingSource } from "@/lib/
 
 export const ROLES: RoleName[] = ["architect", "research", "critic", "fast_worker", "triage"];
 export const IMPLEMENTER_ROLES: RoleName[] = ["architect", "research", "fast_worker", "triage"];
-export const PROVIDERS: ProviderName[] = ["openai", "openrouter", "local"];
+export const PROVIDERS: ProviderName[] = ["openai", "openrouter", "local", "groq", "anthropic", "google"];
+/** Always offered in the role editor. */
+export const BASE_PROVIDERS: ProviderName[] = ["openai", "openrouter", "local"];
 
 export const ROLE_INFO: Record<RoleName, { title: string; job: string }> = {
     architect: { title: "Architect", job: "Compiti lunghi: codice, progettazione, refactoring, debug." },
@@ -32,7 +34,24 @@ export const PROVIDER_LABELS: Record<ProviderName, string> = {
     openai: "OpenAI",
     openrouter: "OpenRouter",
     local: "Server locale",
+    groq: "Groq",
+    anthropic: "Anthropic",
+    google: "Google Gemini",
 };
+
+/**
+ * The providers the role editor offers (P1, ADR-032): the base ones always,
+ * a newer one (Groq, Anthropic, Gemini) once its key is set, or when a saved
+ * chain already uses it, so an existing routing never disappears.
+ */
+export function offeredProviders(
+    providers: Partial<Record<ProviderName, { key: boolean }>>,
+    used: ProviderName[] = [],
+): ProviderName[] {
+    return PROVIDERS.filter(
+        (provider) => BASE_PROVIDERS.includes(provider) || providers[provider]?.key || used.includes(provider),
+    );
+}
 
 export const SOURCE_LABELS: Record<SettingSource, string> = {
     database: "impostato qui",
@@ -93,6 +112,10 @@ export const SETTING_TEXT: Record<string, { label: string; help: string }> = {
     AEHUB_RUN_MAX_FILES_MODIFIED: {
         label: "File modificati per run",
         help: "La run si ferma dopo aver modificato questi file. 0 toglie il limite.",
+    },
+    AEHUB_RUN_MAX_SUBAGENTS: {
+        label: "Sub-agenti per run",
+        help: "Quanti sub-agenti una run può avviare con delegate_task. Il loro costo conta per la run. 0 spegne la delega.",
     },
     AEHUB_APPROVAL_TTL_SECONDS: {
         label: "Durata di un'approvazione (secondi)",
@@ -181,6 +204,9 @@ export function contextLabel(tokens: number | null): string {
 export const SECRET_TEXT: Record<string, { label: string; use: string }> = {
     OPENAI_API_KEY: { label: "OpenAI", use: "modelli del provider openai" },
     OPENROUTER_API_KEY: { label: "OpenRouter", use: "modelli del provider openrouter" },
+    GROQ_API_KEY: { label: "Groq", use: "modelli del provider groq (facoltativa)" },
+    ANTHROPIC_API_KEY: { label: "Anthropic", use: "modelli del provider anthropic (facoltativa)" },
+    GEMINI_API_KEY: { label: "Google Gemini", use: "modelli del provider google (facoltativa)" },
     AEHUB_LOCAL_API_KEY: { label: "Server locale", use: "provider local, se il server la chiede (facoltativa)" },
     AEHUB_MQTT_PASSWORD: { label: "Broker MQTT", use: "dispositivi di casa (facoltativa)" },
     ELEVENLABS_API_KEY: { label: "ElevenLabs", use: "voce nel cloud (facoltativa)" },

@@ -1,10 +1,8 @@
 """
 @file backend/app/agent_engine/events.py
-@description Implements events.py. Core components: RunEvent, EventDispatcher.
-
-This module manages the internal business logic for RunEvent, EventDispatcher.
-It provides specialized functionality to handle: __new__, dispatch, get_events_for_run.
+@description Run events: the flight recorder (JSONL) and the live events of the Nucleo.
 """
+import logging
 import asyncio
 import json
 import os
@@ -17,6 +15,9 @@ from pydantic import BaseModel, Field
 LIVE_EVENT_TYPE = "engine.event"
 LIVE_TIMEOUT_SECONDS = 0.5
 _live_tasks: set = set()
+
+
+logger = logging.getLogger(__name__)
 
 
 def broadcast(event: "RunEvent") -> None:
@@ -44,7 +45,8 @@ def broadcast(event: "RunEvent") -> None:
                 ),
                 timeout=LIVE_TIMEOUT_SECONDS,
             )
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - live events are best effort and never affect a run
+            logger.debug("Live event not delivered: %s", exc)
             pass
 
     task = loop.create_task(send())
@@ -54,9 +56,7 @@ def broadcast(event: "RunEvent") -> None:
 
 # Updated RunEvent schema based on Phase 9 requirements
 class RunEvent(BaseModel):
-    """
-    Represents the RunEvent entity and its core operations.
-    """
+    """One event of a run, as written to the flight recorder."""
     event_type: str
     run_id: str
     parent_run_id: Optional[str] = None
@@ -79,9 +79,6 @@ FLIGHT_RECORDER_FILE = os.getenv("AEHUB_FLIGHT_RECORDER_PATH", "flight_recorder.
 
 class EventDispatcher:
     """
-    Represents the EventDispatcher entity and its core operations.
-    """
-    """
     Phase 9 Agent Flight Recorder.
     Writes structured events to a JSONL log for full run reconstructability.
     """
@@ -89,9 +86,7 @@ class EventDispatcher:
     _instance = None
     
     def __new__(cls):
-        """
-        Executes __new__ logic.
-        """
+        """One dispatcher per process."""
         if cls._instance is None:
             cls._instance = super(EventDispatcher, cls).__new__(cls)
         return cls._instance
@@ -103,9 +98,7 @@ class EventDispatcher:
                  workspace_id: str,
                  **kwargs) -> RunEvent:
                  
-        """
-        Executes dispatch logic.
-        """
+        """Append the event to the flight recorder (JSONL) and publish it live."""
         event = RunEvent(
             event_type=event_type,
             run_id=run_id,

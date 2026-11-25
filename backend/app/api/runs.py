@@ -15,6 +15,7 @@ GET  /api/runs/{run_id}/events   the run timeline from the flight recorder (F2)
 """
 
 from __future__ import annotations
+import logging
 
 import json
 from collections import defaultdict
@@ -48,6 +49,9 @@ RUN_STATUSES = {status.value for status in AgentRunStatus}
 TASK_PREVIEW_CHARS = 200
 # A timeline longer than this keeps its most recent events.
 TIMELINE_LIMIT = 500
+
+
+logger = logging.getLogger(__name__)
 
 
 def _require_admin(principal: Principal) -> None:
@@ -124,8 +128,51 @@ def limits_view(limits: RunLimits) -> Dict[str, Any]:
         "max_run_seconds": limits.max_run_seconds,
         "max_failed_tool_calls": limits.max_failed_tool_calls,
         "max_files_modified": limits.max_files_modified,
+        "max_subagents": limits.max_subagents,
         "monthly_budget": limits.monthly_budget,
     }
+
+
+def _children(db: Any, row: Any, workspace_id: str) -> List[Dict[str, Any]]:
+    """
+    The subagents of a run, oldest first (the run tree, F8). A subagent
+    shares its parent's session, so only that session is read.
+    """
+    from app.domain.models.runtime_state import AgentRun as DbAgentRun
+
+    children: List[Dict[str, Any]] = []
+    rows = (
+        db.query(DbAgentRun)
+        .filter(DbAgentRun.session_id == row.session_id, DbAgentRun.id != row.id)
+        .order_by(DbAgentRun.created_at.asc())
+        .all()
+    )
+
+    for child in rows:
+        snapshot = _snapshot(child)
+
+        if (
+            snapshot is None
+            or snapshot.get("parent_run_id") != row.id
+            or snapshot.get("workspace_id") != workspace_id
+        ):
+            continue
+
+        task = ((snapshot.get("current_state") or {}).get("worker_context") or {}).get("task")
+        usage = snapshot.get("usage") or {}
+
+        children.append(
+            {
+                "run_id": child.id,
+                "role": task.get("role") if isinstance(task, dict) else None,
+                "status": str(child.status).lower(),
+                "task": _task_of(snapshot),
+                "cost": round(float(usage.get("cost") or 0.0), 6),
+                "created_at": child.created_at.isoformat() if child.created_at else None,
+            }
+        )
+
+    return children
 
 
 def _snapshot(row: Any) -> Optional[Dict[str, Any]]:
@@ -165,11 +212,14 @@ def _live_snapshots(run_ids: List[str]) -> Dict[str, Dict[str, Any]]:
     from app.core.db import SessionLocal
     from app.domain.models.runtime_state import AgentRun as DbAgentRun
 
+    from sqlalchemy.exc import SQLAlchemyError
+
     try:
         with SessionLocal() as db:
             rows = db.query(DbAgentRun).filter(DbAgentRun.id.in_(run_ids)).all()
             found = [(row, _snapshot(row)) for row in rows]
-    except Exception:
+    except SQLAlchemyError as exc:
+        logger.warning("Live runs shown without their saved state: %s", exc)
         return {}
 
     return {
@@ -312,7 +362,8 @@ def build_stats(principal: Principal, days: int) -> Dict[str, Any]:
 
     try:
         month_spent = SpendLedger.spent(principal.id, current_period())
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - the stats show no month total when the ledger is unreadable
+        logger.warning("Spend ledger unreadable for the stats: %s", exc)
         month_spent = None
 
     return {
@@ -423,6 +474,7 @@ def run_history(
                 continue
 
             task = _task_of(snapshot)
+            task_data = ((snapshot.get("current_state") or {}).get("worker_context") or {}).get("task")
 
             if needle and needle not in row.id.lower() and needle not in (task or "").lower():
                 continue
@@ -435,6 +487,8 @@ def run_history(
                     "parent_run_id": snapshot.get("parent_run_id"),
                     "session_id": row.session_id,
                     "role": row.role,
+                    # The worker role chosen for the command or the subagent (F8).
+                    "chosen_role": task_data.get("role") if isinstance(task_data, dict) else None,
                     "status": row_status,
                     "task": task,
                     "created_at": row.created_at.isoformat() if row.created_at else None,
@@ -525,6 +579,7 @@ def run_detail(run_id: str, workspace_id: str) -> Dict[str, Any] | None:
 
         state = snapshot.get("current_state") or {}
         context = state.get("worker_context") or {}
+        subagents = _children(db, row, workspace_id)
 
         return {
             "run_id": row.id,
@@ -562,6 +617,7 @@ def run_detail(run_id: str, workspace_id: str) -> Dict[str, Any] | None:
                 if isinstance(observation, dict)
             ],
             "audit": audit,
+            "subagents": subagents,
         }
 
 

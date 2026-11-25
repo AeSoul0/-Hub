@@ -5,8 +5,6 @@
 This module provides durable semantic, episodic, procedural, and execution
 memory using SQLAlchemy, pgvector-compatible embeddings, and a native
 SentenceTransformers embedding provider.
-
-No LangChain dependency is required by the memory subsystem.
 """
 
 from __future__ import annotations

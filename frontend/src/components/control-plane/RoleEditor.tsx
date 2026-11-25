@@ -29,7 +29,7 @@ import {
     emptyRoles,
     parseTarget,
     PROVIDER_LABELS,
-    PROVIDERS,
+    offeredProviders,
     ROLE_INFO,
     ROLES,
     rolesJson,
@@ -75,7 +75,12 @@ export default function RoleEditor({
 }) {
     const [chains, setChains] = useState<Chains>(() => initialChains(view));
     const [custom, setCustom] = useState<Record<RoleName, boolean>>(() => initialCustom(view));
-    const { models, missing } = useProviderModels(PROVIDERS);
+    // Newer providers appear once they have a key (P1, ADR-032).
+    const offered = offeredProviders(
+        view.providers,
+        ROLES.flatMap((role) => initialChains(view)[role].map((target) => target.provider)),
+    );
+    const { models, missing } = useProviderModels(offered);
 
     const json = rolesJson(chains, custom);
     // Compared in the same form, so spacing or key order of the saved JSON
@@ -108,17 +113,17 @@ export default function RoleEditor({
                 suoi modelli in ordine: il primo, poi le riserve se il primo non risponde.
             </p>
 
-            {PROVIDERS.filter((provider) => missing[provider]).length > 0 && (
+            {offered.filter((provider) => missing[provider]).length > 0 && (
                 <p className={styles.help}>
                     Elenco dei modelli non disponibile per{" "}
-                    {PROVIDERS.filter((provider) => missing[provider])
+                    {offered.filter((provider) => missing[provider])
                         .map((provider) => PROVIDER_LABELS[provider])
                         .join(", ")}
                     : scrivi il nome a mano.
                 </p>
             )}
 
-            {PROVIDERS.map((provider) => (
+            {offered.map((provider) => (
                 <datalist key={provider} id={`models-${provider}`}>
                     {(models[provider] ?? []).map((model) => (
                         <option key={model.id} value={model.id} label={optionLabel(model)} />
@@ -161,7 +166,7 @@ export default function RoleEditor({
                                                 setTarget(role, index, { provider: event.target.value as ProviderName })
                                             }
                                         >
-                                            {PROVIDERS.map((provider) => (
+                                            {offered.map((provider) => (
                                                 <option key={provider} value={provider}>
                                                     {PROVIDER_LABELS[provider]}
                                                 </option>

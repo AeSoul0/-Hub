@@ -1,3 +1,7 @@
+/**
+ * @file frontend/tests/settings.test.tsx
+ * @description Tests of IMPOSTAZIONI: SettingsForm, panels, role chains, RoleEditor and SettingsPage.
+ */
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -296,6 +300,36 @@ describe("RoleEditor", () => {
         fireEvent.click(screen.getByRole("button", { name: "Salva i modelli" }));
 
         expect(onSave).toHaveBeenCalledWith({ AEHUB_MODEL_ROLES: null });
+    });
+
+    it("offers Groq, Anthropic and Gemini only once their key is set", () => {
+        stubFetch({
+            ...CATALOG,
+            "GET /api/settings/provider-models/groq": () => ({ status: 200, body: { provider: "groq", models: [] } }),
+        });
+        const providers = {
+            ...view().providers,
+            groq: { key: true, needs_key: true },
+            anthropic: { key: false, needs_key: true },
+            google: { key: false, needs_key: true },
+        };
+        render(<RoleEditor view={view({ providers })} busy={false} onSave={vi.fn()} />);
+
+        const critic = screen.getByRole("region", { name: "Critic · supervisore" });
+        fireEvent.click(within(critic).getByRole("button", { name: "Personalizza" }));
+        const options = within(within(critic).getByLabelText("Provider 1 di Critic · supervisore"))
+            .getAllByRole("option")
+            .map((option) => option.textContent);
+
+        expect(options).toEqual(["OpenAI", "OpenRouter", "Server locale", "Groq"]);
+    });
+
+    it("keeps a newer provider a saved chain already uses", () => {
+        stubFetch(CATALOG);
+        const custom = view({ roles: { ...DEFAULT_ROLES, triage: { chain: ["anthropic:claude-haiku"], custom: true } } });
+        render(<RoleEditor view={custom} busy={false} onSave={vi.fn()} />);
+
+        expect(screen.getByLabelText("Provider 1 di Triage")).toHaveValue("anthropic");
     });
 });
 

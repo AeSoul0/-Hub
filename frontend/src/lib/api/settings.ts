@@ -13,7 +13,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { ApiError, getJson, postJson, putJson } from "@/lib/api/client";
 
-export type SettingGroup = "models" | "prices" | "limits" | "engine" | "voice" | "tools";
+export type SettingGroup = "models" | "prices" | "limits" | "engine" | "voice" | "tools" | "memory" | "documents" | "home";
 export type SettingKind = "text" | "roles" | "prices" | "price_pair" | "number" | "integer" | "ratio" | "choice";
 export type SettingSource = "database" | "environment" | "default";
 export type Severity = "error" | "warning" | "info";
@@ -53,7 +53,7 @@ export interface RoutedModel {
 }
 
 export type RoleName = "architect" | "research" | "critic" | "fast_worker" | "triage";
-export type ProviderName = "openai" | "openrouter" | "local";
+export type ProviderName = "openai" | "openrouter" | "local" | "groq" | "anthropic" | "google";
 
 /** A role's chain as the engine uses it now; custom when set in AEHUB_MODEL_ROLES. */
 export interface RoleChain {
@@ -82,7 +82,7 @@ export interface SettingsView {
     issues: ConfigIssue[];
     models: RoutedModel[];
     roles: Record<RoleName, RoleChain>;
-    providers: Record<ProviderName, ProviderState>;
+    providers: Partial<Record<ProviderName, ProviderState>>;
     workspace: { path: string; exists: boolean };
     ready: boolean;
     onboarding: { completed: boolean; completed_at: string | null };

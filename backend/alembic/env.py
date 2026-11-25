@@ -1,52 +1,53 @@
 """
 @file backend/alembic/env.py
-@description Core module for A.U.R.O.R.A. System
+@description Alembic environment of ÆHub (D1, ADR-031): the schema is the
+SQLAlchemy models' metadata, the database is POSTGRES_URL.
 
-Implements core logic and architectural definitions.
+Two ways in:
+- the API at startup (`app.core.migrations.upgrade_database`) passes its own
+  open connection in `config.attributes["connection"]`;
+- the command line from `backend/` (`alembic upgrade head`,
+  `alembic revision --autogenerate -m "..."`) connects to POSTGRES_URL.
 """
 
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import create_engine, pool
 
 from alembic import context
 
-# this is the Alembic Config object, which provides
-# access to the values within the .ini file in use.
 config = context.config
 
-# Interpret the config file for Python logging.
-# This line sets up loggers basically.
-if config.config_file_name is not None:
+# The API configures its own logging; only the command line uses the ini's.
+if config.config_file_name is not None and "connection" not in config.attributes:
     fileConfig(config.config_file_name)
 
-# add your model's MetaData object here
-# for 'autogenerate' support
-# from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
-target_metadata = None
+from app.core.migrations import include_object  # noqa: E402  (after logging, as Alembic does)
+from app.domain.models import Base  # noqa: E402
 
-# other values from the config, defined by the needs of env.py,
-# can be acquired:
-# my_important_option = config.get_main_option("my_important_option")
-# ... etc.
+target_metadata = Base.metadata
+
+
+def _url() -> str:
+    from app.core.db import POSTGRES_URL
+
+    return POSTGRES_URL
+
+
+def _configure(connection) -> None:
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+        compare_server_default=True,
+        include_object=include_object,
+    )
 
 
 def run_migrations_offline() -> None:
-    """Run migrations in 'offline' mode.
-
-    This configures the context with just a URL
-    and not an Engine, though an Engine is acceptable
-    here as well.  By skipping the Engine creation
-    we don't even need a DBAPI to be available.
-
-    Calls to context.execute() here emit the given string to the
-    script output.
-
-    """
-    url = config.get_main_option("sqlalchemy.url")
+    """SQL to stdout (`alembic upgrade head --sql`), without a database."""
     context.configure(
-        url=url,
+        url=_url(),
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -57,22 +58,19 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode.
+    connection = config.attributes.get("connection")
 
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
+    if connection is not None:
+        _configure(connection)
 
-    """
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+        with context.begin_transaction():
+            context.run_migrations()
+        return
 
-    with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata
-        )
+    engine = create_engine(_url(), poolclass=pool.NullPool)
+
+    with engine.connect() as connection:
+        _configure(connection)
 
         with context.begin_transaction():
             context.run_migrations()

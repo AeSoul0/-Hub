@@ -1,56 +1,98 @@
-# Repository Inventory
+# Inventario del repository
 
-## 1. Overview
-Questa è l'inventory del repository `ÆHub` allo stato attuale (Baseline M0), progettata per mappare i componenti esistenti e identificare i gap verso l'architettura 100/100.
+Lo stato del repository dopo R1 (2026-11-25), prima di `v1.0.0`. La
+versione M0 di questo file descriveva il prototipo iniziale; è riassunta in
+fondo, nella sezione **Storia**.
 
-## 2. Directory Structure
+## 1. Cartelle
 
 ### Backend (`backend/`)
-Il backend è un'applicazione Python FastAPI strutturata secondo i principi della Clean Architecture.
-- `app/api/`: Entry point HTTP (es. `academic.py`, `media.py`, `voice.py`). *Da espandere con le rotte di identity e workflow.*
-- `app/agents/`: Definizione degli agenti e dei loro prompt.
-- `app/core/`: Configurazioni globali, Pydantic settings.
-- `app/memory/`: Astrazioni per la memoria (Long-term, Short-term).
-- `app/runtime/`: L'effettivo agent runtime, dove attualmente avviene il loop di esecuzione. *Area critica per l'enforcement delle policy.*
-- `app/skills/`: Registri delle skill (Tool collection).
-- `app/workers/`: Entry point per l'esecuzione in background.
-- `app/workflows/`: Astrazioni per workflow deterministici.
-- `tests/`: Suite di test (auth, skills, etc.). Attualmente fallisce a causa di path e dipendenze mancanti nell'ambiente virtuale locale.
+Applicazione FastAPI (Python 3.12). `main.py` monta le route, il middleware
+di sicurezza e il frontend statico dell'app desktop; `desktop.py` è il
+sidecar dell'app desktop (PostgreSQL e API su `127.0.0.1`).
+
+- `app/agent_engine/`: il motore A.U.R.O.R.A.
+  - loop, Critic, routing per ruoli e circuit breaker;
+  - Context Manager, budget e limiti, deleghe;
+  - l'adapter Pydantic AI (`adapters/`), lo stato durevole (`state/`) e le approvazioni (`approval/`).
+
+  Vedi `AEHUB_ENGINE_V1.md`.
+- `app/runtime/`: Tool Gateway, catena di hash dell'audit e la facciata `aurora.py`.
+- `app/api/`: le route HTTP, WebSocket e SSE. L'elenco esatto è in `tests/security/test_api_surface.py`.
+- `app/core/`: database e migrazioni Alembic, event bus e cache (Redis o in processo), sicurezza (sessioni, policy, middleware), configurazione a runtime, protezione SSRF, telemetria.
+- `app/memory/`: memoria a lungo termine (`store.py`, pgvector e ricerca full-text).
+- `app/documents/`: indice dei documenti della cartella di lavoro, con le citazioni.
+- `app/skills/`: le skill e i loro tool:
+  - web, browser, sandbox, file, memoria, documenti e casa;
+  - deleghe;
+  - skill importate `SKILL.md`, ponte MCP;
+  - indice delle skill.
+- `app/voice/`: voce locale (faster-whisper, Piper) ed ElevenLabs facoltativo.
+- `app/home/`: dispositivi di casa via MQTT.
+- `app/system/`: stato del sistema, log, eval, flight recorder e aggiornamenti per la pagina SISTEMA.
+- `app/desktop/`: chiavi nel keyring e avvio per l'app desktop.
+- `app/evaluation/`: la suite di eval e il gate di rilascio.
+- `app/domain/models/`: i modelli SQLAlchemy, la fonte delle revisioni Alembic.
+- `app/agents/`, `app/workers/`, `app/budget/`: l'orchestratore delle richieste (testo, voce, comandi `/`), la sandbox Docker, la facciata del budget.
+- `alembic/`: le revisioni dello schema (ADR-031).
 
 ### Frontend (`frontend/`)
-Il frontend è un'applicazione Next.js basata su React.
-- `src/app/`: App router di Next.js.
-- `src/components/`: Componenti React riutilizzabili (usa `shadcn/ui` e `radix-ui`).
-- `src/lib/`: Utility e client API.
-- `src/store/`: Gestione dello stato (usa `zustand`).
+Next.js 16 con React 19 e TypeScript. L'interfaccia è in italiano, con tema spaziale blu profondo e angoli squircle.
+- `src/app/`: le pagine. La home è il Nucleo (`/`); il Control Plane sta sotto `/control-plane`.
+- `src/components/`: componenti del Nucleo e del Control Plane.
+- `src/lib/`: client API, eventi dal vivo, logica delle pagine.
+- `tests/`: test Vitest (Testing Library, jsdom).
 
-## 3. Dependencies
+### Desktop (`desktop/`)
+Guscio Tauri dell'app Windows (ADR-020): `src-tauri/` (Rust), `scripts/` (bundle, smoke test, manifest degli aggiornamenti). **Sospeso** fino a nuovo ordine; resta l'obiettivo finale.
 
-### Backend (`requirements.txt`)
-- **Runtime**: FastAPI, Uvicorn, Pydantic, Pydantic-Settings.
-- **AI & Agent Core**: LiteLLM, Groq, LangChain, LangGraph, mcp.
-- **Persistence**: SQLAlchemy, Asyncpg, psycopg-pool (PostgreSQL).
-- **Automation / Web**: Playwright, BeautifulSoup4.
-- **Audio / Media**: Edge-TTS, Faster-Whisper, Silero-VAD.
-- **Distributed Scale (M4/M13)**: Redis, Celery.
-- **Observability**: LangSmith, OpenTelemetry.
-- **Code Quality**: Ruff, Pytest.
+### Altro
+- `tests/`: i test del backend (pytest). Coprono motore, sicurezza, database, desktop e unità.
+- `evals/`: `run_evals.py` e `baseline.json` del gate.
+- `scripts/`:
+  - `aehub.py`, il launcher con le chiavi nel keyring;
+  - `demo.py`;
+  - `check_headers.py`, che controlla l'intestazione `@file` / `@description` dei sorgenti.
+- `docs/`: ADR, architettura, copertura del frontend, design, sicurezza.
 
-### Frontend (`package.json`)
-- **Core**: Next.js 16, React 18, TypeScript.
-- **UI & Style**: Tailwind CSS, Shadcn UI, Radix UI, Lucide React, Recharts.
-- **State**: Zustand.
-- **Linting**: ESLint, Prettier.
+## 2. Dipendenze
 
-## 4. Code Health
-- **Ruff**: Il backend passa al 100% i controlli di linting (`ruff check .` = 0 errori). Ottimo punto di partenza.
-- **Pytest**: La suite locale su Windows richiede Microsoft Visual C++ Build Tools per compilare la dipendenza `webrtcvad`. In assenza di tali build tools l'installazione fallisce, bloccando l'esecuzione dei test (`ModuleNotFoundError`). Come previsto dalla roadmap LAN-first (Livello 1), si delegherà l'esecuzione dei test e del backend primario su ambiente Docker, che supererà questa limitazione.
-- **Frontend ESLint**: Fallisce con 21 problemi (11 errori, 10 warning) relativi principalmente a "set-state-in-effect" e immutabilità nei widget audio/video. Richiede una rapida passata di stabilizzazione.
+### Backend (`backend/requirements.txt`)
+- **Runtime**: FastAPI, Uvicorn, Pydantic 2, pydantic-settings.
+- **Modelli**: Pydantic AI (`pydantic-ai-slim` con gli extra openai, groq, anthropic, google) e l'SDK `openai` (ADR-032).
+- **Persistenza**: SQLAlchemy, Alembic, psycopg, asyncpg, pgvector (PostgreSQL 16+ con l'estensione `vector`).
+- **Event bus e cache**: Redis (in processo nell'app desktop).
+- **Memoria e documenti**: sentence-transformers (CPU), pypdf.
+- **Web e strumenti**: duckduckgo-search, Playwright, BeautifulSoup, mcp.
+- **Voce**: faster-whisper, Piper.
+- **Casa**: paho-mqtt.
+- **Osservabilità**: OpenTelemetry, prometheus-client.
+- **Qualità**: Ruff, pytest. In CI anche bandit, pip-audit, Trivy e TruffleHog.
 
-## 5. Architectural Gaps Identificati (verso M1-M3)
-1. **API**: Le rotte correnti sembrano specializzate (es. `academic.py`) ma mancano rotte core di Control Plane (Workspaces, Approvals, Policies).
-2. **Runtime Boundaries**: Attualmente `runtime/` e `agents/` sono accoppiati. Manca un `Policy Engine` isolato e un `Tool Gateway` formale per l'autorizzazione.
-3. **Identity**: Nessun modulo esplicito `identity/` o `auth/` (a parte un abbozzo nei test). Bisogna passare da `_sessions: Dict[str, Session]` a persistenza su DB.
+### Frontend (`frontend/package.json`)
+- **Core**: Next.js 16, React 19, TypeScript; React Compiler.
+- **Stile**: Tailwind CSS 4, font locali da `@fontsource`.
+- **Test e lint**: Vitest, Testing Library, jsdom, ESLint, Prettier.
 
----
-*Aggiornato: M0 - Truth & Baseline*
+## 3. Salute del codice
+In CI, a ogni push e pull request:
+- `ruff check` con BLE001: un `except Exception` deve avere un motivo e una riga di log;
+- `scripts/check_headers.py`;
+- la suite pytest, che comprende la copertura del frontend e il controllo che ogni indirizzo chiamato dal frontend sia una route vera;
+- il gate di prompt injection e il gate delle eval;
+- ESLint, Vitest e le due build del frontend;
+- lo smoke test nel browser;
+- la migrazione dall'immagine Docker.
+
+## Storia
+La baseline M0 descriveva un prototipo con:
+- un loop LangGraph, LangChain e LiteLLM;
+- Groq come unico modello;
+- Celery e lo scheduler proattivo;
+- Edge-TTS e Silero-VAD per la voce.
+
+Ognuno è stato sostituito:
+- il motore nativo (M1–M3, ADR-018);
+- la superficie V1 senza Celery (M10, ADR-019);
+- la voce locale con faster-whisper e Piper (ADR-021);
+- Pydantic AI come strato dei modelli (P1, ADR-032).

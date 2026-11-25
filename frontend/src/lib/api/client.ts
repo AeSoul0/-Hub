@@ -193,6 +193,26 @@ export async function postJson<T>(
 }
 
 /**
+ * Executes a multipart POST (a file upload) and parses the JSON response.
+ * The browser sets the multipart boundary.
+ */
+export async function postForm<T>(
+    endpoint: string,
+    form: FormData,
+    options?: ApiClientOptions,
+): Promise<T> {
+    const response = await fetchApi(endpoint, {
+        ...options,
+        method: "POST",
+        body: form,
+    });
+
+    await raiseForStatus(response);
+
+    return response.json() as Promise<T>;
+}
+
+/**
  * Executes a JSON PUT request and parses the JSON response.
  */
 export async function putJson<T>(

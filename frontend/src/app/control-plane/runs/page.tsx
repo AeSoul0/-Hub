@@ -29,11 +29,13 @@ import {
     SAVED_STATUS_FILTERS,
     savedStatus,
     trackedFromLive,
+    treeRows,
     usd,
     type HistoryFilters,
     type LiveView,
     type RunUsage,
 } from "@/lib/nucleo/runs";
+import { roleName } from "@/lib/nucleo/engine";
 import { runHref } from "@/lib/routes";
 
 interface HistoryRun {
@@ -41,6 +43,8 @@ interface HistoryRun {
     parent_run_id: string | null;
     session_id: string;
     role: string;
+    /** The worker role chosen for the command or the subagent (F8). */
+    chosen_role?: string | null;
     status: string;
     task: string | null;
     created_at: string | null;
@@ -205,10 +209,15 @@ export default function RunsPage() {
                     <p className={styles.muted}>Nessuna run in corso.</p>
                 ) : (
                     <div className={styles.grid}>
-                        {live.runs.map((run) => {
+                        {treeRows(live.runs, (run) => run.started_at).map(({ run, depth }) => {
                             const tracked = trackedFromLive(run, now);
                             return (
-                                <article key={run.run_id} className={styles.card} aria-label={`Run ${run.run_id}`}>
+                                <article
+                                    key={run.run_id}
+                                    className={styles.card}
+                                    data-depth={depth || undefined}
+                                    aria-label={`Run ${run.run_id}`}
+                                >
                                     <div className={styles.row}>
                                         <Link href={runHref(run.run_id)} className={`${styles.link} ${styles.mono}`}>
                                             {run.run_id.slice(0, 8)}
@@ -334,13 +343,21 @@ export default function RunsPage() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {history?.runs.map((run) => (
-                                    <tr key={run.run_id}>
+                                {treeRows(history?.runs ?? [], (run) => run.created_at).map(({ run, depth }) => (
+                                    <tr key={run.run_id} data-depth={depth || undefined}>
                                         <td className={styles.mono}>
+                                            {depth > 0 && <span aria-hidden="true">↳ </span>}
                                             <Link href={runHref(run.run_id)} className={styles.link}>
                                                 {run.run_id.slice(0, 8)}
                                             </Link>
-                                            {run.parent_run_id && <span className={styles.sub}>sub-agente</span>}
+                                            {run.parent_run_id && (
+                                                <span className={styles.sub}>
+                                                    {["sub-agente", roleName(run.chosen_role)].filter(Boolean).join(" · ")}
+                                                </span>
+                                            )}
+                                            {!run.parent_run_id && run.chosen_role && (
+                                                <span className={styles.sub}>ruolo {roleName(run.chosen_role)}</span>
+                                            )}
                                         </td>
                                         <td className={styles.task}>
                                             {run.task ?? <span className={styles.faint}>-</span>}

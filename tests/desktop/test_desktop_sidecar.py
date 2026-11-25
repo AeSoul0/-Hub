@@ -33,7 +33,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Self
 
 import httpx
 import pytest
@@ -60,7 +60,7 @@ def _has_pgvector(bin_dir: Path) -> bool:
     candidates = [bin_dir.parent / "share" / "extension"]
 
     if pg_config.is_file():
-        share = subprocess.run([str(pg_config), "--sharedir"], capture_output=True, text=True).stdout.strip()
+        share = subprocess.run([str(pg_config), "--sharedir"], capture_output=True, text=True, check=False).stdout.strip()
         if share:
             candidates.append(Path(share) / "extension")
 
@@ -145,11 +145,11 @@ class FakeModelServer:
             "usage": {"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120},
         }
 
-    def __enter__(self) -> "FakeModelServer":
+    def __enter__(self) -> Self:
         self.thread.start()
         return self
 
-    def __exit__(self, *exc: Any) -> None:
+    def __exit__(self, *exc: object) -> None:
         self.server.shutdown()
 
 
@@ -314,6 +314,7 @@ def configure_models(put, post) -> None:
 def _postgres_stopped(data_dir: Path) -> bool:
     status = subprocess.run(
         [str(PG_BIN / ("pg_ctl.exe" if sys.platform == "win32" else "pg_ctl")), "status", "-D", str(data_dir / "pgdata")],
+        check=False,
         capture_output=True,
         text=True,
     )

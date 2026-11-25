@@ -1,3 +1,7 @@
+/**
+ * @file frontend/tests/nucleo.test.tsx
+ * @description Tests of the Nucleo: engine events, the sphere, resumed runs and side panes.
+ */
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -66,7 +70,9 @@ describe("engine events", () => {
             risk: "HIGH",
             kind: "tool",
         });
-        expect(describeEvent(engine("checker.rejected")).kind).toBe("other");
+        // The Critic's verdicts have their own kind (F8).
+        expect(describeEvent(engine("checker.rejected")).kind).toBe("critic");
+        expect(describeEvent(engine("budget.exceeded")).kind).toBe("other");
     });
 });
 

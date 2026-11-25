@@ -1,8 +1,6 @@
 """
 @file backend/app/skills/__init__.py
-@description Core module for A.U.R.O.R.A. System
-
-Implements core logic and architectural definitions.
+@description The skill package: each module exposes a BaseSkill that the registry loads.
 """
 
 from .base import BaseSkill, SkillMetadata

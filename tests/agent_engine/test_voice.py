@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import base64
 from types import SimpleNamespace
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Self, Tuple
 from unittest.mock import patch
 
 import pytest
@@ -361,10 +361,10 @@ def _listen_client(captured: List[Dict[str, Any]], admin: Principal) -> TestClie
 
 
 class _NullSession:
-    def __enter__(self) -> "_NullSession":
+    def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, *exc: Optional[Any]) -> None:
+    def __exit__(self, *exc: object) -> None:
         return None
 
 
