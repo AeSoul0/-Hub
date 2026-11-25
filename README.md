@@ -679,7 +679,7 @@ CI runs the same gate on every push and pull request and uploads `eval-report.js
 
 # License
 
-No open-source license is declared. Until one is added, reuse, modification and redistribution rights should not be assumed.
+All rights reserved: see [LICENSE](LICENSE). ÆHub is not open source; using, copying, modifying or redistributing it needs the owner's written permission. The third-party components keep their own licenses.
 
 ---
 
