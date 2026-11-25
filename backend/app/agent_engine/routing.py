@@ -13,8 +13,9 @@ Roles are fixed, the models behind them are chosen by the user:
     }'
 
 Each role is an ordered chain "provider:model": the first entry is the
-primary, the others are fallbacks. Providers: "openai" (Responses API),
-"openrouter" and "local" (OpenAI-compatible Chat Completions, e.g. Ollama).
+primary, the others are fallbacks. Providers, all through Pydantic AI
+(ADR-032): "openai" (Responses API), "openrouter", "local" (an
+OpenAI-compatible server such as Ollama), "groq", "anthropic", "google".
 A role left out uses the default chain: OPENAI_MODEL on "openai" (the
 critic uses AEHUB_CHECKER_MODEL when set).
 
@@ -40,6 +41,7 @@ from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from app.agent_engine.adapters.base import ModelProvider
+from app.agent_engine.adapters.pydantic_ai_adapter import PROVIDERS
 from app.core.runtime_config import config_value
 
 
@@ -61,7 +63,6 @@ IMPLEMENTER_ROLES = (
     Role.TRIAGE,
 )
 
-PROVIDERS = ("openai", "openrouter", "local")
 
 
 class RoutingConfigError(ValueError):
@@ -224,15 +225,41 @@ TRIAGE_MAX_CHARS = 280
 ARCHITECT_MIN_CHARS = 1500
 
 
-def triage_role(task: str) -> Role:
+def command_role(value: Optional[str]) -> Optional[Role]:
+    """
+    The role chosen for one command or one subagent (F8); None when nothing
+    was chosen and triage picks. Only an implementer role: the Critic never
+    works on the task it judges.
+    """
+    text = (value or "").strip().lower()
+
+    if not text:
+        return None
+
+    if text not in {role.value for role in IMPLEMENTER_ROLES}:
+        raise ValueError(
+            f"Unknown role '{value}': choose one of "
+            + ", ".join(role.value for role in IMPLEMENTER_ROLES)
+            + "."
+        )
+
+    return Role(text)
+
+
+def triage_role(task: str, role: Optional[str] = None) -> Role:
     """
     Pick the role for a task from its text, without a model call.
 
-    The order matters: architecture/coding hints win over research, which
-    wins over repetitive work; short plain requests go to triage; anything
-    long and unclassified goes to the architect.
+    A role chosen for the command wins, then AEHUB_FORCE_ROLE. Otherwise the
+    order matters: architecture/coding hints win over research, which wins
+    over repetitive work; short plain requests go to triage; anything long
+    and unclassified goes to the architect.
     """
-    forced = os.getenv("AEHUB_FORCE_ROLE", "").strip().lower()
+    chosen = command_role(role)
+    if chosen is not None:
+        return chosen
+
+    forced = (config_value("AEHUB_FORCE_ROLE") or "").strip().lower()
     if forced:
         try:
             return Role(forced)
@@ -318,8 +345,8 @@ def breaker_for(label: str) -> CircuitBreaker:
     with _breakers_lock:
         if label not in _breakers:
             _breakers[label] = CircuitBreaker(
-                threshold=int(os.getenv("AEHUB_BREAKER_THRESHOLD", "3")),
-                cooldown=float(os.getenv("AEHUB_BREAKER_COOLDOWN_SECONDS", "60")),
+                threshold=int(config_value("AEHUB_BREAKER_THRESHOLD") or "3"),
+                cooldown=float(config_value("AEHUB_BREAKER_COOLDOWN_SECONDS") or "60"),
             )
         return _breakers[label]
 
@@ -366,7 +393,7 @@ class FailoverProvider(ModelProvider):
 
             try:
                 result = await provider.generate(context)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - any provider error moves to the next target of the chain
                 breaker.record_failure()
                 errors.append(f"{label}: {type(exc).__name__}")
                 logger.warning(
@@ -398,16 +425,9 @@ ProviderFactory = Callable[[ModelTarget], ModelProvider]
 
 
 def default_provider_factory(target: ModelTarget) -> ModelProvider:
-    from app.agent_engine.adapters.chat_completions_adapter import ChatCompletionsAdapter
-    from app.agent_engine.adapters.openai_adapter import OpenAIAdapter
+    from app.agent_engine.adapters.pydantic_ai_adapter import PydanticAIAdapter
 
-    if target.provider == "openai":
-        return OpenAIAdapter(model_name=target.model)
-
-    if target.provider == "openrouter":
-        return ChatCompletionsAdapter.openrouter(target.model)
-
-    return ChatCompletionsAdapter.local(target.model)
+    return PydanticAIAdapter.for_provider(target.provider, target.model)
 
 
 class ModelRouter:
@@ -469,6 +489,7 @@ __all__ = [
     "RoutingConfigError",
     "breaker_for",
     "check_routing_at_startup",
+    "command_role",
     "default_provider_factory",
     "ensure_distinct_models",
     "reset_breakers",

@@ -8,10 +8,15 @@
 
 fastapi>=0.157.0
 uvicorn>=0.23.2
-pydantic>=2.4.2
+# Pydantic AI 2 needs pydantic 2.12 or newer (P1, ADR-032).
+pydantic>=2.12
 pydantic-settings>=2.0.3
 
-openai>=1.68.0
+# The model layer (P1, ADR-032): one request per turn, no tool runs here.
+# Pinned, with only the extras of the providers ÆHub offers.
+pydantic-ai-slim[openai,groq,anthropic,google]==2.66.0
+# Used inside Pydantic AI; the adapter builds the client with key and address.
+openai>=3.50,<4
 httpx>=0.25.0
 
 faster-whisper>=1.2.0
@@ -20,11 +25,13 @@ piper-tts>=1.8.0
 paho-mqtt>=2.1.0
 
 duckduckgo-search>=3.9.3
-playwright==1.64.1
+playwright==1.65.2
 beautifulsoup4>=4.12.2
 mcp>=1.0.0
 
 SQLAlchemy>=2.0.23
+# The schema: every change is an Alembic revision (D1, ADR-031).
+alembic>=1.20.1
 asyncpg>=0.29.0
 psycopg2-binary>=2.9.9
 psycopg[binary]>=3.1.0

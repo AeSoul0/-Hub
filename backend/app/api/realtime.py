@@ -15,6 +15,7 @@ Architectural boundary:
 """
 
 from __future__ import annotations
+import logging
 
 import asyncio
 import base64
@@ -36,6 +37,9 @@ router = APIRouter(tags=["realtime"])
 # ==============================================================================
 # SERVER-SIDE AUDIO HELPERS
 # ==============================================================================
+
+
+logger = logging.getLogger(__name__)
 
 
 def decode_audio_payload(data: str) -> bytes:
@@ -113,7 +117,7 @@ async def get_events_stream(
             )
             session_id = session.id
             workspace_id = session.workspace_id
-    except Exception:
+    except Exception:  # noqa: BLE001 - any token failure is a 401
         return JSONResponse(
             status_code=401,
             content={
@@ -326,7 +330,8 @@ async def websocket_endpoint(
                 except (binascii.Error, ValueError):
                     await safe_send({"type": "error", "data": "Invalid audio payload."})
                     continue
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 - a transcription failure is reported to the client
+                    logger.warning("Transcription failed: %s", exc)
                     await safe_send({"type": "error", "data": f"Transcription failed: {exc}"})
                     continue
 
@@ -350,10 +355,20 @@ async def websocket_endpoint(
                 }
             )
 
+            from app.agent_engine.routing import command_role
             from app.agents.orchestrator import (
                 AESOUL_SYSTEM_PROMPT,
                 generate_ai_response,
             )
+
+            # The worker role chosen for this command (F8).
+            role = payload.get("role") if isinstance(payload.get("role"), str) else None
+
+            try:
+                command_role(role)
+            except ValueError as exc:
+                await safe_send({"type": "error", "data": str(exc)})
+                continue
 
             response_payload = (
                 await generate_ai_response(
@@ -363,6 +378,7 @@ async def websocket_endpoint(
                     session_id,
                     principal=ws_principal,
                     input_channel=input_channel,
+                    role=role or None,
                 )
             )
 
@@ -399,11 +415,8 @@ async def websocket_endpoint(
             "[INFO] WebSocket client disconnected."
         )
 
-    except Exception as exc:
-        print(
-            "[ERROR] WebSocket orchestration failure: "
-            f"{exc}"
-        )
+    except Exception as exc:  # noqa: BLE001 - the WebSocket boundary: report and close
+        logger.exception("WebSocket orchestration failure: %s", exc)
 
     finally:
         forwarder.cancel()

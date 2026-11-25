@@ -35,6 +35,8 @@ class SkillRegistry:
         """
         self._skills: Dict[str, BaseSkill] = {}
         self._tool_metadata: Dict[str, ToolMetadata] = {}
+        # Tool name -> name of the skill that declares it.
+        self._tool_owner: Dict[str, str] = {}
 
     # ==========================================================================
     # REGISTRATION
@@ -84,6 +86,62 @@ class SkillRegistry:
 
         for tool_name, metadata in metadata_map.items():
             self._tool_metadata[tool_name] = metadata
+            self._tool_owner[tool_name] = skill_name
+
+    def refresh_skill(
+        self,
+        skill_name: str,
+    ) -> None:
+        """
+        Re-read the tools of a registered skill whose tools change while the
+        application runs (imported SKILL.md skills, F5). The same checks as
+        registration apply; on error nothing changes.
+        """
+        skill = self._skills.get(
+            skill_name
+        )
+
+        if skill is None:
+            raise ValueError(
+                f"Skill '{skill_name}' is not registered."
+            )
+
+        metadata_map = skill.get_tool_metadata()
+
+        for tool_name, metadata in metadata_map.items():
+            if not tool_name or metadata.name != tool_name:
+                raise ValueError(
+                    f"Skill '{skill_name}' declared an invalid tool "
+                    f"'{tool_name}'."
+                )
+
+            owner = self._tool_owner.get(
+                tool_name
+            )
+
+            if owner is not None and owner != skill_name:
+                raise ValueError(
+                    f"Tool '{tool_name}' is already registered."
+                )
+
+        tool_metadata = {
+            name: metadata
+            for name, metadata in self._tool_metadata.items()
+            if self._tool_owner.get(name) != skill_name
+        }
+        tool_owner = {
+            name: owner
+            for name, owner in self._tool_owner.items()
+            if owner != skill_name
+        }
+
+        for tool_name, metadata in metadata_map.items():
+            tool_metadata[tool_name] = metadata
+            tool_owner[tool_name] = skill_name
+
+        # Whole dicts are swapped, so a reader never sees half an update.
+        self._tool_metadata = tool_metadata
+        self._tool_owner = tool_owner
 
     # ==========================================================================
     # PACKAGE DISCOVERY
@@ -210,6 +268,19 @@ class SkillRegistry:
             self._tool_metadata
         )
 
+    def get_skill_tool_names(
+        self,
+        skill_name: str,
+    ) -> List[str]:
+        """
+        The tools a skill declares, in deterministic order.
+        """
+        return sorted(
+            name
+            for name, owner in self._tool_owner.items()
+            if owner == skill_name
+        )
+
     def get_tool_metadata(
         self,
         tool_name: str,
@@ -229,28 +300,33 @@ class SkillRegistry:
         Return the executable implementation for a registered tool.
 
         The metadata registry is checked first so an implementation cannot
-        become executable merely by being present on a Skill object.
+        become executable merely by being present on a Skill object, and
+        only the skill that declared the tool is searched.
         """
-        if tool_name not in self._tool_metadata:
+        owner = self._tool_owner.get(
+            tool_name
+        )
+
+        if tool_name not in self._tool_metadata or owner is None:
             return None
 
-        for skill in self._skills.values():
-            for tool in skill.tools:
-                candidate_name = (
-                    getattr(
-                        tool,
-                        "name",
-                        None,
-                    )
-                    or getattr(
-                        tool,
-                        "__name__",
-                        None,
-                    )
+        # Only the skill that declared the tool may implement it.
+        for tool in self._skills[owner].tools:
+            candidate_name = (
+                getattr(
+                    tool,
+                    "name",
+                    None,
                 )
+                or getattr(
+                    tool,
+                    "__name__",
+                    None,
+                )
+            )
 
-                if candidate_name == tool_name:
-                    return tool
+            if candidate_name == tool_name:
+                return tool
 
         return None
 
