@@ -47,14 +47,21 @@ SECRETS: Dict[str, str] = {
     "AEHUB_SECRET_KEY": "Control Plane login key",
     "OPENAI_API_KEY": "OpenAI models",
     "OPENROUTER_API_KEY": "OpenRouter models",
+    "GROQ_API_KEY": "Groq models (optional, ADR-032)",
+    "ANTHROPIC_API_KEY": "Anthropic models (optional, ADR-032)",
+    "GEMINI_API_KEY": "Google Gemini models (optional, ADR-032)",
     "AEHUB_MQTT_PASSWORD": "MQTT broker of the home devices (optional)",
     "AEHUB_LOCAL_API_KEY": "local OpenAI-compatible server (optional)",
     "ELEVENLABS_API_KEY": "ElevenLabs cloud voice (optional, ADR-024)",
 }
 
-# Keys the stack no longer reads (Groq voice, replaced by local speech in
-# M15): their lines are removed from the env file, never moved.
-RETIRED = ("GROQ_API_KEY",)
+# Keys the stack no longer reads: their lines are removed from the env file,
+# never moved. GROQ_API_KEY left this list in P1 (ADR-032): Groq is a model
+# provider again, so a real key moves to the keyring like the others.
+RETIRED: Tuple[str, ...] = ()
+
+# Any of these lets the agent run.
+MODEL_KEYS = ("OPENAI_API_KEY", "OPENROUTER_API_KEY", "GROQ_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY")
 
 # Values older `make demo` runs wrote as placeholders: not real keys.
 PLACEHOLDERS = {"", "not-configured", "changeme", "your-key-here"}
@@ -358,7 +365,7 @@ def ensure_database_password(path: Path = ROOT_ENV) -> bool:
 
 
 def has_model_key(store: SecretStore) -> bool:
-    return any(store.get(key) for key in ("OPENAI_API_KEY", "OPENROUTER_API_KEY"))
+    return any(store.get(key) for key in MODEL_KEYS)
 
 
 Ask = Callable[[str, bool], str]

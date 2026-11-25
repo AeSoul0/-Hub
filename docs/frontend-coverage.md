@@ -8,7 +8,7 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 - ◐ vuol dire parziale e conta mezzo: per esempio si vede ma non si cambia, o si cambia solo scrivendo JSON.
 - ⏸ vuol dire **sospesa**: riguarda solo l'app desktop (Tauri), sospesa dal 2026-11-24. Non conta né tra le coperte né tra le mancanti.
 
-**Ultimo aggiornamento:** D1, migrazioni del database (2026-11-24): la scheda Database di SISTEMA dice a che revisione è lo schema.
+**Ultimo aggiornamento:** P1, Pydantic AI (2026-11-25): tre provider nuovi (Groq, Anthropic, Google Gemini) nelle righe 19 e 23.
 **Copertura:** 51 righe su 51, cioè **100%**, più 2 righe sospese (⏸). F10 ha confrontato la tabella con tutte le route e tutte le impostazioni del backend: l'[indice](#indice-ogni-route-e-ogni-impostazione) in fondo dice quale riga copre ciascuna, e un test in CI lo tiene allineato al codice.
 
 ## Conversazione e voce
@@ -44,11 +44,11 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 
 | # | Funzione del backend | Nell'interfaccia | Stato | Milestone |
 |---|---|---|---|---|
-| 19 | Modelli per ruolo con failover (`AEHUB_MODEL_ROLES`) | IMPOSTAZIONI → Modelli per ruolo (editor, con l'elenco dei modelli di ogni provider) | ✓ | F4 |
+| 19 | Modelli per ruolo con failover (`AEHUB_MODEL_ROLES`), sui provider OpenAI, OpenRouter, server locale e, da P1, Groq, Anthropic e Google Gemini | IMPOSTAZIONI → Modelli per ruolo (editor, con l'elenco dei modelli di ogni provider; i provider nuovi compaiono quando hanno la chiave) | ✓ | F4, P1 |
 | 20 | Modello del Critic | IMPOSTAZIONI → Modelli per ruolo e Modelli predefiniti | ✓ | M12, F4 |
 | 21 | Prezzi dei modelli | IMPOSTAZIONI → Prezzi, anche dal listino di OpenRouter | ✓ | M12, F4 |
 | 22 | Budget mensile, soglia di avviso, limiti per run | IMPOSTAZIONI | ✓ | M12 |
-| 23 | Chiavi dei provider nel portachiavi del sistema | Primo avvio e IMPOSTAZIONI → Chiavi (app desktop) | ✓ | M14, F4 |
+| 23 | Chiavi dei provider nel portachiavi del sistema (anche Groq, Anthropic e Gemini da P1) | Primo avvio e IMPOSTAZIONI → Chiavi (app desktop); launcher `scripts/aehub.py` | ✓ | M14, F4, P1 |
 | 24 | Server locale compatibile OpenAI (`AEHUB_LOCAL_BASE_URL`, chiave) | IMPOSTAZIONI → Modelli predefiniti; Chiavi | ✓ | F4 |
 | 25 | Circuit breaker dei provider | IMPOSTAZIONI → Motore | ✓ | F4 |
 | 26 | Durata delle approvazioni | IMPOSTAZIONI → Budget e limiti | ✓ | F4 |
@@ -117,10 +117,11 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 | F9 | 49 su 49 | 100% |
 | F10 (confronto con route e impostazioni: due righe nuove, due sospese) | 51 su 51 | 100% |
 | D1 (la revisione dello schema nella riga 43) | 51 su 51 | 100% |
+| P1 (Groq, Anthropic e Gemini nelle righe 19 e 23) | 51 su 51 | 100% |
 
 ## Indice: ogni route e ogni impostazione
 
-F10 (2026-11-24): l'elenco viene dal codice (`tests/security/test_api_surface.py`, `app/core/runtime_config.py`, `app/system/status.py`) e `tests/security/test_frontend_coverage.py` controlla in CI che non manchi nulla. Una route o un'impostazione nuova va aggiunta qui con la sua riga.
+F10 (2026-11-24, aggiornato in P1): l'elenco viene dal codice (`tests/security/test_api_surface.py`, `app/core/runtime_config.py`, `app/system/status.py`) e `tests/security/test_frontend_coverage.py` controlla in CI che non manchi nulla. Una route o un'impostazione nuova va aggiunta qui con la sua riga.
 
 ### Route
 
@@ -272,4 +273,6 @@ F10 (2026-11-24): l'elenco viene dal codice (`tests/security/test_api_surface.py
 | `AEHUB_APP_VERSION` | versione passata dall'app desktop, mostrata in STATO | 43 |
 | `AEHUB_LAUNCHER` | segnale interno del launcher del desktop | S1 (sospesa) |
 | `AEHUB_DESKTOP_DB_PASSWORD` | password del PostgreSQL incorporato, nel keyring, mai mostrata | S1 (sospesa) |
-| `GROQ_API_KEY` | nessuna funzione: c'è solo nell'ambiente finto delle eval; P1 la sostituisce con Groq vero | - |
+| `GROQ_API_KEY` | chiave del provider groq, nel keyring (P1) | 23 |
+| `ANTHROPIC_API_KEY` | chiave del provider anthropic, nel keyring (P1) | 23 |
+| `GEMINI_API_KEY` | chiave del provider google (Gemini), nel keyring (P1) | 23 |

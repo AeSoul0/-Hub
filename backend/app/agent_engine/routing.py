@@ -13,8 +13,9 @@ Roles are fixed, the models behind them are chosen by the user:
     }'
 
 Each role is an ordered chain "provider:model": the first entry is the
-primary, the others are fallbacks. Providers: "openai" (Responses API),
-"openrouter" and "local" (OpenAI-compatible Chat Completions, e.g. Ollama).
+primary, the others are fallbacks. Providers, all through Pydantic AI
+(ADR-032): "openai" (Responses API), "openrouter", "local" (an
+OpenAI-compatible server such as Ollama), "groq", "anthropic", "google".
 A role left out uses the default chain: OPENAI_MODEL on "openai" (the
 critic uses AEHUB_CHECKER_MODEL when set).
 
@@ -40,6 +41,7 @@ from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from app.agent_engine.adapters.base import ModelProvider
+from app.agent_engine.adapters.pydantic_ai_adapter import PROVIDERS
 from app.core.runtime_config import config_value
 
 
@@ -61,7 +63,6 @@ IMPLEMENTER_ROLES = (
     Role.TRIAGE,
 )
 
-PROVIDERS = ("openai", "openrouter", "local")
 
 
 class RoutingConfigError(ValueError):
@@ -424,16 +425,9 @@ ProviderFactory = Callable[[ModelTarget], ModelProvider]
 
 
 def default_provider_factory(target: ModelTarget) -> ModelProvider:
-    from app.agent_engine.adapters.chat_completions_adapter import ChatCompletionsAdapter
-    from app.agent_engine.adapters.openai_adapter import OpenAIAdapter
+    from app.agent_engine.adapters.pydantic_ai_adapter import PydanticAIAdapter
 
-    if target.provider == "openai":
-        return OpenAIAdapter(model_name=target.model)
-
-    if target.provider == "openrouter":
-        return ChatCompletionsAdapter.openrouter(target.model)
-
-    return ChatCompletionsAdapter.local(target.model)
+    return PydanticAIAdapter.for_provider(target.provider, target.model)
 
 
 class ModelRouter:

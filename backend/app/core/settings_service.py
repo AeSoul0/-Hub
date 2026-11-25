@@ -33,6 +33,7 @@ from app.core.runtime_config import (
     replace_stored,
     source_of,
 )
+from app.agent_engine.adapters.pydantic_ai_adapter import PROVIDER_KEYS
 from app.domain.models.settings import AppSetting
 
 
@@ -41,16 +42,15 @@ logger = logging.getLogger(__name__)
 ONBOARDING_KEY = "_onboarding_completed_at"
 MAX_VALUE_LENGTH = 10_000
 
-# Provider -> the environment variable holding its key. The local provider
-# (an OpenAI-compatible server on this machine) needs none.
-PROVIDER_KEYS: Dict[str, str] = {
-    "openai": "OPENAI_API_KEY",
-    "openrouter": "OPENROUTER_API_KEY",
-}
+# PROVIDER_KEYS: provider -> the environment variable holding its key
+# (ADR-032). The local provider (a server on this machine) needs none.
 
 SECRETS = (
     ("OPENAI_API_KEY", "OpenAI API key", "models with the openai provider"),
     ("OPENROUTER_API_KEY", "OpenRouter API key", "models with the openrouter provider"),
+    ("GROQ_API_KEY", "Groq API key", "models with the groq provider (optional)"),
+    ("ANTHROPIC_API_KEY", "Anthropic API key", "models with the anthropic provider (optional)"),
+    ("GEMINI_API_KEY", "Google Gemini API key", "models with the google provider (optional)"),
     ("AEHUB_MQTT_PASSWORD", "MQTT broker password", "home devices (optional)"),
     ("AEHUB_LOCAL_API_KEY", "Local server key", "models with the local provider (optional)"),
     ("ELEVENLABS_API_KEY", "ElevenLabs API key", "the cloud voice (optional)"),
@@ -540,8 +540,7 @@ def provider_view() -> Dict[str, Dict[str, object]]:
     the local one, the server address.
     """
     return {
-        "openai": {"key": _env_set("OPENAI_API_KEY"), "needs_key": True},
-        "openrouter": {"key": _env_set("OPENROUTER_API_KEY"), "needs_key": True},
+        **{provider: {"key": _env_set(variable), "needs_key": True} for provider, variable in PROVIDER_KEYS.items()},
         "local": {
             "key": _env_set("AEHUB_LOCAL_API_KEY"),
             "needs_key": False,

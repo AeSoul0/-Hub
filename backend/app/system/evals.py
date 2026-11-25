@@ -44,7 +44,6 @@ _CHILD = (
 _SECRET_NAME = re.compile(r"(KEY|TOKEN|SECRET|PASSWORD|_URL)$", re.IGNORECASE)
 
 _OFFLINE_ENV = {
-    "GROQ_API_KEY": "offline-eval",
     "POSTGRES_URL": "postgresql://offline-eval@localhost:5432/offline-eval",
     "AEHUB_CHECKER_MODEL": "eval-critic",
     "AEHUB_TELEMETRY_CONSOLE": "0",

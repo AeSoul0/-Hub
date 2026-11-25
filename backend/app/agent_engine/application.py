@@ -30,7 +30,7 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from app.agent_engine.adapters.base import ModelProvider
-from app.agent_engine.adapters.openai_adapter import OpenAIAdapter
+from app.agent_engine.adapters.pydantic_ai_adapter import PydanticAIAdapter
 from app.agent_engine.checker import AgentChecker
 from app.agent_engine.routing import (
     ModelRouter,
@@ -168,16 +168,18 @@ class AgentEngine:
         )
 
         if model_provider is None and model_name != "default":
-            model_provider = OpenAIAdapter(
-                model_name=model_name,
+            model_provider = PydanticAIAdapter.for_provider(
+                "openai",
+                model_name,
             )
 
         self.router: Optional[ModelRouter] = None
         self.model_provider = model_provider
 
         if model_provider is not None:
-            checker_provider = checker_provider or OpenAIAdapter(
-                model_name=(
+            checker_provider = checker_provider or PydanticAIAdapter.for_provider(
+                "openai",
+                (
                     checker_model_name
                     or config_value("AEHUB_CHECKER_MODEL")
                     or model_provider.model_name
