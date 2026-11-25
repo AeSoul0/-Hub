@@ -33,7 +33,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Self
 
 import httpx
 import pytest
@@ -60,7 +60,7 @@ def _has_pgvector(bin_dir: Path) -> bool:
     candidates = [bin_dir.parent / "share" / "extension"]
 
     if pg_config.is_file():
-        share = subprocess.run([str(pg_config), "--sharedir"], capture_output=True, text=True).stdout.strip()
+        share = subprocess.run([str(pg_config), "--sharedir"], capture_output=True, text=True, check=False).stdout.strip()
         if share:
             candidates.append(Path(share) / "extension")
 
@@ -145,11 +145,11 @@ class FakeModelServer:
             "usage": {"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120},
         }
 
-    def __enter__(self) -> "FakeModelServer":
+    def __enter__(self) -> Self:
         self.thread.start()
         return self
 
-    def __exit__(self, *exc: Any) -> None:
+    def __exit__(self, *exc: object) -> None:
         self.server.shutdown()
 
 
@@ -314,6 +314,7 @@ def configure_models(put, post) -> None:
 def _postgres_stopped(data_dir: Path) -> bool:
     status = subprocess.run(
         [str(PG_BIN / ("pg_ctl.exe" if sys.platform == "win32" else "pg_ctl")), "status", "-D", str(data_dir / "pgdata")],
+        check=False,
         capture_output=True,
         text=True,
     )
@@ -421,9 +422,9 @@ EXPORT = BACKEND.parent / "frontend" / "out"
 def test_browser_smoke(tmp_path):
     """
     What a person does on first start, in a real Chromium: the launch URL
-    logs in, a typed command starts a run, the HIGH call is allowed from the
-    Approvals page, the run shows as completed. No page script is blocked
-    by the CSP.
+    logs in, a command typed in the Nucleo starts a run, its events show up
+    live, the HIGH call is allowed from the Nucleo, the run shows as
+    completed. No page script is blocked by the CSP.
     """
     from playwright.sync_api import expect, sync_playwright
 
@@ -438,7 +439,7 @@ def test_browser_smoke(tmp_path):
             # 1. The launch URL opens the Control Plane, logged in.
             page.goto(app.launch_url)
             page.wait_for_url(f"{app.origin}/control-plane**")
-            expect(page.get_by_text("Approvals").first).to_be_visible()
+            expect(page.get_by_text("APPROVAZIONI").first).to_be_visible()
 
             # 2. Models and budget, as the setup page saves them.
             configure_models(
@@ -446,25 +447,29 @@ def test_browser_smoke(tmp_path):
                 lambda path: context.request.post(f"{app.origin}{path}").json(),
             )
 
-            # 3. A typed command on the home page.
+            # 3. A typed command in the Nucleo, the home page (F1), once its
+            # live stream is open.
             page.goto(f"{app.origin}/")
-            command = page.get_by_placeholder("Awaiting vocal directive or type command...")
+            expect(page.get_by_text("in linea")).to_be_visible(timeout=30_000)
+            command = page.get_by_role("textbox", name="Comando")
             command.fill("Run echo hello in the sandbox shell.")
             # The run parks on the approval before the request returns.
             with page.expect_response("**/api/orchestrator/ask", timeout=120_000) as asked:
                 command.press("Enter")
             assert asked.value.ok, asked.value.text()
 
-            # 4. The HIGH call waits; the owner allows it.
-            page.goto(f"{app.origin}/control-plane/approvals/")
-            allow = page.get_by_role("button", name="Allow once")
+            # 4. The engine's events arrive live; the HIGH call waits in the
+            # Nucleo and the owner allows it there.
+            expect(page.get_by_text("tool.approval_required").first).to_be_visible(timeout=60_000)
+            allow = page.get_by_role("button", name="Consenti")
             expect(allow).to_be_visible(timeout=60_000)
             expect(page.get_by_text("execute_shell_script").first).to_be_visible()
             allow.click()
+            expect(allow).to_be_hidden(timeout=60_000)
 
             # 5. The run completes.
             page.goto(f"{app.origin}/control-plane/runs/")
-            expect(page.get_by_role("cell", name="completed").first).to_be_visible(timeout=120_000)
+            expect(page.get_by_role("cell", name="completata").first).to_be_visible(timeout=120_000)
 
             blocked = [text for text in console_errors if "Content Security Policy" in text]
             assert blocked == [], blocked

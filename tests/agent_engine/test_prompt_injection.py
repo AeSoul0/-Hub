@@ -21,7 +21,7 @@ from typing import Any, Dict, List
 
 import pytest
 
-from app.agent_engine.adapters.openai_adapter import UNTRUSTED_OUTPUT_NOTICE
+from app.agent_engine.model_input import UNTRUSTED_OUTPUT_NOTICE
 from app.agent_engine.application import AgentEngine
 from app.agent_engine.guardrails import GuardrailException
 from app.agent_engine.runtime import AgentRuntime

@@ -4,8 +4,8 @@
 
 One row per edited setting, keyed by its environment name (see
 app.core.runtime_config). A setting without a row falls back to the
-environment. A separate table, so existing databases get it through
-create_all.
+environment. A separate table, as was the rule before migrations (D1,
+ADR-031).
 """
 
 from __future__ import annotations

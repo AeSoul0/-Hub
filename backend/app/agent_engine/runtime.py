@@ -3,7 +3,7 @@
 @description Native A.U.R.O.R.A. Agent Execution Runtime.
 
 This module implements the deterministic Worker -> ToolGateway -> Checker
-execution loop without using LangGraph as an execution authority.
+execution loop; no agent framework has authority over it.
 
 Security invariants enforced here include:
 
@@ -25,6 +25,7 @@ import asyncio
 import dataclasses
 import inspect
 import logging
+import math
 import time
 import uuid
 from datetime import datetime
@@ -33,11 +34,19 @@ from typing import Any, Dict, List, Optional, Tuple
 from app.agent_engine.adapters.base import ModelProvider
 from app.agent_engine.approval.manager import ApprovalManager
 from app.agent_engine.context import ContextManager
+from app.agent_engine.delegation import (
+    DELEGATE_TOOL,
+    DelegationScope,
+    Delegator,
+    clear_delegation_scope,
+    set_delegation_scope,
+)
 from app.agent_engine.control import (
     RunLimits,
     SpendLedger,
     run_interruptible,
     run_registry,
+    usage_view,
 )
 from app.agent_engine.errors import (
     BudgetExceededError,
@@ -59,7 +68,7 @@ from app.agent_engine.models import (
     ToolSpec,
 )
 from app.agent_engine.resources import ResourceManager
-from app.agent_engine.routing import Role
+from app.agent_engine.routing import IMPLEMENTER_ROLES, Role
 from app.agent_engine.state.manager import AgentStateManager
 from app.agent_engine.tool_selection import select_tools
 from app.agents.subagents.base import SubagentFactory
@@ -70,7 +79,7 @@ from app.core.security import (
     Principal,
     SubagentCapabilitySet,
     TaskExecutionContext,
-    WorkspacePolicy,
+    workspace_policy,
 )
 from app.memory.store import MemoryKind, MemoryStore, memory_enabled
 from app.runtime.tool_gateway import ToolGateway, ToolInvocation
@@ -99,6 +108,8 @@ DEFAULT_MAX_OUTPUT = 4000
 RECALL_LIMIT = 8
 PREFERENCE_LIMIT = 30
 DEFAULT_TOOL_COST = 0.0
+# How much of a Critic's instruction the timeline shows (F8).
+VERDICT_CHARS = 500
 NOTIFY_TIMEOUT_SECONDS = 0.5
 
 
@@ -114,19 +125,51 @@ def _usd(amount: float) -> str:
 # executing, so the wait never counts toward AEHUB_RUN_TIMEOUT_SECONDS.
 _ACTIVE_SEGMENTS: Dict[str, Tuple[float, float]] = {}
 
+# The usage totals of the runs executing in this process, kept by reference:
+# the live view reads them between saves (F2).
+_LIVE_USAGE: Dict[str, Dict[str, Any]] = {}
 
-def _active_seconds(agent_run: AgentRun) -> float:
+
+def live_active_seconds(run_id: str, recorded: float = 0.0) -> float:
     """
-    Seconds the run has spent executing, across resumes.
+    Seconds a run has spent executing, across resumes; `recorded` when it
+    is not executing in this process.
     """
-    segment = _ACTIVE_SEGMENTS.get(agent_run.run_id)
+    segment = _ACTIVE_SEGMENTS.get(run_id)
 
     if segment is None:
-        return float(agent_run.usage.get("active_seconds", 0.0))
+        return recorded
 
     before, started = segment
 
     return before + (time.monotonic() - started)
+
+
+def live_usage(run_id: str, recorded: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    The current totals of a run executing in this process, else `recorded`
+    (its last saved totals).
+    """
+    usage = _LIVE_USAGE.get(run_id, recorded)
+
+    return usage_view(
+        usage,
+        live_active_seconds(run_id, float(usage.get("active_seconds") or 0.0)),
+    )
+
+
+def _active_seconds(agent_run: AgentRun) -> float:
+    return live_active_seconds(
+        agent_run.run_id,
+        float(agent_run.usage.get("active_seconds", 0.0)),
+    )
+
+
+def _usage_now(agent_run: AgentRun) -> Dict[str, Any]:
+    """
+    Run totals for the live events, so the interface follows the limits.
+    """
+    return usage_view(agent_run.usage, _active_seconds(agent_run))
 
 
 # ==============================================================================
@@ -151,6 +194,8 @@ class AgentRuntime:
         self.db = db_session
         self.tool_gateway = tool_gateway or ToolGateway()
         self._context_manager = context_manager
+        # Set by the AgentEngine: how delegate_task starts a subagent (F8).
+        self.delegator: Optional[Delegator] = None
 
     @property
     def context_manager(self) -> ContextManager:
@@ -342,15 +387,20 @@ class AgentRuntime:
         Build the function-tool definitions the Worker model may call.
 
         Only registered tools that the PolicyEngine does not deny for this
-        Principal (and, for a subagent, its delegated capability set) are
+        Principal (tools disabled in the Control Plane are denied) (and, for a subagent, its delegated capability set) are
         exposed, and only those the skill index picked for the run when it
         picked any. Exposure is not authorization: every call still goes
         through the ToolGateway pipeline.
         """
         model_tools: List[Dict[str, Any]] = []
+        delegation_off = RunLimits.from_env().max_subagents <= 0
 
         for tool_name in skill_registry.get_registered_tool_names():
             if exposed_tools is not None and tool_name not in exposed_tools:
+                continue
+
+            # Delegation is one level deep (F8): a subagent never sees it.
+            if tool_name == DELEGATE_TOOL and (capabilities is not None or delegation_off):
                 continue
 
             try:
@@ -367,7 +417,7 @@ class AgentRuntime:
                     arguments={},
                     run_id="exposure-check",
                 ),
-                workspace_policy=WorkspacePolicy(),
+                workspace_policy=workspace_policy(),
                 budget_state=BudgetState(),
                 task_context=TaskExecutionContext(
                     is_subagent=capabilities is not None,
@@ -451,13 +501,14 @@ class AgentRuntime:
         capabilities: Optional[SubagentCapabilitySet] = None,
         max_cost: Optional[float] = None,
         inherit_untrusted: bool = False,
+        parent_run_id: Optional[str] = None,
     ) -> Any:
         """
         Run a task under the kill switch and report its live state.
 
-        `capabilities`, `max_cost` and `inherit_untrusted` are set for a
-        subagent: its delegated tools, the budget left by the parent run and
-        the parent's untrusted taint.
+        `capabilities`, `max_cost`, `inherit_untrusted` and `parent_run_id`
+        are set for a subagent: its delegated tools, the budget left by the
+        parent run, the parent's untrusted taint and the parent itself.
 
         The run is registered for cancellation (per run or "stop all") for
         as long as it executes; while the global stop is active no new run
@@ -502,11 +553,13 @@ class AgentRuntime:
                 capabilities=capabilities,
                 max_cost=max_cost,
                 inherit_untrusted=inherit_untrusted,
+                parent_run_id=parent_run_id,
             )
             return result
         finally:
             run_registry.unregister(run_id)
             _ACTIVE_SEGMENTS.pop(run_id, None)
+            _LIVE_USAGE.pop(run_id, None)
 
             waiting = (
                 isinstance(result, dict)
@@ -539,6 +592,7 @@ class AgentRuntime:
         capabilities: Optional[SubagentCapabilitySet] = None,
         max_cost: Optional[float] = None,
         inherit_untrusted: bool = False,
+        parent_run_id: Optional[str] = None,
     ) -> Any:
         """
         Execute one deterministic Worker -> ToolGateway -> Checker cycle.
@@ -670,6 +724,8 @@ class AgentRuntime:
 
             agent_run = AgentRun(
                 run_id=run_id,
+                # The run tree (F8): a subagent keeps its parent.
+                parent_run_id=parent_run_id,
                 session_id=session_id,
                 workspace_id=workspace_id,
                 principal_id=principal.id,
@@ -691,11 +747,16 @@ class AgentRuntime:
             EventDispatcher().dispatch(
                 "run.started",
                 run_id=run_id,
+                parent_run_id=parent_run_id,
                 session_id=session_id,
                 workspace_id=workspace_id,
+                # Only a role chosen for the command (F8); triage is not shown.
+                role=task.get("role"),
+                details={"max_attempts": max_attempts},
             )
 
             _ACTIVE_SEGMENTS[run_id] = (0.0, time.monotonic())
+            _LIVE_USAGE[run_id] = agent_run.usage
 
         else:
             if agent_run.session_id != session_id:
@@ -783,6 +844,7 @@ class AgentRuntime:
                 float(agent_run.usage.get("active_seconds", 0.0)),
                 time.monotonic(),
             )
+            _LIVE_USAGE[run_id] = agent_run.usage
 
             if agent_run.status == AgentRunStatus.WAITING_APPROVAL:
                 outcome = await self._resume_pending_tool_call(
@@ -965,7 +1027,8 @@ class AgentRuntime:
                         "Worker execution exceeded configured timeout."
                     ) from exc
 
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 - the run fails with the worker's error recorded
+                    logger.warning("Worker failed in run %s: %s", run_id, exc)
                     agent_run.status = AgentRunStatus.FAILED
                     agent_run.errors.append(
                         f"Worker failed: {exc}"
@@ -1147,6 +1210,12 @@ class AgentRuntime:
                                     capabilities=capability_set,
                                     input_channel=self._input_channel(worker_context),
                                     exposed_tools=worker_context.get("exposed_tools"),
+                                    delegation=self._delegation_scope(
+                                        agent_run,
+                                        principal,
+                                        limits,
+                                        capability_set,
+                                    ),
                                 ),
                                 cancellation_token,
                             ),
@@ -1333,11 +1402,15 @@ class AgentRuntime:
                     trusted=not worker_context.get("untrusted_context"),
                 )
 
+                # The Critic's verdicts in the timeline (F8): which attempt
+                # out of how many.
                 EventDispatcher().dispatch(
                     "checker.accepted",
                     run_id=run_id,
                     session_id=session_id,
                     workspace_id=workspace_id,
+                    attempt=current_attempt,
+                    details={"max_attempts": max_attempts},
                 )
 
                 EventDispatcher().dispatch(
@@ -1370,6 +1443,18 @@ class AgentRuntime:
                     agent_run.error
                 )
 
+                EventDispatcher().dispatch(
+                    "checker.failed",
+                    run_id=run_id,
+                    session_id=session_id,
+                    workspace_id=workspace_id,
+                    attempt=current_attempt,
+                    details={
+                        "max_attempts": max_attempts,
+                        "reason": agent_run.error[:VERDICT_CHARS],
+                    },
+                )
+
                 self._save(
                     agent_run,
                     current_attempt,
@@ -1393,6 +1478,11 @@ class AgentRuntime:
                 run_id=run_id,
                 session_id=session_id,
                 workspace_id=workspace_id,
+                attempt=current_attempt,
+                details={
+                    "max_attempts": max_attempts,
+                    "retry_instruction": last_feedback[:VERDICT_CHARS],
+                },
             )
 
             EventDispatcher().dispatch(
@@ -1401,6 +1491,7 @@ class AgentRuntime:
                 session_id=session_id,
                 workspace_id=workspace_id,
                 attempt=current_attempt + 1,
+                details={"max_attempts": max_attempts},
             )
 
             current_attempt += 1
@@ -1478,12 +1569,14 @@ class AgentRuntime:
         capabilities: Optional[SubagentCapabilitySet] = None,
         input_channel: str = "text",
         exposed_tools: Optional[List[str]] = None,
+        delegation: Optional[DelegationScope] = None,
     ) -> Observation:
         """
         Run one proposal through the ToolGateway and return its Observation.
 
         ApprovalRequiredError propagates to the caller; any other failure
-        becomes an observation the model can react to.
+        becomes an observation the model can react to. `delegation` is
+        installed for the call, so delegate_task can start a subagent.
         """
         trusted = True
         succeeded = False
@@ -1523,14 +1616,19 @@ class AgentRuntime:
             async def executor(
                 **arguments: Any,
             ) -> Any:
-                return await self._execute_registered_tool(
-                    tool=tool,
-                    arguments=arguments,
-                    session_id=session_id,
-                    workspace_id=workspace_id,
-                    principal_id=principal.id,
-                    trusted=not untrusted_context,
-                )
+                set_delegation_scope(delegation)
+
+                try:
+                    return await self._execute_registered_tool(
+                        tool=tool,
+                        arguments=arguments,
+                        session_id=session_id,
+                        workspace_id=workspace_id,
+                        principal_id=principal.id,
+                        trusted=not untrusted_context,
+                    )
+                finally:
+                    clear_delegation_scope()
 
             tool_result = await self.tool_gateway.execute(
                 invocation,
@@ -1559,7 +1657,8 @@ class AgentRuntime:
         except ApprovalRequiredError:
             raise
 
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - a tool error becomes an observation for the model
+            logger.warning("Tool %s failed: %s", proposal.tool_name, exc)
             content = f"Tool execution failed: {exc}"
 
         return Observation(
@@ -1570,6 +1669,28 @@ class AgentRuntime:
             trusted=trusted,
             succeeded=succeeded,
             modified_file=modified_file,
+        )
+
+    def _delegation_scope(
+        self,
+        agent_run: AgentRun,
+        principal: Principal,
+        limits: RunLimits,
+        capabilities: Optional[SubagentCapabilitySet],
+    ) -> DelegationScope:
+        """
+        What delegate_task needs of the run calling it (F8).
+        """
+        return DelegationScope(
+            parent_run_id=agent_run.run_id,
+            session_id=agent_run.session_id,
+            workspace_id=agent_run.workspace_id,
+            principal=principal,
+            usage=agent_run.usage,
+            max_run_cost=limits.max_run_cost,
+            max_subagents=limits.max_subagents,
+            delegate=self.delegator,
+            is_subagent=capabilities is not None,
         )
 
     @staticmethod
@@ -1605,7 +1726,8 @@ class AgentRuntime:
     ) -> RunLimits:
         """
         Limits from the environment, with a subagent's run budget capped by
-        what its parent had left.
+        what its parent had left. With no run cost cap (0) the subagent's
+        own budget is its cap.
         """
         limits = RunLimits.from_env()
         max_cost = worker_context.get("max_cost")
@@ -1613,7 +1735,11 @@ class AgentRuntime:
         if max_cost is not None:
             limits = dataclasses.replace(
                 limits,
-                max_run_cost=min(limits.max_run_cost, float(max_cost)),
+                max_run_cost=(
+                    min(limits.max_run_cost, float(max_cost))
+                    if limits.max_run_cost > 0
+                    else float(max_cost)
+                ),
             )
 
         return limits
@@ -1686,19 +1812,31 @@ class AgentRuntime:
 
             agent_run.usage["files_modified"] = modified
 
-        if observation.succeeded:
-            return None
+        stop: Optional[RunLimitExceededError] = None
 
-        failed = int(agent_run.usage.get("failed_tool_calls", 0)) + 1
-        agent_run.usage["failed_tool_calls"] = failed
+        if not observation.succeeded:
+            failed = int(agent_run.usage.get("failed_tool_calls", 0)) + 1
+            agent_run.usage["failed_tool_calls"] = failed
 
-        if 0 < limits.max_failed_tool_calls <= failed:
-            return RunLimitExceededError(
-                f"Failed tool calls limit reached: {failed} of "
-                f"{limits.max_failed_tool_calls}."
-            )
+            if 0 < limits.max_failed_tool_calls <= failed:
+                stop = RunLimitExceededError(
+                    f"Failed tool calls limit reached: {failed} of "
+                    f"{limits.max_failed_tool_calls}."
+                )
 
-        return None
+        EventDispatcher().dispatch(
+            "tool.completed",
+            run_id=agent_run.run_id,
+            session_id=agent_run.session_id,
+            workspace_id=agent_run.workspace_id,
+            tool=observation.tool_name,
+            details={
+                "succeeded": bool(observation.succeeded),
+                "usage": _usage_now(agent_run),
+            },
+        )
+
+        return stop
 
     async def _park(
         self,
@@ -1920,6 +2058,12 @@ class AgentRuntime:
                     capabilities=capability_set,
                     input_channel=self._input_channel(worker_context),
                     exposed_tools=worker_context.get("exposed_tools"),
+                    delegation=self._delegation_scope(
+                        agent_run,
+                        principal,
+                        limits,
+                        capability_set,
+                    ),
                 )
 
             except ApprovalRequiredError as exc:
@@ -1986,7 +2130,7 @@ class AgentRuntime:
         """
         run_cost = float(agent_run.usage.get("cost", 0.0))
 
-        if run_cost >= limits.max_run_cost:
+        if limits.max_run_cost > 0 and run_cost >= limits.max_run_cost:
             return BudgetExceededError(
                 f"Run budget exhausted: {run_cost:.4f} USD of "
                 f"{_usd(limits.max_run_cost)} USD."
@@ -1994,7 +2138,8 @@ class AgentRuntime:
 
         try:
             month_spent = SpendLedger.spent(principal_id)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - fail closed: without the ledger no model call runs
+            logger.error("Spend ledger unavailable, model calls blocked: %s", exc)
             return BudgetExceededError(
                 "Spend ledger unavailable: model calls are blocked."
             )
@@ -2072,11 +2217,13 @@ class AgentRuntime:
             cost=cost,
             model=model,
             role=role,
+            details={"usage": _usage_now(agent_run)},
         )
 
         try:
             month_spent = SpendLedger.add(principal_id, cost)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - fail closed: without the ledger no model call runs
+            logger.error("Spend ledger unavailable, model calls blocked: %s", exc)
             return BudgetExceededError(
                 "Spend ledger unavailable: model calls are blocked."
             )
@@ -2096,7 +2243,7 @@ class AgentRuntime:
                 details={"monthly_budget": limits.monthly_budget},
             )
 
-        if totals["cost"] >= limits.max_run_cost:
+        if limits.max_run_cost > 0 and totals["cost"] >= limits.max_run_cost:
             return BudgetExceededError(
                 f"Run budget exhausted: {totals['cost']:.4f} USD of "
                 f"{_usd(limits.max_run_cost)} USD."
@@ -2217,7 +2364,8 @@ class AgentRuntime:
                 ),
                 timeout=NOTIFY_TIMEOUT_SECONDS,
             )
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 - realtime events are best effort and never affect a run
+            logger.debug("Realtime event %s not delivered: %s", event_type, exc)
             pass
 
     # ==========================================================================
@@ -2266,7 +2414,7 @@ class AgentRuntime:
 
         try:
             return await asyncio.to_thread(load)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - memory recall is optional for a run
             logger.warning("Memory recall skipped: %s", exc)
             return [], []
 
@@ -2302,7 +2450,7 @@ class AgentRuntime:
 
         try:
             await asyncio.to_thread(store)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - memory indexing is optional for a run
             logger.warning("Memory indexing skipped for run %s: %s", run_id, exc)
 
     @staticmethod
@@ -2485,7 +2633,10 @@ class AgentRuntime:
             )
 
         limits = RunLimits.from_env()
-        parent_remaining = limits.max_run_cost
+        # A run cost cap of 0 is no cap: the subagent gets what it asks for.
+        parent_remaining = (
+            limits.max_run_cost if limits.max_run_cost > 0 else math.inf
+        )
         inherit_untrusted = False
 
         if parent_run_id:
@@ -2514,9 +2665,12 @@ class AgentRuntime:
             if self._input_channel(parent_context) == "voice":
                 task = {**task, "input_channel": "voice"}
 
-            parent_remaining = self._run_limits(
-                parent_context
-            ).max_run_cost - float(parent_run.usage.get("cost", 0.0))
+            parent_cap = self._run_limits(parent_context).max_run_cost
+            parent_remaining = (
+                parent_cap - float(parent_run.usage.get("cost", 0.0))
+                if parent_cap > 0
+                else math.inf
+            )
 
         child_budget = min(budget, parent_remaining)
 
@@ -2579,8 +2733,13 @@ class AgentRuntime:
                 workspace=workspace_id,
                 permissions=list(permissions),
             ),
-            policy=WorkspacePolicy(workspace_id=workspace_id),
+            policy=workspace_policy(workspace_id),
         )
+
+        # The role is kept with the task, so the run tree shows it and a
+        # resumed subagent goes back to the same worker (F8).
+        if role in {item.value for item in IMPLEMENTER_ROLES}:
+            task = {**task, "role": role}
 
         worker = SubagentFactory.create_subagent(
             role_name=role,
@@ -2591,6 +2750,16 @@ class AgentRuntime:
             tools=[],
             adapter=worker_provider,
             capabilities=capability_set,
+        )
+
+        # The Nucleo draws each subagent as a moon of its parent run (F1).
+        EventDispatcher().dispatch(
+            "subagent.spawned",
+            run_id=child_run_id,
+            parent_run_id=parent_run_id,
+            session_id=session_id,
+            workspace_id=workspace_id,
+            role=role,
         )
 
         result = await self.execute_task(
@@ -2606,6 +2775,24 @@ class AgentRuntime:
             capabilities=capability_set,
             max_cost=child_budget,
             inherit_untrusted=inherit_untrusted,
+            parent_run_id=parent_run_id,
+        )
+
+        EventDispatcher().dispatch(
+            "subagent.completed",
+            run_id=child_run_id,
+            parent_run_id=parent_run_id,
+            session_id=session_id,
+            workspace_id=workspace_id,
+            role=role,
+            # A finished subagent returns its answer; a stopped one a status.
+            details={
+                "status": (
+                    result.get("status") or "COMPLETED"
+                    if isinstance(result, dict)
+                    else "COMPLETED"
+                ),
+            },
         )
 
         return {

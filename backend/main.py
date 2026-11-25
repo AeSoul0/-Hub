@@ -15,6 +15,7 @@ Security invariants:
 """
 
 from __future__ import annotations
+import logging
 
 import asyncio
 import os
@@ -33,11 +34,17 @@ from app.api import (
     auth,
     desktop,
     documents,
+    home as home_api,
     memory,
     realtime,
     runs,
     settings as settings_api,
+    skills as skills_api,
+    system as system_api,
+    tools as tools_api,
+    voice as voice_api,
 )
+from app.core import log_buffer
 from app.core.telemetry import (
     setup_telemetry,
     shutdown_telemetry,
@@ -80,35 +87,35 @@ if (
 # ==============================================================================
 
 
+logger = logging.getLogger(__name__)
+
+
 def startup_db():
     """
-    Initialize shared persistence and telemetry instrumentation: pgvector
-    and every SQLAlchemy table (the only persistence layer since M15).
+    Initialize shared persistence and telemetry instrumentation. The schema
+    comes from the Alembic revisions (D1, ADR-031): `upgrade head` creates
+    pgvector and the tables on an empty database, marks a database built by
+    the old `create_all`, and applies any newer revision.
     """
-    from sqlalchemy import text
-
     from app.core.db import engine
+    from app.core.migrations import upgrade_database
     from app.core.telemetry import instrument_sqlalchemy
-    from app.domain.models import Base
 
     instrument_sqlalchemy(
         engine
     )
 
-    with engine.begin() as conn:
-        conn.execute(
-            text(
-                "CREATE EXTENSION IF NOT EXISTS vector"
-            )
-        )
-
-    Base.metadata.create_all(
-        bind=engine
+    revision = upgrade_database(
+        engine
     )
 
     print(
-        "[OK] Centralized PostgreSQL database schema initialized."
+        f"[OK] Database schema at revision {revision}."
     )
+
+
+# How often idle voice models are looked for (F9).
+VOICE_SWEEP_SECONDS = 60
 
 
 @asynccontextmanager
@@ -135,15 +142,43 @@ async def lifespan(
     with SessionLocal() as db:
         load_settings(db)
 
+        # Imported SKILL.md skills that are turned on (F5).
+        from app.skills.imported_skills import reload_imported_skills
+
+        reload_imported_skills(db)
+
+    # Home devices declared in the Control Plane (F7): their tools appear
+    # once the database is readable.
+    from app.home.store import refresh_home_tools
+
+    refresh_home_tools()
+
     # One line per problem (Critic equal to a Worker, missing provider key,
     # missing prices, ...). The API still starts, so the Settings page can
     # fix what it can; the engine refuses runs while routing is invalid.
     log_configuration_issues()
 
+    # The SISTEMA page shows the recent warnings and errors (F9).
+    log_buffer.install()
+
+    # Voice models unused for AEHUB_VOICE_IDLE_MINUTES leave memory (F9).
+    async def release_idle_voice() -> None:
+        from app.voice.engines import release_idle_engines
+
+        while True:
+            await asyncio.sleep(VOICE_SWEEP_SECONDS)
+            try:
+                await asyncio.to_thread(release_idle_engines)
+            except Exception as exc:  # noqa: BLE001 - a failed sweep must not stop the next one
+                logger.warning("Voice release failed: %s", exc)
+
+    voice_sweeper = asyncio.create_task(release_idle_voice())
+
     try:
         yield
 
     finally:
+        voice_sweeper.cancel()
         shutdown_telemetry()
 
 
@@ -415,6 +450,26 @@ app.include_router(
 
 app.include_router(
     desktop.router
+)
+
+app.include_router(
+    voice_api.router
+)
+
+app.include_router(
+    tools_api.router
+)
+
+app.include_router(
+    skills_api.router
+)
+
+app.include_router(
+    home_api.router
+)
+
+app.include_router(
+    system_api.router
 )
 
 

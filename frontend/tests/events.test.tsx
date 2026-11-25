@@ -1,3 +1,7 @@
+/**
+ * @file frontend/tests/events.test.tsx
+ * @description Tests of the live events: parseEvent, useWorkspaceEvents and useLiveRefresh.
+ */
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 

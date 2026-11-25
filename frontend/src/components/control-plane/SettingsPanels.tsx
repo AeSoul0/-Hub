@@ -1,40 +1,39 @@
 /**
  * @file frontend/src/components/control-plane/SettingsPanels.tsx
- * @description Read-only parts of Settings and the first-run setup (M12):
- * configuration issues, which keys are set, and a price table for the models
- * the routing can call.
+ * @description Parts of Settings and the first-run setup (M12, restyled in
+ * F4): configuration issues, which keys are set (never their values), and
+ * the price table of the models the routing can call, which can take the
+ * prices OpenRouter publishes.
  */
 import React, { useState } from "react";
 
+import styles from "@/components/control-plane/control.module.css";
 import type { ConfigIssue, RoutedModel, SecretStatus, Severity } from "@/lib/api/settings";
+import { SECRET_TEXT } from "@/lib/nucleo/models";
 
-const SEVERITY_STYLE: Record<Severity, string> = {
-    error: "border-red-700 bg-red-950 text-red-200",
-    warning: "border-yellow-700 bg-yellow-950 text-yellow-100",
-    info: "border-gray-700 bg-gray-900 text-gray-300",
+const SEVERITY: Record<Severity, { label: string; tone: string }> = {
+    error: { label: "blocca le run", tone: "bad" },
+    warning: { label: "da controllare", tone: "warn" },
+    info: { label: "nota", tone: "" },
 };
 
-const SEVERITY_LABEL: Record<Severity, string> = {
-    error: "Blocks runs",
-    warning: "Check",
-    info: "Note",
-};
+const ORDER: Severity[] = ["error", "warning", "info"];
 
 export function IssueList({ issues }: { issues: ConfigIssue[] }) {
     if (issues.length === 0) {
-        return <p className="text-green-400">The configuration has no problems.</p>;
+        return <p className={styles.muted}>La configurazione non ha problemi.</p>;
     }
 
-    const ordered = [...issues].sort(
-        (a, b) => ["error", "warning", "info"].indexOf(a.severity) - ["error", "warning", "info"].indexOf(b.severity),
-    );
+    const ordered = [...issues].sort((a, b) => ORDER.indexOf(a.severity) - ORDER.indexOf(b.severity));
 
     return (
-        <ul className="space-y-2" aria-label="Configuration issues">
+        <ul className={`${styles.plain} ${styles.stack}`} style={{ gap: 8 }} aria-label="Problemi della configurazione">
             {ordered.map((issue) => (
-                <li key={issue.code} className={`border rounded p-3 text-sm ${SEVERITY_STYLE[issue.severity]}`}>
-                    <span className="mr-2 text-xs uppercase font-bold">{SEVERITY_LABEL[issue.severity]}</span>
-                    {issue.message}
+                <li key={issue.code} className={styles.issue} data-tone={SEVERITY[issue.severity].tone || undefined}>
+                    <span className={styles.badge} data-tone={SEVERITY[issue.severity].tone || undefined}>
+                        {SEVERITY[issue.severity].label}
+                    </span>
+                    <span>{issue.message}</span>
                 </li>
             ))}
         </ul>
@@ -43,31 +42,32 @@ export function IssueList({ issues }: { issues: ConfigIssue[] }) {
 
 export function SecretList({ secrets, desktop = false }: { secrets: SecretStatus[]; desktop?: boolean }) {
     return (
-        <div>
-            <ul className="space-y-1 text-sm" aria-label="Keys">
-                {secrets.map((secret) => (
-                    <li key={secret.name} className="flex flex-wrap gap-2 items-baseline">
-                        <span
-                            className={`text-xs px-2 rounded ${
-                                secret.configured ? "bg-green-900 text-green-200" : "bg-gray-800 text-gray-400"
-                            }`}
-                        >
-                            {secret.configured ? "set" : "not set"}
-                        </span>
-                        <span className="font-mono">{secret.name}</span>
-                        <span className="text-gray-400">— {secret.used_for}</span>
-                    </li>
-                ))}
+        <div className={styles.stack} style={{ gap: 10 }}>
+            <ul className={styles.lines} aria-label="Chiavi">
+                {secrets.map((secret) => {
+                    const text = SECRET_TEXT[secret.name] ?? { label: secret.label, use: secret.used_for };
+                    return (
+                        <li key={secret.name}>
+                            <span>
+                                <b>{text.label}</b> · {text.use}
+                            </span>
+                            <span className={styles.badge} data-tone={secret.configured ? "ok" : undefined}>
+                                {secret.configured ? "impostata" : "mancante"}
+                            </span>
+                        </li>
+                    );
+                })}
             </ul>
             {desktop ? (
-                <p className="mt-3 text-xs text-gray-400">
-                    Keys stay in the OS keyring and are never shown again. Type a new one below to replace it.
+                <p className={styles.help}>
+                    Le chiavi restano nel portachiavi del sistema e non si rivedono più: scrivine una nuova qui sotto
+                    per sostituirla.
                 </p>
             ) : (
-                <p className="mt-3 text-xs text-gray-400">
-                    Keys stay in the OS keyring, never in the browser or in a file. To add or change one, run{" "}
-                    <code className="text-gray-200">python scripts/aehub.py setup</code>, then restart with{" "}
-                    <code className="text-gray-200">python scripts/aehub.py up</code>.
+                <p className={styles.help}>
+                    Le chiavi restano nel portachiavi del sistema, mai nel browser o in un file. Per aggiungerne o
+                    cambiarne una: <code className={styles.mono}>python scripts/aehub.py setup</code>, poi{" "}
+                    <code className={styles.mono}>python scripts/aehub.py up</code>.
                 </p>
             )}
         </div>
@@ -75,6 +75,7 @@ export function SecretList({ secrets, desktop = false }: { secrets: SecretStatus
 }
 
 export type PriceRows = Record<string, { input: string; output: string }>;
+export type CatalogPrices = Record<string, { input: number; output: number }>;
 
 /** Current price of a model from the AEHUB_MODEL_PRICES JSON, if any. */
 function priceOf(pricesJson: string, model: string): { input: string; output: string } {
@@ -94,67 +95,90 @@ export function PriceTable({
     pricesJson,
     busy,
     onSave,
+    catalog = {},
 }: {
     models: RoutedModel[];
     pricesJson: string;
     busy: boolean;
     onSave: (rows: PriceRows) => void;
+    /** Prices published by the provider (OpenRouter), USD per 1M tokens. */
+    catalog?: CatalogPrices;
 }) {
     const [rows, setRows] = useState<PriceRows>(() =>
         Object.fromEntries(models.map((entry) => [entry.model, priceOf(pricesJson, entry.model)])),
     );
 
     if (models.length === 0) {
-        return <p className="text-gray-400">Choose the models first.</p>;
+        return <p className={styles.muted}>Scegli prima i modelli.</p>;
     }
 
     const update = (model: string, side: "input" | "output", value: string) =>
         setRows((current) => ({ ...current, [model]: { ...current[model], [side]: value } }));
 
+    const fillable = models.filter((entry) => catalog[entry.model] && !rows[entry.model]?.input && !rows[entry.model]?.output);
+
+    const fill = () =>
+        setRows((current) => {
+            const next = { ...current };
+            for (const entry of fillable) {
+                const price = catalog[entry.model];
+                next[entry.model] = { input: String(price.input), output: String(price.output) };
+            }
+            return next;
+        });
+
     return (
         <form
+            className={styles.stack}
+            style={{ gap: 12 }}
             onSubmit={(event) => {
                 event.preventDefault();
                 onSave(rows);
             }}
         >
-            <table className="text-sm mb-3">
-                <thead>
-                    <tr className="text-left text-gray-400">
-                        <th className="pr-4 font-normal">Model</th>
-                        <th className="pr-4 font-normal">Input, USD per 1M tokens</th>
-                        <th className="font-normal">Output, USD per 1M tokens</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {models.map((entry) => (
-                        <tr key={entry.model}>
-                            <td className="pr-4 py-1">
-                                <span className="font-mono">{entry.model}</span>
-                                <span className="ml-2 text-xs text-gray-500">{entry.roles.join(", ")}</span>
-                            </td>
-                            {(["input", "output"] as const).map((side) => (
-                                <td key={side} className="pr-4 py-1">
-                                    <input
-                                        aria-label={`${entry.model} ${side} price`}
-                                        inputMode="decimal"
-                                        value={rows[entry.model]?.[side] ?? ""}
-                                        onChange={(event) => update(entry.model, side, event.target.value)}
-                                        className="w-28 rounded bg-gray-900 border border-gray-700 px-2 py-1"
-                                    />
-                                </td>
-                            ))}
+            <div className={styles.tableWrap}>
+                <table className={styles.table}>
+                    <thead>
+                        <tr>
+                            <th>Modello</th>
+                            <th>Input · USD per 1M token</th>
+                            <th>Output · USD per 1M token</th>
                         </tr>
-                    ))}
-                </tbody>
-            </table>
-            <button
-                type="submit"
-                disabled={busy}
-                className="bg-orange-600 hover:bg-orange-500 disabled:opacity-50 rounded px-4 py-1"
-            >
-                Save prices
-            </button>
+                    </thead>
+                    <tbody>
+                        {models.map((entry) => (
+                            <tr key={entry.model}>
+                                <td>
+                                    <span className={styles.mono}>{entry.model}</span>
+                                    <span className={styles.sub}>{entry.roles.join(", ")}</span>
+                                </td>
+                                {(["input", "output"] as const).map((side) => (
+                                    <td key={side}>
+                                        <input
+                                            aria-label={`Prezzo ${side} di ${entry.model}`}
+                                            inputMode="decimal"
+                                            value={rows[entry.model]?.[side] ?? ""}
+                                            placeholder={catalog[entry.model] ? String(catalog[entry.model][side]) : ""}
+                                            onChange={(event) => update(entry.model, side, event.target.value)}
+                                            className={`${styles.input} ${styles.narrow}`}
+                                        />
+                                    </td>
+                                ))}
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+            <div className={styles.row}>
+                <button type="submit" disabled={busy} className={`${styles.btn} ${styles.go}`}>
+                    Salva i prezzi
+                </button>
+                {fillable.length > 0 && (
+                    <button type="button" className={styles.btn} onClick={fill}>
+                        Usa i prezzi di OpenRouter ({fillable.length})
+                    </button>
+                )}
+            </div>
         </form>
     );
 }

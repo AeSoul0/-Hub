@@ -1,10 +1,7 @@
 <!--
 @file docs/security/threat-model.md
-@description Core module for A.U.R.O.R.A. System
-
-Implements primary logic and architectural constraints.
-Architectural constraints and responsibilities apply here.
-Testability and dependency separation are enforced.
+@description Threat model of ÆHub: trust boundaries, assets, threats and
+the controls that answer them (M1, kept up to date since).
 -->
 
 # M1 Security Foundation: Threat Model

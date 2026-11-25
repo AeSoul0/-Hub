@@ -1,3 +1,7 @@
+/**
+ * @file frontend/tests/helpers.ts
+ * @description Shared helpers of the frontend tests: a stubbed fetch with one handler per route, and a fake EventSource.
+ */
 import { vi } from "vitest";
 
 /**

@@ -37,21 +37,65 @@ MANAGEMENT = {
     ("POST", "/api/runs/stop-all"),
     ("POST", "/api/runs/{run_id}/cancel"),
     ("GET", "/api/runs/{run_id}"),
+    # F2: run history and timeline, read only.
+    ("GET", "/api/runs"),
+    ("GET", "/api/runs/{run_id}/events"),
     ("GET", "/api/audit"),
     # M12: settings change routing, prices and limits, never tools or secrets.
     ("GET", "/api/settings"),
     ("PUT", "/api/settings"),
     ("POST", "/api/settings/onboarding"),
+    # F4: the models a provider offers, for the role editor; read only.
+    ("GET", "/api/settings/provider-models/{provider}"),
     ("GET", "/api/memory"),
-    ("POST", "/api/memory/preferences"),
     ("DELETE", "/api/memory/{memory_id}"),
-    # M13: the document index of the working folder; search is a tool.
+    # F6: the user writes, edits, vouches for and forgets memories; vectors
+    # are recomputed after an embedder change. No tool runs.
+    ("POST", "/api/memory"),
+    ("PUT", "/api/memory/{memory_id}"),
+    ("DELETE", "/api/memory"),
+    ("POST", "/api/memory/reembed"),
+    # M13: the document index of the working folder; the agent searches
+    # through its tool.
     ("GET", "/api/documents"),
     ("POST", "/api/documents/sync"),
+    # F6: upload into the working folder, and search and citation passages
+    # for the user's screen only (never sent to a model).
+    ("POST", "/api/documents/upload"),
+    ("GET", "/api/documents/search"),
+    ("GET", "/api/documents/passage"),
     # M14: the desktop app's launch token and provider keys into the keyring.
     ("GET", "/desktop/launch/{token}"),
     ("GET", "/api/desktop"),
     ("PUT", "/api/desktop/secrets"),
+    # F3: voice status, the ElevenLabs voice list and speaking a reply.
+    ("GET", "/api/voice"),
+    ("GET", "/api/voice/elevenlabs/voices"),
+    ("POST", "/api/voice/speak"),
+    # F5: the tool catalog (read only; switching tools is a setting) and
+    # skills imported as SKILL.md text. A skill never runs from here: the
+    # agent reads an enabled one through the use_skill tool, untrusted.
+    ("GET", "/api/tools"),
+    ("GET", "/api/skills"),
+    ("GET", "/api/skills/{skill_id}"),
+    ("POST", "/api/skills/import"),
+    ("PUT", "/api/skills/{skill_id}"),
+    ("DELETE", "/api/skills/{skill_id}"),
+    ("GET", "/api/home"),
+    ("PUT", "/api/home/devices"),
+    ("POST", "/api/home/devices/{device_id}/command"),
+    ("POST", "/api/home/devices/{device_id}/state"),
+    ("POST", "/api/home/broker/check"),
+    # F9: the SISTEMA page. The evals run offline in a child process with
+    # their own tools and database; nothing here runs a tool of the server.
+    ("GET", "/api/system"),
+    ("POST", "/api/system/updates/check"),
+    ("GET", "/api/system/events"),
+    ("GET", "/api/system/events/export"),
+    ("GET", "/api/system/evals"),
+    ("POST", "/api/system/evals"),
+    ("POST", "/api/system/access-key/rotate"),
+    ("GET", "/api/system/logs"),
     ("GET", "/api/events"),
     ("GET", "/health"),
     ("MOUNT", "/metrics"),
@@ -100,5 +144,8 @@ def test_api_surface_is_exactly_the_reviewed_one():
 def test_removed_capabilities_stay_removed():
     paths = {path for _, path in _surface()}
 
-    for prefix in ("/api/media", "/api/academic", "/api/voice"):
+    # ADR-019 removed the second audio input /api/voice/stream: speech still
+    # comes in only through /api/orchestrator/listen and the WebSocket. The
+    # F3 /api/voice routes take no audio and start no run (ADR-024).
+    for prefix in ("/api/media", "/api/academic", "/api/voice/stream"):
         assert not any(path.startswith(prefix) for path in paths), prefix
