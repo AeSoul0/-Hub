@@ -41,7 +41,8 @@
     display: flex; gap: 10px; align-items: baseline;
 }
 .h2 span { font-family: var(--font-code); letter-spacing: 0; color: var(--faint); }
-.muted { color: var(--dim); font-size: 13px; margin: 0; }
+/* Paths and ids have no spaces: they may break anywhere rather than widen the page. */
+.muted { color: var(--dim); font-size: 13px; margin: 0; overflow-wrap: anywhere; }
 .faint { color: var(--faint); }
 .error { color: var(--danger); font-size: 13px; margin: 0; }
 .warn { color: var(--amber); font-size: 12px; margin: 0; }
@@ -159,7 +160,8 @@
 
 /* lists of key/value lines */
 .lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; font-family: var(--font-code); font-size: 12px; }
-.lines li { display: flex; justify-content: space-between; gap: 12px; color: var(--dim); }
+.lines li { display: flex; justify-content: space-between; gap: 12px; color: var(--dim); min-width: 0; overflow-wrap: anywhere; }
+.lines li > * { min-width: 0; }
 .lines li b { color: var(--ink); font-weight: 400; font-variant-numeric: tabular-nums; }
 
 /* settings forms (F4) */

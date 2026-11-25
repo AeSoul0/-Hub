@@ -197,6 +197,17 @@ setup_telemetry(
 # ==============================================================================
 
 
+# Requests per minute and per user. One page of the Control Plane makes
+# three to five requests and re-reads them on live events, so the general
+# limit must let the owner move through the pages quickly: 60 stopped the
+# interface after about ten pages (browser pass, 2026-11-25). It remains a
+# stop for a runaway script. Commands to the model and uploads keep their
+# own, tighter limits.
+API_REQUESTS_PER_MINUTE = 600
+COMMANDS_PER_MINUTE = 20
+UPLOADS_PER_MINUTE = 10
+
+
 @app.middleware("http")
 async def verify_api_key(
     request: Request,
@@ -253,7 +264,7 @@ async def verify_api_key(
 
             path = request.url.path
 
-            limit = 60
+            limit = API_REQUESTS_PER_MINUTE
             window = 60
             limit_key = "api"
 
@@ -263,14 +274,14 @@ async def verify_api_key(
                 )
                 or "upload" in path
             ):
-                limit = 10
+                limit = UPLOADS_PER_MINUTE
                 window = 60
                 limit_key = "upload"
 
             elif path.startswith(
                 "/api/orchestrator/ask"
             ):
-                limit = 20
+                limit = COMMANDS_PER_MINUTE
                 window = 60
                 limit_key = "llm"
 

@@ -478,3 +478,119 @@ def test_browser_smoke(tmp_path):
             browser.close()
 
     assert app.process.returncode == 0, app.log.read_text(encoding="utf-8")[-4000:]
+
+
+# Every page of the interface, in the order of the Control Plane menu.
+PAGES = [
+    "/",
+    "/control-plane/",
+    "/control-plane/approvals/",
+    "/control-plane/runs/",
+    None,  # the view of the run made by the test
+    "/control-plane/memory/",
+    "/control-plane/documents/",
+    "/control-plane/home/",
+    "/control-plane/tools/",
+    "/control-plane/skills/",
+    "/control-plane/security/",
+    "/control-plane/voice/",
+    "/control-plane/settings/",
+    "/control-plane/setup/",
+    "/control-plane/system/",
+]
+
+# The page's width, the screen's, and the outermost elements that stick out
+# on the right (tag, class, start of the text), to say what to fix.
+WIDE_ELEMENTS = """
+() => {
+  const screen = window.innerWidth;
+  const out = (el) => el.getBoundingClientRect().right > screen + 1;
+  const wide = [...document.querySelectorAll('body *')]
+    .filter((el) => out(el) && !(el.parentElement && out(el.parentElement)))
+    .slice(0, 5)
+    .map((el) => `${el.tagName.toLowerCase()}.${String(el.className).slice(0, 30)} "${(el.innerText || '').trim().slice(0, 40)}"`);
+  return [document.documentElement.scrollWidth, screen, wide];
+}
+"""
+
+# The model lists of the providers answer 503 without a key or a network:
+# the page then asks for the name by hand.
+EXPECTED_FAILURES = ("/api/settings/provider-models/",)
+
+
+@pytest.mark.skipif(
+    os.getenv("AEHUB_BROWSER_SMOKE") != "1" or not (EXPORT / "index.html").is_file(),
+    reason="browser smoke: AEHUB_BROWSER_SMOKE=1, the static export and Playwright's Chromium",
+)
+def test_browser_smoke_every_page_fits(tmp_path):
+    """
+    Every page, after a real run, on a desktop and on a phone (375 px): no
+    horizontal scroll, no script error, no refused request. The first pass
+    by hand (2026-11-25) found the Nucleo's command bar wider than a phone
+    and the general rate limit refusing the owner after about ten pages.
+    """
+    from playwright.sync_api import expect, sync_playwright
+
+    problems: List[str] = []
+
+    with running_sidecar(tmp_path, EXPORT) as app, sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        context = browser.new_context()
+        page = context.new_page()
+
+        try:
+            page.goto(app.launch_url)
+            page.wait_for_url(f"{app.origin}/control-plane**")
+            configure_models(
+                lambda path, body: context.request.put(f"{app.origin}{path}", data=body).json(),
+                lambda path: context.request.post(f"{app.origin}{path}").json(),
+            )
+
+            page.goto(f"{app.origin}/")
+            expect(page.get_by_text("in linea")).to_be_visible(timeout=30_000)
+            command = page.get_by_role("textbox", name="Comando")
+            command.fill("Run echo hello in the sandbox shell.")
+            with page.expect_response("**/api/orchestrator/ask", timeout=120_000):
+                command.press("Enter")
+            allow = page.get_by_role("button", name="Consenti")
+            expect(allow).to_be_visible(timeout=60_000)
+            allow.click()
+            expect(allow).to_be_hidden(timeout=60_000)
+            run_id = context.request.get(f"{app.origin}/api/runs").json()["runs"][0]["run_id"]
+            page.close()
+
+            for width, height in ((1280, 860), (375, 812)):
+                sized = browser.new_context(
+                    viewport={"width": width, "height": height},
+                    storage_state=context.storage_state(),
+                )
+
+                for path in PAGES:
+                    path = path or f"/control-plane/runs/view/?id={run_id}"
+                    view = sized.new_page()
+                    seen: List[str] = []
+                    view.on("pageerror", lambda error, seen=seen: seen.append(f"script error: {error}"))
+                    view.on(
+                        "response",
+                        lambda response, seen=seen: response.status >= 400
+                        and not any(part in response.url for part in EXPECTED_FAILURES)
+                        and seen.append(f"{response.status} {response.url.replace(app.origin, '')}"),
+                    )
+                    view.goto(f"{app.origin}{path}")
+                    view.wait_for_load_state("networkidle")
+                    view.wait_for_timeout(500)
+
+                    scroll, inner, wide = view.evaluate(WIDE_ELEMENTS)
+                    if scroll > inner:
+                        seen.append(f"{scroll} px wide on a {inner} px screen: {wide}")
+
+                    problems.extend(f"{path} at {width} px: {item}" for item in seen)
+                    view.close()
+
+                sized.close()
+        finally:
+            context.close()
+            browser.close()
+
+    assert problems == [], "\n".join(problems)
+
