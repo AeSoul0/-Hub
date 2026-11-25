@@ -53,6 +53,7 @@ SECRETS: Dict[str, str] = {
     "AEHUB_MQTT_PASSWORD": "MQTT broker of the home devices (optional)",
     "AEHUB_LOCAL_API_KEY": "local OpenAI-compatible server (optional)",
     "ELEVENLABS_API_KEY": "ElevenLabs cloud voice (optional, ADR-024)",
+    "AEHUB_MCP_TOKENS": "MCP servers that need a login, as host=token,host=token (optional, ADR-033)",
 }
 
 # Keys the stack no longer reads: their lines are removed from the env file,

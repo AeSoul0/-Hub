@@ -20,6 +20,7 @@ Secrets are not editable here: the launcher keeps them in the OS keyring.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Dict, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -86,7 +87,28 @@ async def update_settings(
                 detail={"message": "Settings not saved.", "errors": exc.errors},
             ) from exc
 
+        _apply_mcp_changes(update.values)
+
         return settings_view(db)
+
+
+_mcp_refreshes: set = set()
+
+
+def _apply_mcp_changes(changes: Dict[str, Any]) -> None:
+    """
+    A new risk applies to the next run; a new allowlist reconnects in the
+    background (ADR-033), so the save does not wait for the servers.
+    """
+    from app.skills.mcp_bridge import refresh_mcp_risks, refresh_mcp_servers
+
+    if "AEHUB_MCP_TOOL_RISK" in changes or "AEHUB_MCP_ALLOWED_SERVERS" in changes:
+        refresh_mcp_risks()
+
+    if "AEHUB_MCP_ALLOWED_SERVERS" in changes:
+        task = asyncio.create_task(refresh_mcp_servers())
+        _mcp_refreshes.add(task)
+        task.add_done_callback(_mcp_refreshes.discard)
 
 
 @router.get("/provider-models/{provider}")

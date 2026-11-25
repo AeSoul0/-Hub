@@ -2,13 +2,15 @@
  * @file frontend/src/app/control-plane/tools/page.tsx
  * @description Strumenti (F5, ADR-026): every skill with its tools and the
  * risk of each, switching tools on and off, the skill index, the folders,
- * hosts and MCP servers the tools may reach, and the sandbox.
+ * hosts and MCP servers the tools may reach, what each MCP server answered
+ * and the risk of its tools (ADR-033), and the sandbox.
  *
  * Reads GET /api/tools; every change is a setting saved through
  * PUT /api/settings (validated, audited, applied to the next run without a
  * restart): AEHUB_DISABLED_TOOLS, AEHUB_TOOL_SELECTION, AEHUB_TOOL_TOP_K,
- * AEHUB_MCP_ALLOWED_SERVERS. Folders and API hosts are startup parameters,
- * shown read only.
+ * AEHUB_MCP_ALLOWED_SERVERS, AEHUB_MCP_TOOL_RISK. POST /api/tools/mcp/refresh
+ * connects to the MCP servers again. Folders and API hosts are startup
+ * parameters, shown read only.
  */
 "use client";
 
@@ -16,12 +18,15 @@ import Link from "next/link";
 import React, { useCallback, useEffect, useState } from "react";
 
 import styles from "@/components/control-plane/control.module.css";
-import { getJson } from "@/lib/api/client";
+import { getJson, postJson } from "@/lib/api/client";
 import { useSettings, type SettingChanges } from "@/lib/api/settings";
 import {
     disabledValue,
+    riskValue,
     serversValue,
     validServer,
+    type McpServerStatus,
+    type Risk,
     type SkillGroup,
     type ToolInfo,
     type ToolsView,
@@ -32,14 +37,30 @@ function message(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
 }
 
+const RISK_CHOICES: { value: Risk; label: string }[] = [
+    { value: "high", label: "alto: chiede sempre" },
+    { value: "medium", label: "medio" },
+    { value: "low", label: "basso" },
+];
+
+const MCP_STATE: Record<McpServerStatus["state"], { label: string; tone: "ok" | "warn" | "bad" }> =
+    {
+        connected: { label: "collegato", tone: "ok" },
+        error: { label: "non risponde", tone: "bad" },
+        waiting: { label: "non ancora controllato", tone: "warn" },
+    };
+
 function ToolRow({
     tool,
     busy,
     onToggle,
+    onRisk,
 }: {
     tool: ToolInfo;
     busy: boolean;
     onToggle: (tool: ToolInfo, enabled: boolean) => void;
+    /** Only MCP tools: their risk is the owner's to set. */
+    onRisk?: (tool: ToolInfo, risk: Risk) => void;
 }) {
     const risk = RISK_LABELS[tool.risk] ?? RISK_LABELS.medium;
 
@@ -77,6 +98,23 @@ function ToolRow({
                         </span>
                     )}
                 </span>
+                {onRisk && (
+                    <label className={styles.field}>
+                        Rischio
+                        <select
+                            value={tool.risk}
+                            disabled={busy}
+                            aria-label={`Rischio di ${tool.name}`}
+                            onChange={(event) => onRisk(tool, event.target.value as Risk)}
+                        >
+                            {RISK_CHOICES.map((choice) => (
+                                <option key={choice.value} value={choice.value}>
+                                    {choice.label}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+                )}
             </div>
         </li>
     );
@@ -86,11 +124,15 @@ function SkillCard({
     skill,
     busy,
     onToggle,
+    onRisk,
 }: {
     skill: SkillGroup;
     busy: boolean;
     onToggle: (tool: ToolInfo, enabled: boolean) => void;
+    onRisk: (tool: ToolInfo, risk: Risk) => void;
 }) {
+    const mcp = skill.source === "mcp";
+
     return (
         <section className={styles.card} aria-label={skillTitle(skill.name)}>
             <div className={styles.settingHead}>
@@ -99,11 +141,19 @@ function SkillCard({
                     {SOURCE_TEXT[skill.source]} · {skill.name}
                 </span>
             </div>
-            <p className={styles.help}>{SKILL_TEXT[skill.name]?.description ?? skill.description}</p>
+            <p className={styles.help}>
+                {SKILL_TEXT[skill.name]?.description ?? skill.description}
+            </p>
             {skill.tools.length ? (
                 <ul className={styles.plain}>
                     {skill.tools.map((tool) => (
-                        <ToolRow key={tool.name} tool={tool} busy={busy} onToggle={onToggle} />
+                        <ToolRow
+                            key={tool.name}
+                            tool={tool}
+                            busy={busy}
+                            onToggle={onToggle}
+                            onRisk={mcp ? onRisk : undefined}
+                        />
                     ))}
                 </ul>
             ) : (
@@ -116,6 +166,8 @@ function SkillCard({
                             </Link>
                             .
                         </>
+                    ) : mcp ? (
+                        "Nessun server MCP collegato: aggiungilo in Confini, poi Ricollega."
                     ) : (
                         "Nessun tool in questo momento."
                     )}
@@ -187,15 +239,40 @@ export default function ToolsPage() {
     const stale = view.disabled.filter((name) => !known.has(name));
     const topK = Number(selection.topK);
     const selectionDirty =
-        selection.enabled !== view.selection.enabled || selection.topK !== String(view.selection.top_k);
+        selection.enabled !== view.selection.enabled ||
+        selection.topK !== String(view.selection.top_k);
     const topKValid = Number.isInteger(topK) && topK >= 1 && topK <= 50;
     const serversDirty = serversValue(servers) !== serversValue(view.boundaries.mcp_servers);
     const serversValid = servers.every((row) => !row.trim() || validServer(row));
 
+    const setRisk = (tool: ToolInfo, risk: Risk) =>
+        apply(
+            { AEHUB_MCP_TOOL_RISK: riskValue(view.mcp.risk, tool.name, risk) },
+            risk === "high"
+                ? `${tool.name} chiede di nuovo l'approvazione a ogni chiamata.`
+                : `${tool.name} ora è a rischio ${risk === "low" ? "basso" : "medio"}: non chiede più l'approvazione.`
+        );
+
+    const reconnect = async () => {
+        setBusy(true);
+        setNote(null);
+        try {
+            await postJson("/api/tools/mcp/refresh", {});
+            setNote("Server MCP ricontrollati.");
+            await refresh();
+        } catch (err) {
+            setNote(`Ricollegamento non riuscito: ${message(err)}`);
+        } finally {
+            setBusy(false);
+        }
+    };
+
     const toggle = (tool: ToolInfo, enabled: boolean) =>
         apply(
             { AEHUB_DISABLED_TOOLS: disabledValue(view.disabled, tool.name, enabled) },
-            enabled ? `${tool.name} è attivo dalla prossima run.` : `${tool.name} è spento dalla prossima run.`,
+            enabled
+                ? `${tool.name} è attivo dalla prossima run.`
+                : `${tool.name} è spento dalla prossima run.`
         );
 
     return (
@@ -213,16 +290,18 @@ export default function ToolsPage() {
             </div>
 
             <p className={styles.muted}>
-                Ogni chiamata passa dal Tool Gateway: policy, approvazioni, provenienza, audit e budget. Un tool spento
-                non viene mostrato all&apos;agente e, se lo chiede lo stesso, la chiamata è rifiutata. Dopo un
-                contenuto esterno ogni azione a rischio alto aspetta la tua approvazione.
+                Ogni chiamata passa dal Tool Gateway: policy, approvazioni, provenienza, audit e
+                budget. Un tool spento non viene mostrato all&apos;agente e, se lo chiede lo stesso,
+                la chiamata è rifiutata. Dopo un contenuto esterno ogni azione a rischio alto
+                aspetta la tua approvazione.
             </p>
 
             <section className={styles.card} aria-label="Indice delle skill">
                 <h2 className={styles.h2}>Indice delle skill</h2>
                 <p className={styles.help}>
-                    Prima di ogni run l&apos;indice sceglie dal testo del compito i tool che servono: l&apos;agente vede
-                    solo quelli, e un&apos;istruzione nascosta in una pagina non può chiamarne altri.
+                    Prima di ogni run l&apos;indice sceglie dal testo del compito i tool che
+                    servono: l&apos;agente vede solo quelli, e un&apos;istruzione nascosta in una
+                    pagina non può chiamarne altri.
                 </p>
                 <div className={styles.filters}>
                     <div className={styles.row} role="radiogroup" aria-label="Indice delle skill">
@@ -254,7 +333,9 @@ export default function ToolsPage() {
                             className={styles.narrow}
                             value={selection.topK}
                             aria-invalid={!topKValid}
-                            onChange={(event) => setSelection({ ...selection, topK: event.target.value })}
+                            onChange={(event) =>
+                                setSelection({ ...selection, topK: event.target.value })
+                            }
                         />
                     </label>
                     <button
@@ -267,7 +348,7 @@ export default function ToolsPage() {
                                     AEHUB_TOOL_SELECTION: selection.enabled ? "on" : "off",
                                     AEHUB_TOOL_TOP_K: String(topK),
                                 },
-                                "Indice salvato: vale dalla prossima run.",
+                                "Indice salvato: vale dalla prossima run."
                             )
                         }
                     >
@@ -289,13 +370,20 @@ export default function ToolsPage() {
                 </h2>
                 <div className={styles.grid}>
                     {view.skills.map((skill) => (
-                        <SkillCard key={skill.name} skill={skill} busy={busy} onToggle={toggle} />
+                        <SkillCard
+                            key={skill.name}
+                            skill={skill}
+                            busy={busy}
+                            onToggle={toggle}
+                            onRisk={setRisk}
+                        />
                     ))}
                 </div>
                 {stale.length > 0 && (
                     <div className={styles.issue} data-tone="warn">
                         <span>
-                            Spenti ma non più presenti: <span className={styles.mono}>{stale.join(", ")}</span>
+                            Spenti ma non più presenti:{" "}
+                            <span className={styles.mono}>{stale.join(", ")}</span>
                         </span>
                         <button
                             type="button"
@@ -305,9 +393,11 @@ export default function ToolsPage() {
                                 apply(
                                     {
                                         AEHUB_DISABLED_TOOLS:
-                                            view.disabled.filter((name) => known.has(name)).join(",") || null,
+                                            view.disabled
+                                                .filter((name) => known.has(name))
+                                                .join(",") || null,
                                     },
-                                    "Elenco ripulito.",
+                                    "Elenco ripulito."
                                 )
                             }
                         >
@@ -323,8 +413,9 @@ export default function ToolsPage() {
                 <div className={styles.setting}>
                     <span className={styles.settingLabel}>Cartelle dei tool</span>
                     <p className={styles.help}>
-                        I tool che leggono o scrivono file restano qui dentro. Si scelgono all&apos;avvio, dal launcher o
-                        da <code className={styles.mono}>AEHUB_ALLOWED_DIRS</code>.
+                        I tool che leggono o scrivono file restano qui dentro. Si scelgono
+                        all&apos;avvio, dal launcher o da{" "}
+                        <code className={styles.mono}>AEHUB_ALLOWED_DIRS</code>.
                     </p>
                     <ul className={styles.lines}>
                         {view.boundaries.directories.map((folder) => (
@@ -339,7 +430,8 @@ export default function ToolsPage() {
                 <div className={styles.setting}>
                     <span className={styles.settingLabel}>Host dell&apos;API</span>
                     <p className={styles.help}>
-                        L&apos;API risponde solo a questi nomi, contro il DNS rebinding. Si aggiungono all&apos;avvio con{" "}
+                        L&apos;API risponde solo a questi nomi, contro il DNS rebinding. Si
+                        aggiungono all&apos;avvio con{" "}
                         <code className={styles.mono}>AEHUB_ALLOWED_HOSTS</code>.
                     </p>
                     <p className={styles.mono}>{view.boundaries.api_hosts.join(" · ")}</p>
@@ -348,8 +440,10 @@ export default function ToolsPage() {
                 <div className={styles.setting}>
                     <span className={styles.settingLabel}>Server MCP consentiti</span>
                     <p className={styles.help}>
-                        Il ponte MCP si collega solo a questi indirizzi; vuoto vuol dire nessuno. Quello che un server
-                        MCP restituisce conta sempre come contenuto esterno.
+                        Il client MCP si collega solo a questi indirizzi (https, o http solo verso
+                        questo computer); vuoto vuol dire nessuno. Quello che un server MCP
+                        restituisce conta sempre come contenuto esterno, e ogni suo tool chiede la
+                        tua approvazione finché non ne abbassi il rischio nel catalogo.
                     </p>
                     <ul className={styles.servers}>
                         {servers.map((row, index) => (
@@ -361,7 +455,11 @@ export default function ToolsPage() {
                                     aria-label={`Server MCP ${index + 1}`}
                                     spellCheck={false}
                                     onChange={(event) =>
-                                        setServers(servers.map((item, at) => (at === index ? event.target.value : item)))
+                                        setServers(
+                                            servers.map((item, at) =>
+                                                at === index ? event.target.value : item
+                                            )
+                                        )
                                     }
                                 />
                                 <span className={styles.icons}>
@@ -381,7 +479,11 @@ export default function ToolsPage() {
                         ))}
                     </ul>
                     <div className={styles.row}>
-                        <button type="button" className={styles.linkBtn} onClick={() => setServers([...servers, ""])}>
+                        <button
+                            type="button"
+                            className={styles.linkBtn}
+                            onClick={() => setServers([...servers, ""])}
+                        >
                             + aggiungi un server
                         </button>
                         <button
@@ -389,7 +491,10 @@ export default function ToolsPage() {
                             className={`${styles.btn} ${styles.go}`}
                             disabled={busy || !serversDirty || !serversValid}
                             onClick={() =>
-                                apply({ AEHUB_MCP_ALLOWED_SERVERS: serversValue(servers) }, "Server MCP salvati.")
+                                apply(
+                                    { AEHUB_MCP_ALLOWED_SERVERS: serversValue(servers) },
+                                    "Server MCP salvati."
+                                )
                             }
                         >
                             Salva i server
@@ -401,6 +506,60 @@ export default function ToolsPage() {
                         )}
                     </div>
                 </div>
+
+                <div className={styles.setting}>
+                    <span className={styles.settingLabel}>Server MCP</span>
+                    <p className={styles.help}>
+                        Un server che chiede un login vuole un token: va nel keyring come{" "}
+                        <code className={styles.mono}>AEHUB_MCP_TOKENS</code> (
+                        <code className={styles.mono}>host=token</code>, separati da virgole) con{" "}
+                        <code className={styles.mono}>python scripts/aehub.py setup</code>. Il token
+                        va solo al suo host. Dopo un token nuovo, ricollega.
+                    </p>
+                    {view.mcp.servers.length ? (
+                        <ul className={styles.lines} aria-label="Stato dei server MCP">
+                            {view.mcp.servers.map((server) => {
+                                const state = MCP_STATE[server.state] ?? MCP_STATE.waiting;
+                                return (
+                                    <li key={server.url}>
+                                        <span>
+                                            <span className={styles.mono}>{server.name}</span> ·{" "}
+                                            {server.url}
+                                            {server.error && (
+                                                <span className={styles.help}>
+                                                    {" "}
+                                                    · {server.error}
+                                                </span>
+                                            )}
+                                        </span>
+                                        <span className={styles.row}>
+                                            <span className={styles.badge} data-tone={state.tone}>
+                                                {server.state === "connected"
+                                                    ? `${state.label} · ${server.tools.length} tool`
+                                                    : state.label}
+                                            </span>
+                                            <span className={styles.badge}>
+                                                {server.token ? "token nel keyring" : "senza token"}
+                                            </span>
+                                        </span>
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    ) : (
+                        <p className={styles.muted}>Nessun server consentito.</p>
+                    )}
+                    <div className={styles.row}>
+                        <button
+                            type="button"
+                            className={styles.btn}
+                            disabled={busy || !view.mcp.servers.length}
+                            onClick={reconnect}
+                        >
+                            Ricollega
+                        </button>
+                    </div>
+                </div>
             </section>
 
             <section className={styles.card} aria-label="Sandbox Docker">
@@ -408,8 +567,13 @@ export default function ToolsPage() {
                 <dl className={styles.facts}>
                     <dt>Docker</dt>
                     <dd>
-                        <span className={styles.badge} data-tone={view.sandbox.docker ? "ok" : "warn"}>
-                            {view.sandbox.docker ? "disponibile" : "non trovato: Python e shell non possono girare"}
+                        <span
+                            className={styles.badge}
+                            data-tone={view.sandbox.docker ? "ok" : "warn"}
+                        >
+                            {view.sandbox.docker
+                                ? "disponibile"
+                                : "non trovato: Python e shell non possono girare"}
                         </span>
                     </dd>
                     <dt>Immagine</dt>
@@ -417,7 +581,9 @@ export default function ToolsPage() {
                     <dt>Memoria</dt>
                     <dd className={styles.mono}>{view.sandbox.memory_limit}</dd>
                     <dt>Rete</dt>
-                    <dd>{view.sandbox.network ? "accesa" : "spenta: il codice non esce su internet"}</dd>
+                    <dd>
+                        {view.sandbox.network ? "accesa" : "spenta: il codice non esce su internet"}
+                    </dd>
                 </dl>
             </section>
         </main>

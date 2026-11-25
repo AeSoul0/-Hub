@@ -7,10 +7,14 @@ GET /api/tools   every registered skill with its tools: risk, approval,
                  network and file access, whether the output is untrusted,
                  whether the tool is enabled. Also the skill index, the
                  folders the tools may touch, the hosts the API answers to,
-                 the allowed MCP servers and the sandbox.
+                 the allowed MCP servers and what each answered, and the
+                 sandbox.
+POST /api/tools/mcp/refresh   connect again to the MCP servers and list
+                 their tools (ADR-033). Owner only.
 
 Changes go through PUT /api/settings (AEHUB_DISABLED_TOOLS,
-AEHUB_TOOL_SELECTION, AEHUB_TOOL_TOP_K, AEHUB_MCP_ALLOWED_SERVERS), so they
+AEHUB_TOOL_SELECTION, AEHUB_TOOL_TOP_K, AEHUB_MCP_ALLOWED_SERVERS,
+AEHUB_MCP_TOOL_RISK), so they
 are validated and audited like every setting. The folders and hosts are
 startup parameters: the launcher or the environment sets them.
 """
@@ -20,9 +24,9 @@ from __future__ import annotations
 import shutil
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
-from app.core.security import Principal, resolve_principal
+from app.core.security import Principal, RoleEnum, resolve_principal
 
 
 router = APIRouter(
@@ -35,6 +39,7 @@ TOOL_SETTINGS = (
     "AEHUB_TOOL_SELECTION",
     "AEHUB_TOOL_TOP_K",
     "AEHUB_MCP_ALLOWED_SERVERS",
+    "AEHUB_MCP_TOOL_RISK",
 )
 
 
@@ -54,7 +59,7 @@ def untrusted_output(metadata: Any) -> bool:
 def skill_source(name: str) -> str:
     if name == "imported_skills":
         return "imported"
-    if name.startswith("mcp_"):
+    if name == "mcp" or name.startswith("mcp_"):
         return "mcp"
     return "builtin"
 
@@ -116,7 +121,7 @@ async def list_tools(
     from app.agent_engine.tool_selection import selection_status
     from app.core.runtime_config import source_of
     from app.core.security import allowed_hosts, disabled_tools
-    from app.skills.mcp_bridge import configured_mcp_servers
+    from app.skills.mcp_bridge import configured_mcp_servers, get_skill as mcp_skill, risk_overrides
     from app.skills.registry import skill_registry
 
     del principal
@@ -135,6 +140,22 @@ async def list_tools(
             "api_hosts": allowed_hosts(),
             "mcp_servers": configured_mcp_servers(),
         },
+        "mcp": {
+            "servers": mcp_skill().status(),
+            "risk": {name: level.value for name, level in sorted(risk_overrides().items())},
+        },
         "sandbox": sandbox_status(),
         "sources": {name: source_of(name) for name in TOOL_SETTINGS},
     }
+
+
+@router.post("/mcp/refresh")
+async def refresh_mcp(
+    principal: Principal = Depends(resolve_principal),
+) -> Dict[str, Any]:
+    from app.skills.mcp_bridge import refresh_mcp_servers
+
+    if principal.role != RoleEnum.ADMIN:
+        raise HTTPException(status_code=403, detail="Only the owner can reconnect the MCP servers.")
+
+    return {"servers": await refresh_mcp_servers()}

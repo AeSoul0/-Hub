@@ -32,6 +32,8 @@ router = APIRouter(tags=["desktop"])
 
 SECRET_NAMES = {name for name, _label, _purpose in SECRETS}
 MAX_SECRET_LENGTH = 512
+# AEHUB_MCP_TOKENS holds one token per MCP server (host=token,...).
+LONG_SECRETS = {"AEHUB_MCP_TOKENS": 8192}
 APP_PATH = "/control-plane"
 
 _EXPIRED_PAGE = (
@@ -90,7 +92,7 @@ async def save_secrets(
             errors[name] = "Unknown key."
         elif not isinstance(value, str) or not value.strip():
             errors[name] = "Must be a non-empty string."
-        elif len(value) > MAX_SECRET_LENGTH or any(ch.isspace() for ch in value.strip()):
+        elif len(value) > LONG_SECRETS.get(name, MAX_SECRET_LENGTH) or any(ch.isspace() for ch in value.strip()):
             errors[name] = "Does not look like a key."
         else:
             values[name] = value.strip()

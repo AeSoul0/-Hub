@@ -21,15 +21,33 @@ export const SOURCE_TEXT: Record<SkillSource, string> = {
 };
 
 export const SKILL_TEXT: Record<string, { title: string; description: string }> = {
-    browser_automation: { title: "Browser", description: "Apre una pagina web e ne legge il testo." },
-    documents: { title: "Documenti", description: "Cerca nei documenti della cartella di lavoro e cita la fonte." },
+    browser_automation: {
+        title: "Browser",
+        description: "Apre una pagina web e ne legge il testo.",
+    },
+    documents: {
+        title: "Documenti",
+        description: "Cerca nei documenti della cartella di lavoro e cita la fonte.",
+    },
     home: {
         title: "Casa",
-        description: "Comanda i dispositivi dichiarati (luci, serrature) via MQTT. Senza dispositivi non ha tool.",
+        description:
+            "Comanda i dispositivi dichiarati (luci, serrature) via MQTT. Senza dispositivi non ha tool.",
     },
-    memory: { title: "Memoria", description: "Salva fatti, procedure e preferenze da ricordare nelle sessioni dopo." },
-    sandbox: { title: "Sandbox", description: "Esegue Python e comandi shell in un container isolato, senza rete." },
+    memory: {
+        title: "Memoria",
+        description: "Salva fatti, procedure e preferenze da ricordare nelle sessioni dopo.",
+    },
+    sandbox: {
+        title: "Sandbox",
+        description: "Esegue Python e comandi shell in un container isolato, senza rete.",
+    },
     web_search: { title: "Ricerca web", description: "Cerca sul web informazioni aggiornate." },
+    mcp: {
+        title: "Server MCP",
+        description:
+            "I tool dei server MCP consentiti. Ogni chiamata aspetta la tua approvazione, finché non abbassi il rischio di quel tool.",
+    },
     imported_skills: {
         title: "Skill importate",
         description:
@@ -50,16 +68,23 @@ export const TOOL_TEXT: Record<string, string> = {
 };
 
 export const WARNING_TEXT: Record<SkillWarning, string> = {
-    download_and_run: "Scarica qualcosa da internet e lo esegue subito (per esempio curl … | bash).",
-    encoded_payload: "Contiene un lungo blocco codificato (base64 o simile): può nascondere istruzioni.",
-    instruction_override: "Prova a far ignorare le istruzioni precedenti o parla del prompt di sistema.",
+    download_and_run:
+        "Scarica qualcosa da internet e lo esegue subito (per esempio curl … | bash).",
+    encoded_payload:
+        "Contiene un lungo blocco codificato (base64 o simile): può nascondere istruzioni.",
+    instruction_override:
+        "Prova a far ignorare le istruzioni precedenti o parla del prompt di sistema.",
     secrets: "Parla di password, chiavi, file .env o chiavi SSH.",
-    bundled_files: "Cita file della skill (scripts/, references/, assets/) che non vengono importati.",
+    bundled_files:
+        "Cita file della skill (scripts/, references/, assets/) che non vengono importati.",
     external_links: "Contiene link esterni.",
 };
 
 /** Decisions the Tool Gateway records, and the Control Plane changes. */
-export const DECISION_TEXT: Record<string, { label: string; tone?: "ok" | "warn" | "bad" | "live" }> = {
+export const DECISION_TEXT: Record<
+    string,
+    { label: string; tone?: "ok" | "warn" | "bad" | "live" }
+> = {
     ALLOW: { label: "consentito", tone: "ok" },
     DENY: { label: "rifiutato", tone: "bad" },
     EXECUTING: { label: "in esecuzione", tone: "live" },
@@ -89,20 +114,32 @@ export function sourceLabel(source: string): string {
 const IMPORT_ERRORS: [RegExp, string | ((match: RegExpMatchArray) => string)][] = [
     [/^Use an https link/, "Serve un link https."],
     [/^Links with credentials/, "Il link non può contenere credenziali."],
-    [/^Link a SKILL\.md file or a skill folder/, "Su GitHub indica un file SKILL.md o la cartella di una skill."],
+    [
+        /^Link a SKILL\.md file or a skill folder/,
+        "Su GitHub indica un file SKILL.md o la cartella di una skill.",
+    ],
     [/not public/, "Il link punta a un indirizzo non pubblico: non viene scaricato."],
     [/redirects to an address that is not https/, "Il link rimanda a un indirizzo non https."],
     [/too large/, "Il file è troppo grande per una SKILL.md."],
     [/not UTF-8 text/, "Il file non è testo UTF-8."],
     [/^Too many redirects/, "Troppi rimandi."],
     [/^The link answered (\d+)/, (match) => `Il link ha risposto ${match[1]}.`],
-    [/starts with a front matter block/, "Una SKILL.md comincia con un blocco tra due righe ---, con name e description."],
+    [
+        /starts with a front matter block/,
+        "Una SKILL.md comincia con un blocco tra due righe ---, con name e description.",
+    ],
     [/not closed by a --- line/, "Il blocco iniziale non è chiuso da una riga ---."],
     [/has no name/, "Manca il campo name."],
     [/has no description/, "Manca il campo description."],
     [/no instructions after the front matter/, "Dopo il blocco iniziale non ci sono istruzioni."],
-    [/^The description can be at most (\d+)/, (match) => `La descrizione può avere al massimo ${match[1]} caratteri.`],
-    [/^A SKILL\.md can be at most (\d+)/, (match) => `Una SKILL.md può avere al massimo ${match[1]} caratteri.`],
+    [
+        /^The description can be at most (\d+)/,
+        (match) => `La descrizione può avere al massimo ${match[1]} caratteri.`,
+    ],
+    [
+        /^A SKILL\.md can be at most (\d+)/,
+        (match) => `Una SKILL.md può avere al massimo ${match[1]} caratteri.`,
+    ],
     [/^The file is not text/, "Il file non è testo."],
     [/^Send either a link or the text/, "Manda un link oppure un file."],
     [/^Only an admin/, "Solo un amministratore può cambiare le skill."],

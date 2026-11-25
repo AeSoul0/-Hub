@@ -18,6 +18,7 @@ app, never in a file. The backend reads them from its environment.
 | `AEHUB_LOCAL_API_KEY` | Local OpenAI-compatible server, when it asks for a key |
 | `ELEVENLABS_API_KEY` | Optional cloud voice (ADR-024) |
 | `AEHUB_MQTT_PASSWORD` | Home MQTT broker, when it needs one |
+| `AEHUB_MCP_TOKENS` | Bearer tokens of MCP servers that need a login, as `host=token,host=token` (host with its port, if any); each is sent only to its host (ADR-033) |
 
 ## Infrastructure
 
@@ -58,7 +59,8 @@ The model, price and limit variables (`OPENAI_MODEL`, `AEHUB_CHECKER_MODEL`, `AE
 | `AEHUB_MEMORY_MIN_SIMILARITY` | Minimum cosine similarity for a vector match in hybrid retrieval; also on the MEMORIA page | `0.25` |
 | `AEHUB_ALLOWED_DIRS` | Folders that filesystem tools may touch (`os.pathsep`-separated); the first one is the working folder searched by `search_documents` | `./workspace` |
 | `AEHUB_DOCUMENTS_MAX_FILE_MB` | Files larger than this are listed in the document index with an error and are not searched (0.1–200; also on the DOCUMENTI page) | `5` |
-| `AEHUB_MCP_ALLOWED_SERVERS` | Comma-separated MCP server URLs the bridge may connect to; also editable on the STRUMENTI page | none (no MCP server) |
+| `AEHUB_MCP_ALLOWED_SERVERS` | Comma-separated MCP server URLs (Streamable HTTP) the client connects to: https, or http only to this computer; also editable on the STRUMENTI page | none (no MCP server) |
+| `AEHUB_MCP_TOOL_RISK` | Comma-separated `tool=low\|medium\|high` for MCP tools. A tool not listed is high and asks for approval on every call (ADR-033); set from the STRUMENTI page | none (every MCP tool high) |
 | `AEHUB_DISABLED_TOOLS` | Comma-separated tools the agent can neither see nor call; set by the switches on the STRUMENTI page | none |
 | `FRONTEND_URL` / `AEHUB_ALLOWED_ORIGINS` | Browser origins allowed by CORS and the WebSocket; any other origin cannot send POST, PUT, PATCH or DELETE | `http://localhost:3000` |
 | `AEHUB_ALLOWED_HOSTS` | Extra host names the API answers to (comma-separated), besides `localhost`, `127.0.0.1` and `[::1]`; needed when the API is served under another name, e.g. on the LAN | none |

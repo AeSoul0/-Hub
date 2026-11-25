@@ -68,7 +68,7 @@ The frontend is a **Next.js application** using React, TypeScript and Tailwind C
 - **The Control Plane** (`/control-plane`) has runs, approvals, memory, documents, home, tools, skills, security, voice, settings, system and setup, all in the Nucleo's style; the history of the runs filters by text, status, period and subagents, and shows each subagent under its parent. A run's page lists its subagents, and its timeline shows each verdict of the Critic with the attempt and the correction it asked for (ADR-029).
 - **Settings** (ADR-025) choose the LLM of each role (Architect, Research, Critic, Fast Worker, Triage) with its fallbacks, suggesting each provider's models (OpenRouter with prices), and refuse a Critic that shares a model with another role. They also hold keys, default models, the local server, prices, budget and limits, the approval window, the circuit breaker and the context budget, all applied without a restart.
 - **Tools and skills** (ADR-026):
-  - **STRUMENTI** lists every skill and tool with its risk, approval, network and file access, and whether it returns untrusted content. It switches tools off: a disabled tool is never shown to the agent and is refused if proposed. The page also sets the skill index and the allowed MCP servers, and shows the tools' folders, the API host names and the sandbox.
+  - **STRUMENTI** lists every skill and tool with its risk, approval, network and file access, and whether it returns untrusted content. It switches tools off: a disabled tool is never shown to the agent and is refused if proposed. The page also sets the skill index, the allowed MCP servers and the risk of each MCP tool; it shows what each MCP server answered, with a button to reconnect, and the tools' folders, the API host names and the sandbox.
   - **SKILL** imports skills in the open `SKILL.md` format (Claude Code, Codex, OpenClaw) from an https link (a GitHub page is turned into its raw file) or a file. Only the text is imported, and the skill starts off. The page shows the whole text and flags patterns to check before it can be turned on: download-and-run commands, encoded blobs, instruction overrides, secrets, bundled files and links. The agent reads an enabled skill through the `use_skill` tool as untrusted content, so after reading it every high-risk action waits for an approval.
   - **SICUREZZA** shows the audit hash chain, the log (Control Plane changes included) filtered by decision and tool, and which entries returned untrusted content.
 - **SISTEMA** (ADR-030), for the owner only:
@@ -131,7 +131,7 @@ Each role has its chain of `provider:model` (Settings, or `AEHUB_MODEL_ROLES`). 
 
 Skills live in `backend/app/skills/` and expose plain Python functions with metadata: risk (LOW, MEDIUM, HIGH), approval, permissions, network and file access, and whether the output is untrusted. The registry loads every module with a `get_skill()`.
 
-At the start of a run the skill index shows the model only the tools the task names (see [Which tools a run sees](#which-tools-a-run-sees)). Skills in the open `SKILL.md` format can be imported from the SKILL page; their text reaches the agent as untrusted content. The MCP bridge checks servers against an allowlist; its client is a stub until after V1.
+At the start of a run the skill index shows the model only the tools the task names (see [Which tools a run sees](#which-tools-a-run-sees)). Skills in the open `SKILL.md` format can be imported from the SKILL page; their text reaches the agent as untrusted content. The MCP client (ADR-033) connects only to the allowed servers, over Streamable HTTP. Each MCP tool is high risk and waits for your approval on every call until you lower its risk on STRUMENTI. Its output is always untrusted, and a server that needs a login gets its token from the keyring (`AEHUB_MCP_TOKENS`).
 
 ### Memory
 
@@ -679,7 +679,7 @@ CI runs the same gate on every push and pull request and uploads `eval-report.js
 
 # License
 
-No open-source license is declared. Until one is added, reuse, modification and redistribution rights should not be assumed.
+All rights reserved: see [LICENSE](LICENSE). ÆHub is not open source; using, copying, modifying or redistributing it needs the owner's written permission. The third-party components keep their own licenses.
 
 ---
 
