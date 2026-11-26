@@ -9,18 +9,15 @@ codespace, from the providers' own model lists (faked here, no network).
 - only one provider, or only OpenRouter's free models with tools;
 - the newest stable Gemini of each tier, the "latest" alias when there is
   none; the newest Claude of a family when the known id is not listed;
-- GitHub Models (the "local" provider): alone it does every role, the
-  Critic with another publisher; with other providers it is each role's last
-  fallback; the token is checked first, a refused one is skipped;
+- Ollama (no key): one open model for every role, another as the Critic;
 - every choice passes ÆHub's own routing check (the Critic shares no model);
-- prices only for the Claude models used, and 0 for GitHub Models.
+- prices only for the Claude models used.
 """
 
 from __future__ import annotations
 
 import importlib.util
 import json
-import urllib.error
 from pathlib import Path
 
 import pytest
@@ -53,27 +50,10 @@ FREE = {
     ]
 }
 
-GITHUB = [
-    {"id": "openai/gpt-4.1", "rate_limit_tier": "high", "capabilities": ["streaming", "tool-calling"], "supported_output_modalities": ["text"]},
-    {"id": "openai/gpt-4.1-mini", "rate_limit_tier": "low", "capabilities": ["tool-calling"]},
-    {"id": "meta/llama-4-scout", "rate_limit_tier": "high", "capabilities": ["tool-calling"]},
-    {"id": "deepseek/deepseek-v3", "rate_limit_tier": "high", "capabilities": ["tool-calling"]},
-    {"id": "openai/o3", "rate_limit_tier": "custom", "capabilities": ["tool-calling"]},
-    {"id": "microsoft/phi-4", "rate_limit_tier": "low", "capabilities": []},
-    {"id": "openai/text-embedding-3-small", "rate_limit_tier": "embeddings", "capabilities": []},
-]
-
-
-class Calls(list):
-    """The calls made to the providers, plus the tokens GitHub Models refuses."""
-
-    refused: set
-
 
 @pytest.fixture
 def providers(monkeypatch):
-    seen = Calls()
-    seen.refused = set()
+    seen = []
 
     def get(url, headers):
         seen.append((url.split("/")[2], sorted(headers)))
@@ -81,26 +61,10 @@ def providers(monkeypatch):
             return CLAUDE
         if "googleapis" in url:
             return GEMINI
-        if "models.github.ai" in url:
-            return GITHUB
         return FREE
 
-    def post(url, headers, body):
-        seen.append((url, headers["Authorization"], body["model"], body["max_tokens"]))
-        if headers["Authorization"] in seen.refused:
-            raise urllib.error.HTTPError(url, 401, "Unauthorized", {}, None)
-        return {"choices": []}
-
     monkeypatch.setattr(models, "_get", get)
-    monkeypatch.setattr(models, "_post", post)
-    for name in (
-        "ANTHROPIC_API_KEY",
-        "GEMINI_API_KEY",
-        "OPENROUTER_API_KEY",
-        "GITHUB_TOKEN",
-        "GITHUB_MODELS_TOKEN",
-        "AEHUB_LOCAL_BASE_URL",
-    ):
+    for name in ("ANTHROPIC_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY"):
         monkeypatch.delenv(name, raising=False)
     return seen
 
@@ -109,9 +73,7 @@ def run(capsys, monkeypatch, **keys):
     for name, value in keys.items():
         monkeypatch.setenv(name, value)
     assert models.main() == 0
-    captured = capsys.readouterr()
-    run.err = captured.err
-    return json.loads(captured.out)
+    return json.loads(capsys.readouterr().out)
 
 
 def valid(roles, monkeypatch):
@@ -181,54 +143,15 @@ def test_aliases_newest_family_and_nothing(providers, capsys, monkeypatch):
     assert run(capsys, monkeypatch, ANTHROPIC_API_KEY="test-a") == {"roles": {}, "prices": {}}
 
 
-def test_github_models_alone(providers, capsys, monkeypatch):
-    out = run(capsys, monkeypatch, GITHUB_TOKEN="test-gh")
-    # A larger model plans, a small one does the quick jobs, another publisher checks.
-    assert out["roles"] == {
-        "architect": ["local:openai/gpt-4.1"],
-        "research": ["local:openai/gpt-4.1"],
-        "fast_worker": ["local:openai/gpt-4.1-mini", "local:openai/gpt-4.1"],
-        "triage": ["local:openai/gpt-4.1-mini"],
-        "critic": ["local:deepseek/deepseek-v3"],
-    }
-    assert out["prices"] == {
-        model: {"input": 0.0, "output": 0.0}
-        for model in ("deepseek/deepseek-v3", "openai/gpt-4.1", "openai/gpt-4.1-mini")
-    }
-    # The variable's name, never the token.
-    assert out["github_models"] == {"base_url": "https://models.github.ai/inference", "token_variable": "GITHUB_TOKEN"}
-    assert "test-gh" not in json.dumps(out)
-    # The token was checked with one one-token request.
-    assert providers[-1] == ("https://models.github.ai/inference/chat/completions", "Bearer test-gh", "openai/gpt-4.1-mini", 1)
+def test_ollama(capsys, monkeypatch):
+    monkeypatch.setattr(models.sys, "argv", ["codespace_models.py", "--ollama", "qwen2.5:3b", "llama3.2:3b"])
+    assert models.main() == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["roles"]["architect"] == ["local:qwen2.5:3b"]
+    assert out["roles"]["triage"] == ["local:qwen2.5:3b"]
+    assert out["roles"]["critic"] == ["local:llama3.2:3b"]
+    assert out["prices"] == {"qwen2.5:3b": {"input": 0.0, "output": 0.0}, "llama3.2:3b": {"input": 0.0, "output": 0.0}}
     valid(out["roles"], monkeypatch)
 
-
-def test_github_models_as_the_last_fallback(providers, capsys, monkeypatch):
-    out = run(capsys, monkeypatch, ANTHROPIC_API_KEY="test-a", GITHUB_TOKEN="test-gh")
-    assert out["roles"] == {
-        "architect": ["anthropic:claude-opus-5-5", "local:openai/gpt-4.1"],
-        "research": ["anthropic:claude-opus-5-5", "local:openai/gpt-4.1"],
-        "fast_worker": ["anthropic:claude-haiku-5-5", "anthropic:claude-opus-5-5", "local:openai/gpt-4.1-mini", "local:openai/gpt-4.1"],
-        "triage": ["anthropic:claude-haiku-5-5", "local:openai/gpt-4.1-mini"],
-        "critic": ["anthropic:claude-sonnet-5-5", "local:deepseek/deepseek-v3"],
-    }
-    valid(out["roles"], monkeypatch)
-
-
-def test_github_token_refused_or_another_local_server(providers, capsys, monkeypatch):
-    # The secret made for it is refused: the codespace's own token is used.
-    providers.refused.add("Bearer bad")
-    out = run(capsys, monkeypatch, GITHUB_MODELS_TOKEN="bad", GITHUB_TOKEN="test-gh")
-    assert out["github_models"]["token_variable"] == "GITHUB_TOKEN"
-    assert "GITHUB_MODELS_TOKEN: GitHub Models refused it (401)." in run.err
-
-    # Both refused: no GitHub Models, and nothing else to choose.
-    providers.refused.add("Bearer test-gh")
-    assert run(capsys, monkeypatch, GITHUB_TOKEN="test-gh") == {"roles": {}, "prices": {}}
-
-    # Another local server configured: GitHub Models is not asked.
-    providers.clear()
-    providers.refused.clear()
-    monkeypatch.setenv("AEHUB_LOCAL_BASE_URL", "http://localhost:11434/v1")
-    assert run(capsys, monkeypatch, GITHUB_TOKEN="test-gh") == {"roles": {}, "prices": {}}
-    assert providers == []
+    with pytest.raises(SystemExit):
+        models.ollama("qwen2.5:3b", "qwen2.5:3b")

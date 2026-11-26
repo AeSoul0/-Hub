@@ -43,12 +43,14 @@ The model, price and limit variables (`OPENAI_MODEL`, `AEHUB_CHECKER_MODEL`, `AE
 | `OPENAI_API_KEY` / `OPENROUTER_API_KEY` / `GROQ_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` | Keys of the providers (keyring); a provider shows up in the role editor once it has its key | none |
 | `OPENAI_BASE_URL` / `OPENROUTER_BASE_URL` | Another address for the OpenAI or OpenRouter API | the provider's own |
 | `AEHUB_LOCAL_BASE_URL` | OpenAI-compatible local server for the `local` provider (Ollama, LM Studio); also in Settings, key `AEHUB_LOCAL_API_KEY` in the keyring | `http://localhost:11434/v1` |
+| `AEHUB_LOCAL_TIMEOUT_SECONDS` | How long one answer of the `local` provider may take; a model on a CPU (Ollama in a codespace, set to 600 there) needs minutes | `60` |
 | `AEHUB_FORCE_ROLE` | Skip triage and run every task with this role (also in Settings) | none |
 | `AEHUB_BREAKER_THRESHOLD` / `AEHUB_BREAKER_COOLDOWN_SECONDS` | Consecutive failures before a provider is skipped, and how long it stays skipped (also in Settings) | `3` / `60` |
 | `AEHUB_MODEL_PRICES` | Prices as JSON, USD per 1M tokens: `{"<model>": {"input": 1.0, "output": 4.0}}`. Unpriced models use a deliberately high fallback price and are flagged as estimated. | none |
 | `AEHUB_DEFAULT_MODEL_PRICE` | Fallback price `input,output` | `15,60` |
 | `AEHUB_RUN_MAX_COST` / `AEHUB_MONTHLY_BUDGET` | Per-run hard stop and monthly cap, in USD (warning at `AEHUB_BUDGET_WARNING_RATIO`). `AEHUB_RUN_MAX_COST=0` removes the per-run cap; the monthly budget still applies | `2` / `30` (`0.8`) |
 | `AEHUB_RUN_TIMEOUT_SECONDS` | Limit on a run's active execution time; waiting for an approval does not count. `0` disables it | `900` |
+| `AEHUB_ANSWER_TIMEOUT_SECONDS` | How long the Nucleo waits for a command's answer before giving up (900 in a codespace with Ollama) | `45` |
 | `AEHUB_RUN_MAX_FAILED_TOOL_CALLS` | Failed tool calls after which a run stops (`LIMIT_EXCEEDED`), e.g. a loop on a failing tool or test. `0` disables it | `10` |
 | `AEHUB_RUN_MAX_SUBAGENTS` | Subagents one run may start with `delegate_task`; their cost counts toward the run. `0` turns delegation off (also in Settings) | `3` |
 | `AEHUB_RUN_MAX_FILES_MODIFIED` | Distinct files a run may change through tools flagged `modifies_files`; a call on one more file is refused. `0` disables it | `20` |

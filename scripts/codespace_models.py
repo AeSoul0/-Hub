@@ -2,9 +2,7 @@
 @file scripts/codespace_models.py
 @description The models of each role for a codespace, from the keys it has.
 
-Prints {"roles": AEHUB_MODEL_ROLES, "prices": AEHUB_MODEL_PRICES} as JSON,
-plus "github_models": {"base_url", "token_variable"} when GitHub Models is
-used (the name of the variable holding the token, never the token)
+Prints {"roles": AEHUB_MODEL_ROLES, "prices": AEHUB_MODEL_PRICES} as JSON
 (roles empty when there is nothing to choose from; prices only for the
 Claude models, whose prices are known; the others use ÆHub's fallback price,
 which overestimates, until you set them in IMPOSTAZIONI). The model names are read from each provider's own list with your key,
@@ -19,12 +17,9 @@ so only models that exist today are chosen:
 - Gemini only: Pro, Flash-Lite for the quick jobs, Flash as the Critic.
 - OpenRouter only: its free models that can call tools, the largest first;
   the Critic is a different one.
-- GitHub Models (free with a GitHub account, through ÆHub's "local"
-  provider, an OpenAI-compatible server): with the codespace's own
-  GITHUB_TOKEN, or a token with Models read access saved as the
-  GITHUB_MODELS_TOKEN secret. With other providers it is each role's last
-  fallback; alone, it does every role, the Critic with another publisher's
-  model. Its models cost nothing (price 0), within GitHub's daily limits.
+- With --ollama MAIN CRITIC (codespace.sh, when no key gives a model): open
+  models on the codespace's own CPU through ÆHub's local provider, MAIN for
+  every role but the Critic, priced 0.
 
 The Critic never shares a model with another role (routing refuses it). The
 roles are only a starting point: IMPOSTAZIONI changes them, and what is saved
@@ -40,7 +35,7 @@ import os
 import re
 import sys
 import urllib.request
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 TIMEOUT = 20
 ANTHROPIC = {"sonnet": "claude-sonnet-5-5", "haiku": "claude-haiku-5-5", "opus": "claude-opus-5-5"}
@@ -54,17 +49,6 @@ ANTHROPIC_PRICES = {
 
 def _get(url: str, headers: Dict[str, str]) -> Any:
     request = urllib.request.Request(url, headers=headers)  # noqa: S310 - fixed https URLs
-    with urllib.request.urlopen(request, timeout=TIMEOUT) as response:  # noqa: S310  # nosec B310
-        return json.load(response)
-
-
-def _post(url: str, headers: Dict[str, str], body: Dict[str, Any]) -> Any:
-    request = urllib.request.Request(  # noqa: S310 - fixed https URLs
-        url,
-        data=json.dumps(body).encode(),
-        headers={**headers, "Content-Type": "application/json"},
-        method="POST",
-    )
     with urllib.request.urlopen(request, timeout=TIMEOUT) as response:  # noqa: S310  # nosec B310
         return json.load(response)
 
@@ -136,118 +120,12 @@ def openrouter_free(key: Optional[str]) -> List[str]:
     return [item["id"] for item in free]
 
 
-GITHUB_MODELS = "https://models.github.ai/inference"
-GITHUB_CATALOG = "https://models.github.ai/catalog/models"
-# Tokens tried in order: a secret made for it, then the codespace's own.
-GITHUB_TOKENS = ("GITHUB_MODELS_TOKEN", "GITHUB_TOKEN")
-# Publishers, the preferred first (the id's prefix, as "openai/gpt-4.1").
-PUBLISHERS = ("openai", "deepseek", "meta", "mistral-ai", "xai", "microsoft", "cohere", "ai21-labs")
-_SMALL = re.compile(r"mini|nano|small|scout|phi|[^0-9][1-9]b\b", re.IGNORECASE)
-
-
-def _github_headers(token: str) -> Dict[str, str]:
-    return {
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-    }
-
-
-def github_models(token: str) -> Dict[str, str]:
-    """
-    main/quick/critic -> a GitHub Models id that can call tools. Main: a
-    larger model (the "high" tier), quick: a small one ("low" tier, more
-    requests a day), the Critic: another publisher's model.
-    """
-    catalog = _get(GITHUB_CATALOG, _github_headers(token))
-    usable = [
-        item
-        for item in (catalog if isinstance(catalog, list) else [])
-        if isinstance(item, dict)
-        and item.get("id")
-        and "tool-calling" in (item.get("capabilities") or [])
-        and item.get("rate_limit_tier") in ("low", "high")
-        and "text" in (item.get("supported_output_modalities") or ["text"])
-    ]
-
-    def publisher(item: Dict[str, Any]) -> str:
-        return str(item["id"]).split("/", 1)[0].lower()
-
-    def rank(item: Dict[str, Any]) -> int:
-        name = publisher(item)
-        return PUBLISHERS.index(name) if name in PUBLISHERS else len(PUBLISHERS)
-
-    def small(item: Dict[str, Any]) -> bool:
-        return bool(_SMALL.search(str(item["id"])))
-
-    big = sorted(usable, key=lambda item: (item["rate_limit_tier"] != "high", small(item), rank(item)))
-    quick = sorted(usable, key=lambda item: (item["rate_limit_tier"] != "low", not small(item), rank(item)))
-    if not big:
-        return {}
-    chosen = {"main": big[0]["id"]}
-    chosen["quick"] = next((item["id"] for item in quick if item["id"] != chosen["main"]), chosen["main"])
-    taken = {chosen["main"], chosen["quick"]}
-    others = [item for item in sorted(usable, key=rank) if item["id"] not in taken]
-    critic = next((item for item in others if publisher(item) != publisher(big[0])), None) or (others[0] if others else None)
-    if critic is not None:
-        chosen["critic"] = critic["id"]
-    return chosen
-
-
-def github_token() -> Tuple[Optional[str], Dict[str, str], List[str]]:
-    """
-    (variable, models, notes): the first token that GitHub Models answers,
-    checked with a one-token request (one of the day's free requests), and
-    the models chosen with it.
-    """
-    notes: List[str] = []
-    for variable in GITHUB_TOKENS:
-        token = os.getenv(variable, "").strip()
-        if not token:
-            continue
-        try:
-            chosen = github_models(token)
-            if not chosen:
-                notes.append(f"{variable}: GitHub Models lists no model that can call tools.")
-                continue
-            _post(
-                f"{GITHUB_MODELS}/chat/completions",
-                _github_headers(token),
-                {"model": chosen["quick"], "messages": [{"role": "user", "content": "ok"}], "max_tokens": 1},
-            )
-            return variable, chosen, notes
-        except Exception as exc:  # noqa: BLE001 - try the next token
-            code = getattr(exc, "code", None)
-            notes.append(f"{variable}: GitHub Models refused it ({code or exc.__class__.__name__}).")
-    return None, {}, notes
-
-
-def roles(
-    anthropic: Dict[str, str],
-    gemini: Dict[str, str],
-    free: List[str],
-    github: Optional[Dict[str, str]] = None,
-) -> Dict[str, List[str]]:
+def roles(anthropic: Dict[str, str], gemini: Dict[str, str], free: List[str]) -> Dict[str, List[str]]:
     a = {family: f"anthropic:{model}" for family, model in anthropic.items()}
     g = {tier: f"google:{model}" for tier, model in gemini.items()}
-    h = {kind: f"local:{model}" for kind, model in (github or {}).items()}
 
     def chain(*models: Optional[str]) -> List[str]:
         return [model for model in dict.fromkeys(models) if model]
-
-    # GitHub Models, by role: alone it does everything; otherwise each
-    # role's last fallback.
-    h_roles = (
-        {
-            "architect": chain(h.get("main")),
-            "research": chain(h.get("main")),
-            "fast_worker": chain(h.get("quick"), h.get("main")),
-            "triage": chain(h.get("quick")),
-            "critic": chain(h.get("critic")),
-        }
-        if h
-        else {}
-    )
 
     if a and g:
         config = {
@@ -286,13 +164,8 @@ def roles(
             "triage": [quick],
             "critic": [critic],
         }
-    elif h_roles:
-        config = {role: [] for role in h_roles}
     else:
         return {}
-
-    for role, models in h_roles.items():
-        config[role] = chain(*config[role], *models)
 
     # The Critic never shares a model with the others: drop any overlap from its chain.
     others = {model for role, models in config.items() if role != "critic" for model in models}
@@ -302,7 +175,27 @@ def roles(
     return config
 
 
+def ollama(main_model: str, critic_model: str) -> Dict[str, Any]:
+    """Every role on MAIN, the Critic on CRITIC (another model), both free."""
+    if main_model == critic_model:
+        raise SystemExit("The Critic needs a model different from the others.")
+    main_target, critic_target = f"local:{main_model}", f"local:{critic_model}"
+    return {
+        "roles": {
+            "architect": [main_target],
+            "research": [main_target],
+            "fast_worker": [main_target],
+            "triage": [main_target],
+            "critic": [critic_target],
+        },
+        "prices": {model: {"input": 0.0, "output": 0.0} for model in (main_model, critic_model)},
+    }
+
+
 def main() -> int:
+    if len(sys.argv) == 4 and sys.argv[1] == "--ollama":
+        print(json.dumps(ollama(sys.argv[2], sys.argv[3])))
+        return 0
     anthropic: Dict[str, str] = {}
     gemini: Dict[str, str] = {}
     free: List[str] = []
@@ -325,25 +218,12 @@ def main() -> int:
         except Exception as exc:  # noqa: BLE001
             notes.append(f"OPENROUTER_API_KEY: the model list could not be read ({exc.__class__.__name__}).")
 
-    # GitHub Models, unless another local server is configured.
-    github: Dict[str, str] = {}
-    variable = None
-    if not os.getenv("AEHUB_LOCAL_BASE_URL", "").strip():
-        variable, github, github_notes = github_token()
-        notes.extend(github_notes)
-
     for note in notes:
         print(note, file=sys.stderr)
-    config = roles(anthropic, gemini, free, github)
+    config = roles(anthropic, gemini, free)
     used = {model.split(":", 1)[1] for models in config.values() for model in models}
     prices = {model: price for model, price in ANTHROPIC_PRICES.items() if model in used}
-    local = {model.split(":", 1)[1] for models in config.values() for model in models if model.startswith("local:")}
-    # Free on GitHub Models (within its daily limits).
-    prices.update({model: {"input": 0.0, "output": 0.0} for model in sorted(local)})
-    result: Dict[str, Any] = {"roles": config, "prices": prices}
-    if local and variable:
-        result["github_models"] = {"base_url": GITHUB_MODELS, "token_variable": variable}
-    print(json.dumps(result))
+    print(json.dumps({"roles": config, "prices": prices}))
     return 0
 
 
