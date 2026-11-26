@@ -210,6 +210,30 @@ git clone https://github.com/AeSoul0/-Hub.git
 cd -Hub
 ```
 
+## Try it in GitHub Codespaces (nothing to install)
+
+ÆHub runs in a codespace, a Linux machine of GitHub opened from the browser, and you use it at a private HTTPS address that only your GitHub account can open (the microphone works there too).
+
+1. On the repository page: **Code → Codespaces → Create codespace on main** (2 cores and 8 GB are enough).
+2. When it is created, GitHub asks for the secrets listed in `.devcontainer/devcontainer.json`: put at least one model key (for example `OPENAI_API_KEY`). `AEHUB_SECRET_KEY` is the key you log in with; left empty, one is made for you. You can add or change them later in GitHub → Settings → Codespaces → Secrets, then restart the codespace.
+3. The first start installs PostgreSQL with pgvector, the backend and the pages (a few minutes), then starts ÆHub and opens port 3002 in the browser. Log in with the key shown by:
+
+```bash
+bash scripts/codespace.sh key
+```
+
+The models of each role are chosen at start from the keys you gave, reading each provider's own model list (`scripts/codespace_models.py`):
+
+- **Anthropic and Gemini:** Claude Opus plans, Gemini Pro researches, Claude Haiku and Gemini Flash-Lite do the quick jobs; the Critic is Gemini Flash, so another family checks Claude's answers, with Claude Sonnet as its fallback. Each role falls back on the other provider.
+- **Only one of them:** the same split inside it (with Claude alone, Opus plans and Sonnet is the Critic; with Gemini alone, Flash is the Critic).
+- **Only OpenRouter:** its free models that can call tools, the largest first, with a different one as the Critic. Free models have tight daily limits.
+
+What you save in IMPOSTAZIONI wins over this choice.
+
+Other commands: `bash scripts/codespace.sh start` (again, after a stop), `stop`, `status`, `logs`, and `build` after changing the frontend. Keys stay in the codespace's secrets, data in `~/.aehub`.
+
+In a codespace ÆHub is on GitHub's machine, not on your PC: opening your apps and your folders, and the home devices on your network, do not reach your computer. Free accounts have a monthly allowance of codespace hours; stop the codespace when you are done.
+
 ## Option A — Docker Compose
 
 The repository includes services for:
