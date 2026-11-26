@@ -1028,6 +1028,15 @@ class AgentRuntime(ToolsMixin, LimitsMixin, ResumeMixin, StateMixin, SubagentsMi
                     "run_id": run_id,
                 })
 
+            # Failed already (the worker's model, an invalid payload, too
+            # many tool calls): that error is the reason, not the turns.
+            cause = (
+                loop.agent_run.errors[-1]
+                if loop.agent_run.status == AgentRunStatus.FAILED
+                and loop.agent_run.errors
+                else "maximum turns reached."
+            )
+
             if loop.agent_run.status != AgentRunStatus.FAILED:
                 loop.agent_run.status = AgentRunStatus.FAILED
                 loop.agent_run.errors.append(
@@ -1043,7 +1052,7 @@ class AgentRuntime(ToolsMixin, LimitsMixin, ResumeMixin, StateMixin, SubagentsMi
             )
 
             raise MaxTurnsReachedError(
-                f"Task {run_id} failed: maximum turns reached."
+                f"Task {run_id} failed: {cause}"
             )
 
         return None
