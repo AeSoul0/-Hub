@@ -41,6 +41,10 @@ MAX_SPEAK_CHARS = 5000
 class SpeakRequest(BaseModel):
     text: str = Field(min_length=1, max_length=MAX_SPEAK_CHARS)
     preview: bool = False
+    # The length of the whole reply when the Nucleo speaks it sentence by
+    # sentence (N1): a reply longer than the cloud limit stays with Piper,
+    # as it did when it was spoken in one piece.
+    reply_chars: int = Field(default=0, ge=0, le=1_000_000)
 
 
 @router.get("")
@@ -97,7 +101,7 @@ async def speak_text(
     text = clean_text_for_speech(request.text)
 
     if not request.preview:
-        audio, mime = await speak(text)
+        audio, mime = await speak(text, local=request.reply_chars > engines.MAX_CLOUD_CHARS)
         return {"audio_base64": audio, "audio_mime": mime}
 
     try:

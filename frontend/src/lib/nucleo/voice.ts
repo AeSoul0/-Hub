@@ -216,3 +216,81 @@ export function formatBytes(bytes: number, lang: Lang = "en"): string {
 export function resumedByVoice(data: Record<string, unknown>): boolean {
     return data.input_channel === "voice";
 }
+
+// ==============================================================================
+// SENTENCE BY SENTENCE (N1, ADR-040)
+// ==============================================================================
+
+// A piece shorter than this joins the next one: fewer requests, natural pauses.
+const MIN_PIECE = 40;
+// A longer sentence is cut at a comma or a space, so the first sound comes soon.
+const MAX_PIECE = 280;
+
+function cut(sentence: string): string[] {
+    const pieces: string[] = [];
+    let rest = sentence.trim();
+    while (rest.length > MAX_PIECE) {
+        const window = rest.slice(0, MAX_PIECE);
+        const at = Math.max(window.lastIndexOf(", "), window.lastIndexOf("; "));
+        const split = at > MIN_PIECE ? at + 1 : window.lastIndexOf(" ") > MIN_PIECE ? window.lastIndexOf(" ") : MAX_PIECE;
+        pieces.push(rest.slice(0, split).trim());
+        rest = rest.slice(split).trim();
+    }
+    if (rest) {
+        pieces.push(rest);
+    }
+    return pieces;
+}
+
+/** The reply in pieces to speak one after another: whole sentences, none too short or too long. */
+export function splitSentences(text: string): string[] {
+    const sentences = text
+        .replace(/\s+/g, " ")
+        .trim()
+        .split(/(?<=[.!?…:;])\s+(?=\S)/)
+        .flatMap(cut)
+        .filter(Boolean);
+
+    const pieces: string[] = [];
+    for (const sentence of sentences) {
+        const last = pieces[pieces.length - 1];
+        if (last !== undefined && last.length < MIN_PIECE && last.length + sentence.length + 1 <= MAX_PIECE) {
+            pieces[pieces.length - 1] = `${last} ${sentence}`;
+        } else {
+            pieces.push(sentence);
+        }
+    }
+    return pieces;
+}
+
+export interface SpokenPiece {
+    audio_base64: string;
+    audio_mime: string;
+}
+
+/**
+ * Speak the pieces in order: the next one is synthesized while the current
+ * one plays. Stops when a piece has no audio (voice off) or `stillWanted`
+ * says a newer reply took over.
+ */
+export async function speakInSentences(
+    pieces: string[],
+    synthesize: (piece: string) => Promise<SpokenPiece | null>,
+    play: (audioBase64: string) => Promise<void>,
+    stillWanted: () => boolean = () => true,
+): Promise<number> {
+    let spoken = 0;
+    let next: Promise<SpokenPiece | null> | null = pieces.length ? synthesize(pieces[0]) : null;
+    for (let index = 0; index < pieces.length && next; index++) {
+        const current = await next.catch(() => null);
+        next = index + 1 < pieces.length ? synthesize(pieces[index + 1]) : null;
+        if (!current?.audio_base64 || !stillWanted()) {
+            next?.catch(() => null);
+            break;
+        }
+        await play(current.audio_base64);
+        spoken += 1;
+    }
+    return spoken;
+}
+

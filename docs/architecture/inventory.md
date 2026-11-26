@@ -16,6 +16,7 @@ sidecar dell'app desktop (PostgreSQL e API su `127.0.0.1`).
   - Context Manager, budget e limiti, deleghe;
   - l'adapter Pydantic AI (`adapters/`), lo stato durevole (`state/`) e le approvazioni (`approval/`);
   - il loop sta in `runtime.py`, le sue parti in `runtime_tools.py`, `runtime_limits.py`, `runtime_resume.py`, `runtime_state.py` e `runtime_subagents.py` (Q1).
+  - `streaming.py`: la bozza della risposta mentre il modello scrive (N1, ADR-040).
 
   Vedi `AEHUB_ENGINE_V1.md`.
 - `app/runtime/`: Tool Gateway, catena di hash dell'audit, la chiamata a un tool senza modello (`direct_tool.py`) e la facciata `aurora.py`.

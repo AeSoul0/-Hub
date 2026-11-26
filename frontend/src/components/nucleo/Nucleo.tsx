@@ -9,6 +9,11 @@
  * Commands go to the orchestrator: text to /api/orchestrator/ask, voice to
  * /api/orchestrator/listen (transcribed locally, ADR-021).
  *
+ * N1 (ADR-040): commands go with delivery=live. While the model writes, the
+ * draft of the answer shows in the conversation (answer.delta, marked as
+ * being checked) and is replaced by the accepted answer; the answer is then
+ * spoken sentence by sentence, the next one synthesized while one plays.
+ *
  * F2: the right pane also shows the runs of this session with their totals
  * against the limits and their timeline; a run, or all of them, stops from
  * here (POST /api/runs/{id}/cancel, /api/runs/stop-all, /api/runs/resume).
@@ -35,7 +40,7 @@ import {
 } from "@/lib/nucleo/engine";
 import { IMPLEMENTER_ROLES } from "@/lib/nucleo/models";
 import { initialRuns, liveCount, runsReducer, type LiveView } from "@/lib/nucleo/runs";
-import { resumedByVoice } from "@/lib/nucleo/voice";
+import { resumedByVoice, speakInSentences, splitSentences, type SpokenPiece } from "@/lib/nucleo/voice";
 import { askNotifyPermissionOnce } from "@/lib/notify";
 import { catalog, useLanguage } from "@/lib/i18n";
 
@@ -61,6 +66,8 @@ interface Reply {
     audio_mime?: string;
     // Set when the command ran at once, without the engine (ADR-035).
     instant?: { tool: string; ms: number; success: boolean };
+    // "sentences": no audio here, the Nucleo speaks the answer piece by piece (N1).
+    speak?: "sentences";
 }
 
 interface Budget {
@@ -74,6 +81,7 @@ const TEXT = catalog({
         allowed: "allowed",
         commandFailed: "The command did not start:",
         instant: "instant",
+        draft: "draft · being checked",
         micUnavailable: "Microphone not available:",
         micMissing: "The microphone is not available in this browser.",
         nothingHeard: "I heard nothing: try again closer to the microphone.",
@@ -118,6 +126,7 @@ const TEXT = catalog({
         allowed: "consentita",
         commandFailed: "Il comando non è partito:",
         instant: "istantaneo",
+        draft: "bozza · in verifica",
         micUnavailable: "Microfono non disponibile:",
         micMissing: "Il microfono non è disponibile in questo browser.",
         nothingHeard: "Non ho sentito niente: riprova più vicino al microfono.",
@@ -167,9 +176,6 @@ const CHAT_LIMIT = 100;
 const LIVE_REFRESH_MS = 300;
 // The second click on "stop all" must come within this time.
 const CONFIRM_MS = 4000;
-// The longest text POST /api/voice/speak accepts.
-const SPEAK_LIMIT = 5000;
-
 async function detailOf(response: Response): Promise<string> {
     try {
         const body = await response.json();
@@ -209,6 +215,11 @@ export default function Nucleo() {
     const [speaking, setSpeaking] = useState(false);
     const [sending, setSending] = useState(false);
     const [text, setText] = useState("");
+    // The answer while the model writes it (N1); only while a command waits.
+    const [draft, setDraft] = useState("");
+    const waiting = useRef(false);
+    // A newer answer stops the voice of the older one.
+    const voiceTurn = useRef(0);
     // The worker role for the next commands; "" lets triage pick (F8).
     const [role, setRole] = useState("");
     const [now, setNow] = useState(() => Date.now());
@@ -225,7 +236,7 @@ export default function Nucleo() {
     const recording = useRef<Recording | null>(null);
     const chatId = useRef(0);
     const top = useRef<HTMLElement>(null);
-    const chatList = useStickToBottom(chat.length);
+    const chatList = useStickToBottom(`${chat.length}:${draft.length}`);
     const logList = useStickToBottom(state.log.length);
 
     const say = useCallback((who: ChatLine["who"], line: string, channel?: ChatLine["channel"], note?: string) => {
@@ -294,25 +305,51 @@ export default function Nucleo() {
         }
     }, []);
 
+    // The answer spoken sentence by sentence (N1): the first sound comes after
+    // one sentence, not the whole reply.
+    const speakText = useCallback(async (reply: string) => {
+        const turn = ++voiceTurn.current;
+        const pieces = splitSentences(reply);
+        if (!pieces.length) {
+            return;
+        }
+        setSpeaking(true);
+        try {
+            await speakInSentences(
+                pieces,
+                (piece) =>
+                    postJson<SpokenPiece>("/api/voice/speak", { text: piece, reply_chars: reply.length }).catch(() => null),
+                (audio) =>
+                    playReply(audio, (meter) => {
+                        level.current = meter;
+                    }).catch(() => undefined),
+                () => voiceTurn.current === turn,
+            );
+        } finally {
+            if (voiceTurn.current === turn) {
+                setSpeaking(false);
+            }
+        }
+    }, []);
+
     // A run asked by voice answers by voice also when it resumes after an
     // approval (F3). Best effort: the written reply is already in the chat.
-    const speakResumed = useCallback(
-        async (reply: string) => {
-            try {
-                const spoken = await postJson<Reply>("/api/voice/speak", { text: reply.slice(0, SPEAK_LIMIT) });
-                if (spoken.audio_base64) {
-                    await playAudio(spoken.audio_base64);
-                }
-            } catch {
-                // Voice off or unavailable: nothing to play.
-            }
-        },
-        [playAudio],
-    );
+    const speakResumed = speakText;
 
     const connection = useWorkspaceEvents(
-        ["engine.event", "run.state", "approval.requested", "approval.decided", "run.resumed"],
+        ["engine.event", "run.state", "approval.requested", "approval.decided", "run.resumed", "answer.delta", "answer.reset"],
         (event) => {
+            if (event.type === "answer.delta") {
+                if (waiting.current) {
+                    setDraft(String(event.data.text ?? ""));
+                }
+                return;
+            }
+            if (event.type === "answer.reset") {
+                setDraft("");
+                return;
+            }
+
             const engineEvent = toEngineEvent(event);
             if (engineEvent) {
                 const at = Date.now();
@@ -398,15 +435,18 @@ export default function Nucleo() {
 
     const handleReply = useCallback(
         async (reply: Reply) => {
+            setDraft("");
             if (reply.transcription) {
                 const note = reply.instant ? `${t.instant} · ${reply.instant.ms} ms` : undefined;
                 say("aehub", reply.transcription, undefined, note);
             }
-            if (reply.audio_base64) {
+            if (reply.speak === "sentences" && reply.transcription) {
+                await speakText(reply.transcription);
+            } else if (reply.audio_base64) {
                 await playAudio(reply.audio_base64);
             }
         },
-        [say, playAudio, t.instant],
+        [say, playAudio, speakText, t.instant],
     );
 
     const send = async (command: string) => {
@@ -416,19 +456,25 @@ export default function Nucleo() {
         say("me", command, "text");
         const form = new FormData();
         form.append("text", command);
+        form.append("delivery", "live");
         if (role) {
             form.append("role", role);
         }
+        waiting.current = true;
+        setDraft("");
         try {
             const response = await fetchApi("/api/orchestrator/ask", { method: "POST", body: form });
             if (!response.ok) {
                 throw new Error(await detailOf(response));
             }
+            waiting.current = false;
             setSending(false);
             await handleReply(await response.json());
         } catch (error) {
+            setDraft("");
             say("system", `${t.commandFailed} ${errorOf(error)}`);
         } finally {
+            waiting.current = false;
             setSending(false);
         }
     };
@@ -460,7 +506,11 @@ export default function Nucleo() {
             const audio = await current.stop();
             const form = new FormData();
             form.append("file", audio, "voice.webm");
+            form.append("delivery", "live");
+            waiting.current = true;
+            setDraft("");
             const response = await fetchApi("/api/orchestrator/listen", { method: "POST", body: form });
+            waiting.current = false;
             if (!response.ok) {
                 throw new Error(await detailOf(response));
             }
@@ -473,8 +523,10 @@ export default function Nucleo() {
             setSending(false);
             await handleReply(reply);
         } catch (error) {
+            setDraft("");
             say("system", `${t.voiceFailed} ${errorOf(error)}`);
         } finally {
+            waiting.current = false;
             setSending(false);
         }
     };
@@ -615,7 +667,7 @@ export default function Nucleo() {
 
             <SidePane id="nucleo-chat" side="left" title={t.conversationTitle} count={chat.length} hidden={!showChat} ceiling={top}>
                 <ol className={styles.stream} ref={chatList}>
-                    {chat.length === 0 ? (
+                    {chat.length === 0 && !draft ? (
                         <li className={styles.empty}>{t.emptyChat}</li>
                     ) : (
                         chat.map((line) => (
@@ -628,6 +680,12 @@ export default function Nucleo() {
                                 <p>{line.who === "aehub" ? <CitedText text={line.text} /> : line.text}</p>
                             </li>
                         ))
+                    )}
+                    {draft && (
+                        <li className={`${styles.msg} ${styles.draft}`} aria-live="polite" data-testid="answer-draft">
+                            <span className={styles.who}>ÆHub · {t.draft}</span>
+                            <p>{draft}</p>
+                        </li>
                     )}
                 </ol>
             </SidePane>

@@ -1202,6 +1202,13 @@ class AgentRuntime(ToolsMixin, LimitsMixin, ResumeMixin, StateMixin, SubagentsMi
 
             return _Ended(guarded_result)
 
+        # Not accepted: the draft of this attempt leaves the Nucleo (N1).
+        from app.agent_engine.streaming import current_draft
+
+        draft = current_draft()
+        if draft is not None:
+            await draft.reset()
+
         if checker_decision.status == CheckerDecisionEnum.FAIL:
             loop.agent_run.status = AgentRunStatus.FAILED
             loop.agent_run.error = (

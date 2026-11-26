@@ -52,17 +52,20 @@ async def transcribe_audio(audio: bytes) -> str:
     )
 
 
-async def speak(text: str) -> Tuple[str, str]:
+async def speak(text: str, local: bool = False) -> Tuple[str, str]:
     """
     (base64 audio, MIME type) of the reply, or ("", "") when it cannot be spoken.
+    local: Piper speaks even with a cloud voice chosen (a sentence of a reply
+    too long for the cloud, N1).
     """
     if not text.strip():
         return "", ""
 
     try:
         engine = text_to_speech()
+        synthesize = engine.fallback.synthesize if local and hasattr(engine, "fallback") else engine.synthesize
         audio, mime = await asyncio.wait_for(
-            asyncio.to_thread(engine.synthesize, text),
+            asyncio.to_thread(synthesize, text),
             timeout=SPEAK_TIMEOUT_SECONDS,
         )
     except VoiceUnavailable:

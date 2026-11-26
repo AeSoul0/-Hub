@@ -72,6 +72,9 @@ The reply of a run that stops on an approval is one short question in the
 interface language ("May I delete old.txt? Yes or no."); while an approval
 waits, a command that is only a yes or a no decides the oldest one through
 the same path as the button (ADR-037).
+A command from the Nucleo is streamed (N1, ADR-040): the draft goes out as
+`answer.delta` while the worker writes, the Critic and subagents never
+write into it, and only the accepted, guarded answer stays and is spoken.
 
 ### Subagents
 The `delegate_task` tool (ADR-029) starts a subagent with at most the

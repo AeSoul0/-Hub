@@ -79,17 +79,21 @@ class AgentChecker:
             trace=normalized_trace,
         )
 
+        from app.agent_engine.streaming import streaming_answer
+
         try:
-            response = await self.model.generate(
-                {
-                    "prompt": prompt,
-                    "system_prompt": (
-                        "You are an independent security and correctness checker. "
-                        "Return JSON only. Never approve an output when the "
-                        "evaluation itself is uncertain."
-                    ),
-                }
-            )
+            # The Critic's verdict is never part of the draft (N1).
+            with streaming_answer(None):
+                response = await self.model.generate(
+                    {
+                        "prompt": prompt,
+                        "system_prompt": (
+                            "You are an independent security and correctness checker. "
+                            "Return JSON only. Never approve an output when the "
+                            "evaluation itself is uncertain."
+                        ),
+                    }
+                )
         except Exception as exc:  # noqa: BLE001 - fail closed: any provider error rejects the result
             logger.warning("Critic provider failed (%s): the result is not accepted.", type(exc).__name__)
             return self._failure(
