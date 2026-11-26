@@ -6,6 +6,9 @@ GET  /api/voice                    what is set and what is on disk: engines,
                                    models already downloaded, whether the
                                    ElevenLabs key is set (never its value)
 GET  /api/voice/elevenlabs/voices  the voices of the ElevenLabs account
+GET  /api/voice/wake/{model}        a wake word model (N2, ADR-041): the
+                                   two feature models or the chosen word,
+                                   downloaded once and checked (SHA-256)
 POST /api/voice/speak              {"text", "preview"}: the reply spoken.
                                    preview=false is best effort (the Nucleo
                                    speaking a run resumed after an approval);
@@ -22,10 +25,11 @@ import os
 from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app.core.security import Principal, resolve_principal
-from app.voice import engines
+from app.voice import engines, wake
 from app.voice.pipeline import SPEAK_TIMEOUT_SECONDS, preview_voice, speak
 
 
@@ -70,7 +74,36 @@ async def voice_status(
             "max_cloud_chars": engines.MAX_CLOUD_CHARS,
         },
         "downloaded": engines.downloaded_models(),
+        "wake": {
+            **wake.wake_state(),
+            "own_model_path": str(wake.own_model_path()),
+            "downloaded": wake.downloaded(),
+        },
     }
+
+
+# The feature models are always needed; of the words, only the chosen one.
+FEATURE_MODELS = ("melspectrogram", "embedding_model")
+
+
+@router.get("/wake/{model}")
+async def wake_model(
+    model: str,
+    principal: Principal = Depends(resolve_principal),
+) -> FileResponse:
+    del principal
+
+    if model not in FEATURE_MODELS and (model == "off" or model != wake.wake_word()):
+        raise HTTPException(status_code=404, detail=f"{model} is not a wake word model in use.")
+
+    try:
+        path = await asyncio.to_thread(wake.model_path, model)
+    except wake.WakeModelUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"The wake word model could not be downloaded: {exc}") from exc
+
+    return FileResponse(path, media_type="application/octet-stream", headers={"Cache-Control": "private, max-age=86400"})
 
 
 @router.get("/elevenlabs/voices")

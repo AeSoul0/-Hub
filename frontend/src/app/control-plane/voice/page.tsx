@@ -3,7 +3,7 @@
  * @description Voice (F3, ADR-021, ADR-024): speech recognition model and
  * language, the voice of the replies (Piper on this computer or, optional,
  * ElevenLabs or SpaceXAI, ADR-038) and the language it speaks, a preview in that language
- * (ADR-034), and the speech models already on disk.
+ * (ADR-034), the wake word (N2, ADR-041) and the speech models already on disk.
  *
  * Reads GET /api/voice and the "voice" group of GET /api/settings; saves
  * through PUT /api/settings (applied to the next sentence, no restart). The
@@ -34,10 +34,18 @@ import {
     sttModels,
     voiceChanges,
     voiceForm,
+    WAKE_SENSITIVITIES,
+    WAKE_WORDS,
     type CloudVoice,
     type VoiceForm,
     type VoiceStatus,
 } from "@/lib/nucleo/voice";
+
+const WAKE_LABELS: Record<string, string> = {
+    hey_jarvis: "Hey Jarvis",
+    alexa: "Alexa",
+    hey_mycroft: "Hey Mycroft",
+};
 
 function message(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
@@ -62,6 +70,18 @@ const TEXT = catalog({
         idle: "Release the models after (minutes)",
         idleHelp:
             "Whisper, Piper and the memory's embedding model leave memory after this long without use and load again when needed (1–2 seconds more, only that time). 0 keeps them always loaded.",
+        wake: "Wake word",
+        wakeWord: "Word",
+        wakeOff: "off · press the microphone",
+        wakeOwn: "Aurora · your model",
+        sensitivity: "Sensitivity",
+        sensitivities: { low: "low", medium: "medium", high: "high" } as Record<string, string>,
+        wakeHelp:
+            "With a word chosen, the Nucleo listens for it while it is open: say the word, wait for the tone, then the command; it ends when you stop speaking. The word is recognized in the page (about 3 MB of models, a few % of one core): no audio is recorded or sent anywhere, not even to this computer's backend, before the word. High sensitivity hears the word more easily, and other words by mistake more often.",
+        wakeOwnHelp: (path: string) =>
+            `Aurora needs your own openWakeWord model (.onnx), for example trained with its notebook, at ${path}.`,
+        wakeOwnMissing: "The file is not there yet.",
+        wakeNeedsVoice: "The voice is off: the word is not listened for until it is on.",
         recognition: "Speech recognition",
         model: "Model",
         language: "Language",
@@ -125,6 +145,18 @@ const TEXT = catalog({
         idle: "Libera i modelli dopo (minuti)",
         idleHelp:
             "Whisper, Piper e il modello della memoria escono dalla RAM dopo questo tempo senza usarli e si ricaricano quando servono (1–2 secondi in più solo quella volta). 0 li tiene sempre caricati.",
+        wake: "Parola di attivazione",
+        wakeWord: "Parola",
+        wakeOff: "spenta · premi il microfono",
+        wakeOwn: "Aurora · il tuo modello",
+        sensitivity: "Sensibilità",
+        sensitivities: { low: "bassa", medium: "media", high: "alta" } as Record<string, string>,
+        wakeHelp:
+            "Con una parola scelta, il Nucleo la ascolta finché è aperto: di' la parola, aspetta il suono, poi il comando; finisce quando smetti di parlare. La parola si riconosce nella pagina (circa 3 MB di modelli, pochi % di un core): nessun audio viene registrato né inviato da nessuna parte, nemmeno al backend di questo computer, prima della parola. Sensibilità alta sente la parola più facilmente, e per sbaglio anche altre parole più spesso.",
+        wakeOwnHelp: (path: string) =>
+            `Aurora richiede un tuo modello openWakeWord (.onnx), per esempio addestrato con il suo notebook, in ${path}.`,
+        wakeOwnMissing: "Il file non c'è ancora.",
+        wakeNeedsVoice: "La voce è spenta: la parola non viene ascoltata finché non la accendi.",
         recognition: "Riconoscimento vocale",
         model: "Modello",
         language: "Lingua",
@@ -434,6 +466,51 @@ export default function VoicePage() {
                     <p className={styles.help}>{t.idleHelp}</p>
                     {fieldError("AEHUB_VOICE")}
                     {fieldError("AEHUB_VOICE_IDLE_MINUTES")}
+                </section>
+
+                <section className={styles.card}>
+                    <h2 className={styles.h2}>{t.wake}</h2>
+                    <div className={styles.filters}>
+                        <label className={styles.field}>
+                            {t.wakeWord}
+                            <select
+                                value={form.AEHUB_WAKE_WORD || "off"}
+                                onChange={(event) => set("AEHUB_WAKE_WORD", event.target.value)}
+                            >
+                                {WAKE_WORDS.map((word) => (
+                                    <option key={word} value={word}>
+                                        {word === "off" ? t.wakeOff : word === "aurora" ? t.wakeOwn : WAKE_LABELS[word]}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                        <label className={styles.field}>
+                            {t.sensitivity}
+                            <select
+                                value={form.AEHUB_WAKE_SENSITIVITY || "medium"}
+                                disabled={(form.AEHUB_WAKE_WORD || "off") === "off"}
+                                onChange={(event) => set("AEHUB_WAKE_SENSITIVITY", event.target.value)}
+                            >
+                                {WAKE_SENSITIVITIES.map((level) => (
+                                    <option key={level} value={level}>
+                                        {t.sensitivities[level]}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                    </div>
+                    <p className={styles.help}>{t.wakeHelp}</p>
+                    {form.AEHUB_WAKE_WORD === "aurora" && status?.wake && (
+                        <p className={status.wake.downloaded.aurora ? styles.help : styles.warn}>
+                            {t.wakeOwnHelp(status.wake.own_model_path)}
+                            {!status.wake.downloaded.aurora && ` ${t.wakeOwnMissing}`}
+                        </p>
+                    )}
+                    {(form.AEHUB_WAKE_WORD || "off") !== "off" && form.AEHUB_VOICE === "off" && (
+                        <p className={styles.warn}>{t.wakeNeedsVoice}</p>
+                    )}
+                    {fieldError("AEHUB_WAKE_WORD")}
+                    {fieldError("AEHUB_WAKE_SENSITIVITY")}
                 </section>
 
                 <section className={styles.card}>

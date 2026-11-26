@@ -12,9 +12,10 @@ API_CSP = "default-src 'self'; frame-ancestors 'none';"
 
 # Pages of the static frontend the desktop app serves (ADR-020). Next.js
 # boots them with inline scripts; everything else still comes only from
-# this origin.
+# this origin. 'wasm-unsafe-eval' lets the page compile WebAssembly (the
+# wake word on onnxruntime-web, N2, ADR-041), not run eval().
 PAGE_CSP = (
-    "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+    "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; "
     "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
     "font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; "
     "base-uri 'none'; form-action 'self'; object-src 'none';"

@@ -8,8 +8,8 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 - ◐ vuol dire parziale e conta mezzo: per esempio si vede ma non si cambia, o si cambia solo scrivendo JSON.
 - ⏸ vuol dire **sospesa**: riguarda solo l'app desktop (Tauri), sospesa dal 2026-11-24. Non conta né tra le coperte né tra le mancanti.
 
-**Ultimo aggiornamento:** F11, file dell'utente per gli agenti (2026-11-26): una riga nuova, e la riga 33 ora si modifica.
-**Copertura:** 60 righe su 60, cioè **100%**, più 2 righe sospese (⏸). F10 ha confrontato la tabella con tutte le route e tutte le impostazioni del backend: l'[indice](#indice-ogni-route-e-ogni-impostazione) in fondo dice quale riga copre ciascuna, e un test in CI lo tiene allineato al codice.
+**Ultimo aggiornamento:** N2, parola di attivazione (2026-11-26): una riga nuova, la 61.
+**Copertura:** 61 righe su 61, cioè **100%**, più 2 righe sospese (⏸). F10 ha confrontato la tabella con tutte le route e tutte le impostazioni del backend: l'[indice](#indice-ogni-route-e-ogni-impostazione) in fondo dice quale riga copre ciascuna, e un test in CI lo tiene allineato al codice.
 
 ## Conversazione e voce
 
@@ -73,6 +73,7 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 | 58 | File dell'utente per gli agenti (skill `files`: elencare, cercare, leggere, scrivere, creare cartelle, spostare; sostituire ed eliminare con approvazione) | STRUMENTI: i tool, ognuno con il suo interruttore e il rischio; le cartelle in Confini (riga 33) | ✓ | F11, ADR-036 |
 | 59 | Approvazioni in una parola e notifiche: la domanda breve di una run in attesa, «sì»/«no» a voce o scritto, la notifica del sistema e il conteggio nel titolo | Nucleo (la domanda, la risposta segna "istantaneo · N ms"); notifica su ogni pagina; APPROVAZIONI: lo stato delle notifiche e il bottone per attivarle | ✓ | ADR-037 |
 | 60 | Risposte in streaming: la bozza mentre il modello scrive (`delivery=live`, `answer.delta`/`answer.reset`) e la voce frase per frase (`reply_chars` su `/api/voice/speak`) | Nucleo: «bozza · in verifica», poi la risposta accettata, letta pezzo per pezzo | ✓ | N1, ADR-040 |
+| 61 | Parola di attivazione: «Hey Jarvis», «Alexa», «Hey Mycroft» o un tuo modello «Aurora», riconosciuta nella pagina; i modelli da `GET /api/voice/wake/{model}` (scaricati una volta, SHA-256 controllato); sensibilità | VOCE: Parola di attivazione (parola, sensibilità, dove va il modello Aurora); Nucleo: indicatore di ascolto, suono, il comando finisce quando smetti di parlare | ✓ | N2, ADR-041 |
 | 34 | Registro di audit, con la provenienza | Control Plane → SICUREZZA | ✓ | M11, F5 |
 
 ## Memoria e documenti
@@ -202,6 +203,7 @@ F10 (2026-11-24, aggiornato in P1): l'elenco viene dal codice (`tests/security/t
 | `GET /api/voice` | 4, 5, 8, 9 |
 | `GET /api/voice/elevenlabs/voices` | 5 |
 | `POST /api/voice/speak` | 6 |
+| `GET /api/voice/wake/{model}` | 61 |
 | `GET /desktop/launch/{token}` | S1 (sospesa) |
 | `GET /docs` | 51 |
 | `GET /docs/oauth2-redirect` | 51 |
@@ -260,6 +262,8 @@ F10 (2026-11-24, aggiornato in P1): l'elenco viene dal codice (`tests/security/t
 | `AEHUB_VOICE` | 9 |
 | `AEHUB_VOICE_IDLE_MINUTES` | 9 |
 | `AEHUB_VOICE_LANGUAGE_WARNING` | 55 |
+| `AEHUB_WAKE_SENSITIVITY` | 61 |
+| `AEHUB_WAKE_WORD` | 61 |
 | `OPENAI_MODEL` | 19, 20 |
 
 ### Parametri di avvio (SISTEMA, sola lettura)

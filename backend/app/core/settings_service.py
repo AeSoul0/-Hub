@@ -481,6 +481,20 @@ def check_configuration() -> List[ConfigIssue]:
             )
         )
 
+    from app.voice.wake import missing_own_model
+
+    own_model = missing_own_model()
+    if own_model:
+        issues.append(
+            ConfigIssue(
+                "voice_wake_model_missing",
+                "warning",
+                f"The wake word is aurora but there is no model at {own_model}: the Nucleo cannot listen for it.",
+                "AEHUB_WAKE_WORD",
+                params={"path": own_model},
+            )
+        )
+
     from app.home.devices import DeviceConfigError, load_devices
     from app.home.mqtt import MqttNotConfigured, broker
 
