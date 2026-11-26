@@ -250,9 +250,12 @@ async def test_run_fails_closed_when_every_provider_is_down(pinger, user, fake_m
 
     engine = AgentEngine(router=router, runtime=AgentRuntime())
 
-    with pytest.raises(MaxTurnsReachedError):
+    with pytest.raises(MaxTurnsReachedError) as failure:
         await engine.run(session_id=SESSION_ID, task="Implement a ping.", principal=user)
 
+    # The reason is the providers, not the turns (it used to say "maximum turns reached").
+    assert "No provider available for role" in str(failure.value)
+    assert "maximum turns" not in str(failure.value)
     assert pinger.calls == []
 
 
