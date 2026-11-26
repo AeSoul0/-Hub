@@ -22,7 +22,9 @@ DB_NAME="aehub_db"
 DB_USER="aehub_user"
 
 as_root() { if [ "$(id -u)" = 0 ]; then "$@"; else sudo "$@"; fi; }
-as_postgres() { if [ "$(id -u)" = 0 ]; then runuser -u postgres -- "$@"; else sudo -u postgres "$@"; fi; }
+# Through root: a codespace's sudo lets its user become root without a
+# password, but not other users (sudo -u postgres would ask for one).
+as_postgres() { as_root runuser -u postgres -- "$@"; }
 say() { printf '\n\033[1;36m[ÆHub]\033[0m %s\n' "$*"; }
 
 secret_file() {
