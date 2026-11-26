@@ -288,11 +288,25 @@ def _iter_strings(value: Any, key: Optional[str] = None) -> Iterable[Tuple[Optio
             yield from _iter_strings(child, key)
 
 
-def allowed_directories() -> List[Path]:
-    """
-    Directories that filesystem tools may touch.
+# The folders the owner lets the agents use besides the working folder
+# (F11, ADR-036): a JSON list of absolute paths, edited on the STRUMENTI page.
+AGENT_FOLDERS_SETTING = "AEHUB_AGENT_FOLDERS"
 
-    AEHUB_ALLOWED_DIRS holds os.pathsep-separated roots. The default is the
+# ÆHub itself: an agent with file tools must not rewrite it. The backend
+# folder always (in Docker it is /app); the repository around it when there
+# is one (a checkout has backend/ and frontend/ side by side).
+_BACKEND_DIR = Path(__file__).resolve().parents[2]
+_REPOSITORY = _BACKEND_DIR.parent if (_BACKEND_DIR.parent / "frontend").is_dir() else None
+
+
+def _real(path: str) -> Path:
+    return Path(os.path.realpath(os.path.expanduser(path)))
+
+
+def working_directories() -> List[Path]:
+    """
+    The working folders from AEHUB_ALLOWED_DIRS (os.pathsep-separated). The
+    first one is the folder search_documents indexes; the default is the
     ./workspace folder of the current working directory.
     """
     configured = os.getenv("AEHUB_ALLOWED_DIRS", "")
@@ -301,7 +315,77 @@ def allowed_directories() -> List[Path]:
     if not roots:
         roots = [os.path.join(os.getcwd(), "workspace")]
 
-    return [Path(os.path.realpath(os.path.expanduser(root))) for root in roots]
+    return [_real(root) for root in roots]
+
+
+def agent_folders() -> List[Path]:
+    """The folders the owner chose in AEHUB_AGENT_FOLDERS; an invalid list counts as none."""
+    from app.core.runtime_config import config_value
+
+    try:
+        return [_real(folder) for folder in parse_agent_folders(config_value(AGENT_FOLDERS_SETTING) or "")]
+    except ValueError:
+        return []
+
+
+def parse_agent_folders(raw: str) -> List[str]:
+    """
+    Read AEHUB_AGENT_FOLDERS: a JSON list of absolute folder paths. Raises
+    ValueError with a message for the Settings page.
+    """
+    import json
+
+    if not raw.strip():
+        return []
+    try:
+        folders = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"The folder list is not valid JSON: {exc.msg}.") from exc
+    if not isinstance(folders, list) or not all(isinstance(folder, str) and folder.strip() for folder in folders):
+        raise ValueError('The folder list must be a JSON list of paths, e.g. ["/home/me/Documents"].')
+    if len(folders) > 20:
+        raise ValueError("At most 20 folders.")
+    for folder in folders:
+        if not (Path(folder).expanduser().is_absolute() or PureWindowsPath(folder).is_absolute()):
+            raise ValueError(f"'{folder}' is not an absolute path.")
+    return [folder.strip() for folder in folders]
+
+
+def allowed_directories() -> List[Path]:
+    """
+    Directories that filesystem tools may touch: the working folders, then
+    the folders the owner chose for the agents.
+    """
+    roots = working_directories()
+    for folder in agent_folders():
+        if folder not in roots:
+            roots.append(folder)
+    return roots
+
+
+def protected_paths() -> List[Path]:
+    """
+    Places no file tool may touch, even inside an allowed folder: ÆHub's own
+    code and data, and the home device file. The working folders stay usable
+    even when they sit inside the backend folder (./workspace). Hidden files
+    and folders, and Windows AppData, are refused separately (see
+    validate_path).
+    """
+    paths = [_BACKEND_DIR] + ([_REPOSITORY] if _REPOSITORY else [])
+    for name in ("AEHUB_DATA_DIR", "AEHUB_HOME_DEVICES", "AEHUB_VOICE_MODELS_DIR", "AEHUB_FLIGHT_RECORDER_PATH"):
+        value = os.getenv(name, "").strip()
+        if value:
+            paths.append(_real(value))
+    return paths
+
+
+def _is_inside(path: Path, root: Path) -> bool:
+    return path == root or root in path.parents
+
+
+def _is_env_path(path: Path, protected: Path) -> bool:
+    """Whether `protected` is one of ÆHub's data paths, refused even inside a working folder."""
+    return protected not in (_BACKEND_DIR, _REPOSITORY)
 
 
 def validate_path(raw_path: str) -> Path:
@@ -309,6 +393,9 @@ def validate_path(raw_path: str) -> Path:
     Normalize a path and require it to stay inside an allowed directory.
 
     Symlinks and ".." segments are resolved before the containment check.
+    Inside an allowed folder, ÆHub's own files, hidden files and folders
+    (".ssh", ".env", ".config"...) and Windows AppData are still refused:
+    that is where credentials and ÆHub's own rules live.
     """
     if "\x00" in raw_path:
         raise GuardrailException("Path rejected: contains a NUL byte.")
@@ -324,20 +411,33 @@ def validate_path(raw_path: str) -> Path:
         )
 
     roots = allowed_directories()
-    candidate = Path(raw_path)
+    candidate = Path(raw_path).expanduser()
 
     if not candidate.is_absolute():
         candidate = roots[0] / candidate
 
     resolved = Path(os.path.realpath(candidate))
 
-    for root in roots:
-        if resolved == root or root in resolved.parents:
-            return resolved
+    root = next((root for root in roots if _is_inside(resolved, root)), None)
+    if root is None:
+        raise GuardrailException(
+            f"Path rejected: '{raw_path}' is outside the allowed directories."
+        )
 
-    raise GuardrailException(
-        f"Path rejected: '{raw_path}' is outside the allowed directories."
-    )
+    in_working_folder = any(_is_inside(resolved, folder) for folder in working_directories())
+    for protected in protected_paths():
+        if _is_inside(resolved, protected) and not (in_working_folder and not _is_env_path(resolved, protected)):
+            raise GuardrailException(
+                f"Path rejected: '{raw_path}' belongs to ÆHub itself."
+            )
+
+    for part in resolved.relative_to(root).parts:
+        if part.startswith(".") or part.lower() == "appdata":
+            raise GuardrailException(
+                f"Path rejected: '{raw_path}' is hidden or holds settings and credentials."
+            )
+
+    return resolved
 
 
 class ToolGuardrail:

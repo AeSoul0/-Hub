@@ -8,8 +8,8 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 - ◐ vuol dire parziale e conta mezzo: per esempio si vede ma non si cambia, o si cambia solo scrivendo JSON.
 - ⏸ vuol dire **sospesa**: riguarda solo l'app desktop (Tauri), sospesa dal 2026-11-24. Non conta né tra le coperte né tra le mancanti.
 
-**Ultimo aggiornamento:** V1, comandi istantanei (2026-11-26): due righe nuove, i comandi istantanei e la lista delle app.
-**Copertura:** 57 righe su 57, cioè **100%**, più 2 righe sospese (⏸). F10 ha confrontato la tabella con tutte le route e tutte le impostazioni del backend: l'[indice](#indice-ogni-route-e-ogni-impostazione) in fondo dice quale riga copre ciascuna, e un test in CI lo tiene allineato al codice.
+**Ultimo aggiornamento:** F11, file dell'utente per gli agenti (2026-11-26): una riga nuova, e la riga 33 ora si modifica.
+**Copertura:** 58 righe su 58, cioè **100%**, più 2 righe sospese (⏸). F10 ha confrontato la tabella con tutte le route e tutte le impostazioni del backend: l'[indice](#indice-ogni-route-e-ogni-impostazione) in fondo dice quale riga copre ciascuna, e un test in CI lo tiene allineato al codice.
 
 ## Conversazione e voce
 
@@ -63,13 +63,14 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 | 30 | Skill `SKILL.md` scaricate da internet | Control Plane → SKILL: import da link o file, testo e avvisi, accesa o spenta, eliminazione | ✓ | F5 |
 | 31 | Server MCP consentiti | STRUMENTI → Confini | ✓ | F5 |
 | 32 | Selezione dei tool (indice delle skill) | STRUMENTI → Indice delle skill; i tool scelti nella vista della run | ✓ | F5 |
-| 33 | Cartelle consentite ai tool | STRUMENTI → Confini, in sola lettura (parametro di avvio: si sceglie dal launcher) | ✓ | F5 |
+| 33 | Cartelle consentite ai tool: la cartella di lavoro (`AEHUB_ALLOWED_DIRS`, parametro di avvio) e le cartelle scelte per gli agenti (`AEHUB_AGENT_FOLDERS`) | STRUMENTI → Confini: la cartella di lavoro in sola lettura, le altre si aggiungono e si tolgono | ✓ | F5, F11 |
 | 52 | Client MCP: stato di ogni server consentito (collegato e con quanti tool, o l'errore; token sì o no) e il pulsante per ricollegarsi (`POST /api/tools/mcp/refresh`) | STRUMENTI → Server MCP | ✓ | ADR-033 |
 | 53 | Rischio dei tool MCP: alto (approvazione a ogni chiamata) finché non lo abbassi, tool per tool (`AEHUB_MCP_TOOL_RISK`) | STRUMENTI → la scheda Server MCP del catalogo, un menu per tool | ✓ | ADR-033 |
 | 54 | Lingua dell'interfaccia: inglese (predefinita) o italiano (`AEHUB_UI_LANGUAGE`, `GET /api/interface`); la cambia anche Aurora | IMPOSTAZIONI → Lingua; ogni pagina cambia subito | ✓ | ADR-034 |
 | 55 | Avviso quando la voce scelta parla un'altra lingua dell'interfaccia, con "non mostrare più" (`AEHUB_VOICE_LANGUAGE_WARNING`); lo riattivano IMPOSTAZIONI o Aurora | Avviso su ogni pagina; IMPOSTAZIONI → Lingua | ✓ | ADR-034 |
 | 56 | Comandi istantanei: i comandi semplici (aprire un'app o una cartella, una luce, chiudere a chiave) partono senza il modello (`AEHUB_INSTANT_COMMANDS`) | Nucleo, la risposta segna "istantaneo · N ms"; IMPOSTAZIONI → Motore | ✓ | V1, ADR-035 |
 | 57 | App che ÆHub può aprire (`AEHUB_APPS`, skill `apps`: `open_app`, `open_folder`) | IMPOSTAZIONI → App, una riga per app (nome, programma, argomenti) | ✓ | V1, ADR-035 |
+| 58 | File dell'utente per gli agenti (skill `files`: elencare, cercare, leggere, scrivere, creare cartelle, spostare; sostituire ed eliminare con approvazione) | STRUMENTI: i tool, ognuno con il suo interruttore e il rischio; le cartelle in Confini (riga 33) | ✓ | F11, ADR-036 |
 | 34 | Registro di audit, con la provenienza | Control Plane → SICUREZZA | ✓ | M11, F5 |
 
 ## Memoria e documenti
@@ -128,6 +129,7 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 | Q1 (`runtime.py` diviso in moduli, nessuna route o impostazione cambiata) | 51 su 51 | 100% |
 | ADR-033 e ADR-034 (client MCP, lingua dell'interfaccia: quattro righe nuove) | 55 su 55 | 100% |
 | V1 (comandi istantanei e lista delle app) | 57 su 57 | 100% |
+| F11 (file dell'utente per gli agenti, cartelle scelte dall'utente) | 58 su 58 | 100% |
 
 ## Indice: ogni route e ogni impostazione
 
@@ -209,6 +211,7 @@ F10 (2026-11-24, aggiornato in P1): l'elenco viene dal codice (`tests/security/t
 | Impostazione | Riga |
 |---|---|
 | `AEHUB_APPROVAL_TTL_SECONDS` | 26 |
+| `AEHUB_AGENT_FOLDERS` | 33, 58 |
 | `AEHUB_APPS` | 57 |
 | `AEHUB_BREAKER_COOLDOWN_SECONDS` | 25 |
 | `AEHUB_BREAKER_THRESHOLD` | 25 |

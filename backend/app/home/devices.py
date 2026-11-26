@@ -175,10 +175,13 @@ def file_devices(path: Optional[str] = None) -> Dict[str, Device]:
 
     file = Path(location).expanduser()
 
-    from app.agent_engine.guardrails import allowed_directories
+    # The working folders are where the agent's file tools write freely. The
+    # folders the owner adds for the agents (F11) cannot reach this file:
+    # validate_path refuses AEHUB_HOME_DEVICES wherever it is.
+    from app.agent_engine.guardrails import working_directories
 
     resolved = Path(os.path.realpath(file))
-    for root in allowed_directories():
+    for root in working_directories():
         if resolved == root or root in resolved.parents:
             raise DeviceConfigError(
                 f"Device file {file} is inside the agent's working folder {root}: move it out, "

@@ -91,6 +91,12 @@ the run is stored as untrusted and recalled only inside a fence.
    outputs after it.
 3. **OutputGuardrail**: removes secrets from what the user sees.
 
+File tools (`skills/files_skill.py`, ADR-036) reach only the working
+folders and the folders the owner adds (`AEHUB_AGENT_FOLDERS`):
+`validate_path` resolves links and `..`, then refuses ÆHub's own code and
+data, the home device file, hidden files and folders, and AppData. The Tool
+Gateway checks every path argument before the call, and the tool again.
+
 Untrusted tool output (web, files, MCP, imported skills) reaches the model
 inside an `<untrusted_tool_output>` fence; after it, every HIGH-risk action
 needs an approval.

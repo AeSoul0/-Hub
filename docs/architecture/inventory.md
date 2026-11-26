@@ -26,6 +26,7 @@ sidecar dell'app desktop (PostgreSQL e API su `127.0.0.1`).
 - `app/instant/`: i comandi istantanei (ADR-035): riconoscimento senza modello, lista delle app, esecuzione dal Tool Gateway.
 - `app/skills/`: le skill e i loro tool:
   - web, browser, sandbox, memoria, documenti e casa;
+  - file (ADR-036): elencare, cercare, leggere e scrivere i file nelle cartelle scelte dall'utente; sostituire ed eliminare con approvazione;
   - app (ADR-035): aprire le app della lista e le cartelle note, anche dai comandi istantanei;
   - deleghe;
   - skill importate `SKILL.md`;
