@@ -10,12 +10,16 @@
  * away for this browser session for the same pair of languages; "don't show
  * again" turns AEHUB_VOICE_LANGUAGE_WARNING off, and IMPOSTAZIONI → Language
  * or Aurora turn it back on.
+ *
+ * The same stream feeds the approval notices (ADR-037): the tab title counts the
+ * pending approvals and a system notification calls the owner.
  */
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
 
 import styles from "@/components/control-plane/control.module.css";
+import { APPROVAL_EVENTS, useApprovalNotices } from "@/components/interface/ApprovalNotifier";
 import { getJson, putJson } from "@/lib/api/client";
 import { useWorkspaceEvents } from "@/lib/api/events";
 import {
@@ -161,10 +165,21 @@ export default function InterfaceProvider() {
         };
     }, [load]);
 
+    const approvals = useApprovalNotices();
+
     useWorkspaceEvents(
-        ["interface.changed"],
-        (event) => applyInterface(event.data as unknown as InterfaceState),
-        load,
+        ["interface.changed", ...APPROVAL_EVENTS],
+        (event) => {
+            if (event.type === "interface.changed") {
+                applyInterface(event.data as unknown as InterfaceState);
+            } else {
+                approvals.onEvent(event);
+            }
+        },
+        () => {
+            void load();
+            approvals.onConnect();
+        },
     );
 
     return <VoiceLanguageNotice />;

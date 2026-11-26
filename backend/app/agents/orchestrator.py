@@ -214,6 +214,54 @@ async def _instant_reply(
     }
 
 
+async def _decision_reply(
+    text: str,
+    principal: Any,
+    session_id: str,
+) -> Optional[dict[str, Any]]:
+    """A few words when the text decides a pending approval, else None."""
+    from app.core.interface import interface_language
+    from app.instant.approvals import try_decision
+
+    try:
+        decided = await try_decision(text, principal, interface_language())
+    except Exception:  # noqa: BLE001 - a failed check must never cost the command: the engine takes it
+        logger.exception("Approval answer failed; the engine takes the text")
+        return None
+    if decided is None:
+        return None
+
+    await event_bus.publish(
+        session_id,
+        "log",
+        f"[System] Approval {decided['decision'] or 'closed'} in a word, {decided['ms']} ms",
+    )
+    base64_audio, audio_mime = await speak(decided["text"])
+    return {
+        "transcription": decided["text"],
+        "audio_base64": base64_audio,
+        "audio_mime": audio_mime,
+        "instant": {"tool": "approval", "ms": decided["ms"], "success": decided["decision"] is not None},
+        "decision": decided["decision"],
+    }
+
+
+async def _parked_question(content: Any, principal: Any) -> Optional[str]:
+    """The short question of a run that stopped on an approval, else None."""
+    if not (isinstance(content, dict) and content.get("status") == "WAITING_APPROVAL"):
+        return None
+    from app.core.interface import interface_language
+    from app.instant.approvals import question_for_run, waiting_question
+
+    language = interface_language()
+    try:
+        question = await question_for_run(str(content.get("run_id") or ""), principal, language)
+    except Exception:  # noqa: BLE001 - the generic question still tells the user to decide
+        logger.exception("Question of the parked run not built")
+        question = None
+    return question or waiting_question(language)
+
+
 async def generate_ai_response(
     user_intent: str | list,
     system_prompt: str,
@@ -280,9 +328,13 @@ async def generate_ai_response(
 
     del ui_context
 
+    # ADR-037: while an approval waits, "sì" or "no" decides it at once.
     # V1 (ADR-035): a simple command ("apri Spotify", "accendi la luce della
     # cucina") runs at once, without the engine. Anything else returns None.
     if isinstance(user_intent, str):
+        decided = await _decision_reply(intent_str, principal, session_id)
+        if decided is not None:
+            return decided
         instant = await _instant_reply(intent_str, principal, session_id, input_channel)
         if instant is not None:
             return instant
@@ -339,6 +391,18 @@ async def generate_ai_response(
             )
 
         last_message = messages[-1]
+
+        # A run waiting on the owner answers with one short question
+        # (ADR-037), not with its state.
+        question = await _parked_question(getattr(last_message, "content", None), principal)
+        if question is not None:
+            base64_audio, audio_mime = await speak(question)
+            return {
+                "transcription": question,
+                "audio_base64": base64_audio,
+                "audio_mime": audio_mime,
+                "awaiting_approval": True,
+            }
 
         if isinstance(
             last_message,

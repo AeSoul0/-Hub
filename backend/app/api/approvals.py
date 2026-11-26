@@ -218,33 +218,28 @@ async def list_pending_approvals(
     return pending
 
 
-@router.post("/{approval_id}")
-async def decide_approval(
+async def record_decision(
     approval_id: str,
-    body: ApprovalDecision,
-    principal: Principal = Depends(resolve_principal),
-) -> Dict[str, Any]:
+    decision: str,
+    principal: Principal,
+) -> Dict[str, Any] | None:
     """
-    Record an allow/deny decision and resume the parked run.
+    Record an allow/deny decision of this Principal, publish it and resume
+    the parked run. The approval button and a spoken or typed "sì"/"no"
+    (app.instant.approvals) both decide through here.
+
+    Returns None when no request with this id exists in the workspace;
+    raises ApprovalClosedError when it was already decided or has expired.
     """
-    try:
-        approval = await ApprovalManager.grant_approval(
-            req_id=approval_id,
-            decision=body.decision,
-            decided_by=principal.id,
-            workspace_id=principal.workspace_id,
-        )
-    except ApprovalClosedError as exc:
-        raise HTTPException(
-            status_code=409,
-            detail=str(exc),
-        ) from exc
+    approval = await ApprovalManager.grant_approval(
+        req_id=approval_id,
+        decision=decision,
+        decided_by=principal.id,
+        workspace_id=principal.workspace_id,
+    )
 
     if approval is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Approval request not found.",
-        )
+        return None
 
     try:
         await event_bus.publish(
@@ -259,9 +254,34 @@ async def decide_approval(
         )
     except Exception as exc:  # noqa: BLE001 - the bus is best effort; the decision is already saved
         logger.warning("approval.decided for %s not delivered: %s", approval["id"], exc)
-        pass
 
     if approval["run_id"]:
         _schedule_resume(approval)
+
+    return approval
+
+
+@router.post("/{approval_id}")
+async def decide_approval(
+    approval_id: str,
+    body: ApprovalDecision,
+    principal: Principal = Depends(resolve_principal),
+) -> Dict[str, Any]:
+    """
+    Record an allow/deny decision and resume the parked run.
+    """
+    try:
+        approval = await record_decision(approval_id, body.decision, principal)
+    except ApprovalClosedError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=str(exc),
+        ) from exc
+
+    if approval is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Approval request not found.",
+        )
 
     return approval
