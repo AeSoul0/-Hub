@@ -104,6 +104,18 @@ interface language and that notice (`set_interface_language`,
 `set_voice_language_warning`): low risk, saved and audited like a change
 from Settings, and every open page switches at once.
 
+### Instant commands
+Before the engine starts, `orchestrator.generate_ai_response` asks
+`instant.runner.try_instant` (ADR-035). A whole sentence of a fixed form
+whose object the user declared (an app of `AEHUB_APPS`, a known folder, a
+light, a door to lock) runs its tool at once through the Tool Gateway
+(`runtime/direct_tool.py`, also used by the Casa page) and answers with a
+fixed sentence in the language spoken: no model, no Critic, no cost. Anything
+else, a tool that needs an approval, or one not available here goes to the
+engine unchanged. The `apps` skill (`open_app` MEDIUM, `open_folder` LOW)
+starts programs detached, without a shell, and offers nothing inside a
+container.
+
 ### MCP servers
 `skills/mcp_bridge.py` (ADR-033) lists the tools of the allowed MCP servers
 (Streamable HTTP; https, or http only to this computer) as

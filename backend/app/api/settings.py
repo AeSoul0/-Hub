@@ -91,6 +91,7 @@ async def update_settings(
             ) from exc
 
         _apply_mcp_changes(update.values)
+        _apply_app_changes(update.values)
         await _announce_interface(update.values, principal)
 
         return settings_view(db)
@@ -126,6 +127,20 @@ async def _announce_interface(changes: Dict[str, Any], principal: Principal) -> 
         )
     except Exception as exc:  # noqa: BLE001 - the setting is saved; the pages read it again on their next load
         logger.warning("interface.changed not sent: %s", exc)
+
+
+def _apply_app_changes(changes: Dict[str, Any]) -> None:
+    """
+    The app list decides which tools the apps skill offers (ADR-035): the
+    next run sees the new list.
+    """
+    if "AEHUB_APPS" not in changes:
+        return
+
+    from app.skills.registry import skill_registry
+
+    if skill_registry.get_skill("apps") is not None:
+        skill_registry.refresh_skill("apps")
 
 
 _mcp_refreshes: set = set()

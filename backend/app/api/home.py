@@ -186,9 +186,7 @@ async def command(
 ) -> Dict[str, Any]:
     from app.agent_engine.approval.manager import ApprovalManager
     from app.agent_engine.errors import ApprovalRequiredError
-    from app.agent_engine.runtime import AgentRuntime
-    from app.core.security import TaskExecutionContext
-    from app.runtime.tool_gateway import ToolGateway, ToolInvocation
+    from app.runtime.direct_tool import needs_approval, run_tool, tool_spec
 
     _require_admin(principal)
 
@@ -205,41 +203,27 @@ async def command(
             arguments["brightness"] = body.brightness
 
     try:
-        tool, _ = AgentRuntime._resolve_tool(tool_name)
-        spec = AgentRuntime._build_tool_spec(tool_name)
+        spec = tool_spec(tool_name)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=f"The home tools are not available: {exc}") from exc
 
-    needs_approval = spec.requires_approval or spec.risk_level in ("HIGH", "CRITICAL")
-
-    if needs_approval and not body.confirm:
+    if needs_approval(spec) and not body.confirm:
         raise HTTPException(status_code=428, detail="This action needs your confirmation.")
 
     run_id = f"home-{uuid.uuid4().hex}"
-    context = TaskExecutionContext(workspace_id=principal.workspace_id)
 
-    async def executor(**call: Any) -> Any:
-        return await AgentRuntime._execute_registered_tool(
-            tool=tool,
-            arguments=call,
+    async def execute() -> Any:
+        return await run_tool(
+            principal,
+            tool_name,
+            arguments,
             session_id=SESSION_ID,
-            workspace_id=principal.workspace_id,
-            principal_id=principal.id,
-        )
-
-    def invocation() -> ToolInvocation:
-        return ToolInvocation(
-            tool_name=tool_name,
-            arguments=dict(arguments),
-            principal=principal,
-            session_id=SESSION_ID,
-            spec=spec,
-            tool_call_id=f"call-{body.action}",
             run_id=run_id,
+            call_id=f"call-{body.action}",
         )
 
     try:
-        result = await ToolGateway.execute(invocation(), executor, task_context=context)
+        result = await execute()
     except ApprovalRequiredError as exc:
         if not exc.approval_id:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -257,7 +241,7 @@ async def command(
         if decision == "DENY":
             raise HTTPException(status_code=428, detail="This action needs your confirmation.") from exc
 
-        result = await ToolGateway.execute(invocation(), executor, task_context=context)
+        result = await execute()
 
     if not result.success:
         error = result.error or "The command failed."

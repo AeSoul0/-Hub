@@ -179,6 +179,29 @@ def test_critic_equal_to_a_worker_is_refused():
     assert "Critic" in refused.value.errors["routing"]
 
 
+def test_a_broken_routing_blocks_only_model_changes(monkeypatch):
+    """
+    A new install: the Critic shares the worker's model until the owner picks
+    one. The language, the app list and the other settings still save; only a
+    change to the models is checked against the routing.
+    """
+    monkeypatch.setenv("OPENAI_MODEL", "same-model")
+    monkeypatch.delenv("AEHUB_CHECKER_MODEL", raising=False)
+    monkeypatch.delenv("AEHUB_MODEL_ROLES", raising=False)
+
+    assert validate_changes({"AEHUB_UI_LANGUAGE": "it", "AEHUB_APPS": '{"spotify": "spotify"}'}) == {
+        "AEHUB_UI_LANGUAGE": "it",
+        "AEHUB_APPS": '{"spotify": "spotify"}',
+    }
+
+    with pytest.raises(SettingsValidationError) as refused:
+        validate_changes({"OPENAI_MODEL": "other-model"})
+    assert "Critic" in refused.value.errors["routing"]
+
+    # Picking a Critic of its own fixes it.
+    assert validate_changes({"AEHUB_CHECKER_MODEL": "critic-model"}) == {"AEHUB_CHECKER_MODEL": "critic-model"}
+
+
 # ==============================================================================
 # CONFIGURATION CHECK
 # ==============================================================================

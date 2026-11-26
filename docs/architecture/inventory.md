@@ -18,13 +18,15 @@ sidecar dell'app desktop (PostgreSQL e API su `127.0.0.1`).
   - il loop sta in `runtime.py`, le sue parti in `runtime_tools.py`, `runtime_limits.py`, `runtime_resume.py`, `runtime_state.py` e `runtime_subagents.py` (Q1).
 
   Vedi `AEHUB_ENGINE_V1.md`.
-- `app/runtime/`: Tool Gateway, catena di hash dell'audit e la facciata `aurora.py`.
+- `app/runtime/`: Tool Gateway, catena di hash dell'audit, la chiamata a un tool senza modello (`direct_tool.py`) e la facciata `aurora.py`.
 - `app/api/`: le route HTTP, WebSocket e SSE. L'elenco esatto è in `tests/security/test_api_surface.py`.
 - `app/core/`: database e migrazioni Alembic, event bus e cache (Redis o in processo), sicurezza (sessioni, policy, middleware), configurazione a runtime, protezione SSRF, telemetria.
 - `app/memory/`: memoria a lungo termine (`store.py`, pgvector e ricerca full-text).
 - `app/documents/`: indice dei documenti della cartella di lavoro, con le citazioni.
+- `app/instant/`: i comandi istantanei (ADR-035): riconoscimento senza modello, lista delle app, esecuzione dal Tool Gateway.
 - `app/skills/`: le skill e i loro tool:
-  - web, browser, sandbox, file, memoria, documenti e casa;
+  - web, browser, sandbox, memoria, documenti e casa;
+  - app (ADR-035): aprire le app della lista e le cartelle note, anche dai comandi istantanei;
   - deleghe;
   - skill importate `SKILL.md`;
   - client MCP (ADR-033): i tool dei server consentiti, a rischio alto finché non lo abbassi;

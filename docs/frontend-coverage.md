@@ -8,8 +8,8 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 - ◐ vuol dire parziale e conta mezzo: per esempio si vede ma non si cambia, o si cambia solo scrivendo JSON.
 - ⏸ vuol dire **sospesa**: riguarda solo l'app desktop (Tauri), sospesa dal 2026-11-24. Non conta né tra le coperte né tra le mancanti.
 
-**Ultimo aggiornamento:** Q1, `agent_engine/runtime.py` diviso in moduli (2026-11-25): solo spostamento di codice, nessuna route o impostazione cambiata.
-**Copertura:** 55 righe su 55, cioè **100%**, più 2 righe sospese (⏸). F10 ha confrontato la tabella con tutte le route e tutte le impostazioni del backend: l'[indice](#indice-ogni-route-e-ogni-impostazione) in fondo dice quale riga copre ciascuna, e un test in CI lo tiene allineato al codice.
+**Ultimo aggiornamento:** V1, comandi istantanei (2026-11-26): due righe nuove, i comandi istantanei e la lista delle app.
+**Copertura:** 57 righe su 57, cioè **100%**, più 2 righe sospese (⏸). F10 ha confrontato la tabella con tutte le route e tutte le impostazioni del backend: l'[indice](#indice-ogni-route-e-ogni-impostazione) in fondo dice quale riga copre ciascuna, e un test in CI lo tiene allineato al codice.
 
 ## Conversazione e voce
 
@@ -68,6 +68,8 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 | 53 | Rischio dei tool MCP: alto (approvazione a ogni chiamata) finché non lo abbassi, tool per tool (`AEHUB_MCP_TOOL_RISK`) | STRUMENTI → la scheda Server MCP del catalogo, un menu per tool | ✓ | ADR-033 |
 | 54 | Lingua dell'interfaccia: inglese (predefinita) o italiano (`AEHUB_UI_LANGUAGE`, `GET /api/interface`); la cambia anche Aurora | IMPOSTAZIONI → Lingua; ogni pagina cambia subito | ✓ | ADR-034 |
 | 55 | Avviso quando la voce scelta parla un'altra lingua dell'interfaccia, con "non mostrare più" (`AEHUB_VOICE_LANGUAGE_WARNING`); lo riattivano IMPOSTAZIONI o Aurora | Avviso su ogni pagina; IMPOSTAZIONI → Lingua | ✓ | ADR-034 |
+| 56 | Comandi istantanei: i comandi semplici (aprire un'app o una cartella, una luce, chiudere a chiave) partono senza il modello (`AEHUB_INSTANT_COMMANDS`) | Nucleo, la risposta segna "istantaneo · N ms"; IMPOSTAZIONI → Motore | ✓ | V1, ADR-035 |
+| 57 | App che ÆHub può aprire (`AEHUB_APPS`, skill `apps`: `open_app`, `open_folder`) | IMPOSTAZIONI → App, una riga per app (nome, programma, argomenti) | ✓ | V1, ADR-035 |
 | 34 | Registro di audit, con la provenienza | Control Plane → SICUREZZA | ✓ | M11, F5 |
 
 ## Memoria e documenti
@@ -124,6 +126,8 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 | P1 (Groq, Anthropic e Gemini nelle righe 19 e 23) | 51 su 51 | 100% |
 | R1 (tolta `POST /api/memory/preferences`, doppione di `POST /api/memory`; nuovo controllo: ogni indirizzo chiamato dal frontend è una route vera, `tests/security/test_frontend_api_routes.py`) | 51 su 51 | 100% |
 | Q1 (`runtime.py` diviso in moduli, nessuna route o impostazione cambiata) | 51 su 51 | 100% |
+| ADR-033 e ADR-034 (client MCP, lingua dell'interfaccia: quattro righe nuove) | 55 su 55 | 100% |
+| V1 (comandi istantanei e lista delle app) | 57 su 57 | 100% |
 
 ## Indice: ogni route e ogni impostazione
 
@@ -205,6 +209,7 @@ F10 (2026-11-24, aggiornato in P1): l'elenco viene dal codice (`tests/security/t
 | Impostazione | Riga |
 |---|---|
 | `AEHUB_APPROVAL_TTL_SECONDS` | 26 |
+| `AEHUB_APPS` | 57 |
 | `AEHUB_BREAKER_COOLDOWN_SECONDS` | 25 |
 | `AEHUB_BREAKER_THRESHOLD` | 25 |
 | `AEHUB_BUDGET_WARNING_RATIO` | 22 |
@@ -218,6 +223,7 @@ F10 (2026-11-24, aggiornato in P1): l'elenco viene dal codice (`tests/security/t
 | `AEHUB_EMBEDDER` | 36 |
 | `AEHUB_EMBEDDING_MODEL` | 36 |
 | `AEHUB_FORCE_ROLE` | 18 |
+| `AEHUB_INSTANT_COMMANDS` | 56 |
 | `AEHUB_LOCAL_BASE_URL` | 24 |
 | `AEHUB_MCP_ALLOWED_SERVERS` | 31, 52 |
 | `AEHUB_MCP_TOOL_RISK` | 53 |
@@ -287,3 +293,4 @@ F10 (2026-11-24, aggiornato in P1): l'elenco viene dal codice (`tests/security/t
 | `GROQ_API_KEY` | chiave del provider groq, nel keyring (P1) | 23 |
 | `ANTHROPIC_API_KEY` | chiave del provider anthropic, nel keyring (P1) | 23 |
 | `GEMINI_API_KEY` | chiave del provider google (Gemini), nel keyring (P1) | 23 |
+| `AEHUB_IN_CONTAINER` | `1` nell'immagine Docker del backend: le app e le cartelle del PC non si aprono da lì (ADR-035) | 57 |

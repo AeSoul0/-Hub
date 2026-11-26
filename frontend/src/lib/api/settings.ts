@@ -17,7 +17,7 @@ export type SettingGroup =
     "models" | "prices" | "limits" | "engine" | "voice" | "tools" | "memory" | "documents" | "home"
     | "interface";
 export type SettingKind =
-    "text" | "roles" | "prices" | "price_pair" | "number" | "integer" | "ratio" | "choice";
+    "text" | "roles" | "prices" | "price_pair" | "number" | "integer" | "ratio" | "choice" | "apps";
 export type SettingSource = "database" | "environment" | "default";
 export type Severity = "error" | "warning" | "info";
 

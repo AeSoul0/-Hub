@@ -224,6 +224,33 @@ def test_pages_get_the_page_policy_and_the_api_the_strict_one():
     assert "connect-src 'self'" in PAGE_CSP
 
 
+def test_a_revalidated_page_keeps_its_policy(tmp_path):
+    """
+    A reload answers 304 with no content type. The browser copies the 304's
+    headers onto the cached page, so the strict API policy there blocked the
+    page's inline boot scripts: after a reload the app stayed on "Checking
+    the session...".
+    """
+    from fastapi import FastAPI
+    from fastapi.staticfiles import StaticFiles
+
+    from app.core.security_middleware import PAGE_CSP, AdvancedSecurityMiddleware
+
+    (tmp_path / "index.html").write_text("<html><script>boot()</script></html>", encoding="utf-8")
+    app = FastAPI()
+    app.add_middleware(AdvancedSecurityMiddleware)
+    app.mount("/", StaticFiles(directory=tmp_path, html=True), name="frontend")
+    client = TestClient(app)
+
+    first = client.get("/")
+    assert first.status_code == 200
+    assert first.headers["Content-Security-Policy"] == PAGE_CSP
+
+    again = client.get("/", headers={"If-None-Match": first.headers["etag"]})
+    assert again.status_code == 304
+    assert "Content-Security-Policy" not in again.headers
+
+
 # ==============================================================================
 # LAUNCH TOKEN
 # ==============================================================================

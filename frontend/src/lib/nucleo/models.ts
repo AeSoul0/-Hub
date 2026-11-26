@@ -167,6 +167,14 @@ export const SETTING_TEXT = catalog<SettingText>({
             label: "Calls between two summaries",
             help: "The oldest calls leave the recent window and are summarized (10–20).",
         },
+        AEHUB_INSTANT_COMMANDS: {
+            label: "Instant commands",
+            help: "Simple commands (open an app or a folder, a light on or off, lock a door) run at once, without the model. Anything else goes to the engine.",
+        },
+        AEHUB_APPS: {
+            label: "Apps ÆHub may open",
+            help: 'JSON: the name you say → the program, e.g. {"spotify": "spotify", "code": ["code", "--new-window"]}. Only these can be opened, and only when ÆHub runs on this computer (not in Docker).',
+        },
     },
     it: {
         OPENAI_MODEL: {
@@ -244,6 +252,14 @@ export const SETTING_TEXT = catalog<SettingText>({
         AEHUB_SNAPSHOT_EVERY: {
             label: "Chiamate tra due riassunti",
             help: "Le chiamate più vecchie escono dalla finestra recente e vengono riassunte (10–20).",
+        },
+        AEHUB_INSTANT_COMMANDS: {
+            label: "Comandi istantanei",
+            help: "I comandi semplici (aprire un'app o una cartella, accendere o spegnere una luce, chiudere a chiave una porta) partono subito, senza il modello. Tutto il resto va al motore.",
+        },
+        AEHUB_APPS: {
+            label: "App che ÆHub può aprire",
+            help: 'JSON: il nome che dici → il programma, ad esempio {"spotify": "spotify", "code": ["code", "--new-window"]}. Si aprono solo queste, e solo quando ÆHub gira su questo computer (non in Docker).',
         },
     },
 });

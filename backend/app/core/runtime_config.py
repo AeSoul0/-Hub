@@ -40,7 +40,7 @@ class SettingSpec:
     name: str
     group: Literal["models", "prices", "limits", "engine", "voice", "tools", "memory", "documents", "home", "interface"]
     label: str
-    kind: Literal["text", "roles", "prices", "price_pair", "number", "integer", "ratio", "choice"]
+    kind: Literal["text", "roles", "prices", "price_pair", "number", "integer", "ratio", "choice", "apps"]
     default: str
     help: str
     # "choice": the accepted values. "text": a regular expression the whole
@@ -223,6 +223,30 @@ SPECS: Tuple[SettingSpec, ...] = (
         help="Older calls leave the recent window and are summarized (10-20).",
         minimum=10,
         maximum=20,
+    ),
+    # Instant commands (V1, ADR-035): read on every command.
+    SettingSpec(
+        name="AEHUB_INSTANT_COMMANDS",
+        group="engine",
+        label="Instant commands",
+        kind="choice",
+        default="on",
+        options=("on", "off"),
+        help=(
+            "Simple commands (open an app or a folder, a light on or off, lock a door) run at once, "
+            "without the model. Anything else goes to the engine."
+        ),
+    ),
+    SettingSpec(
+        name="AEHUB_APPS",
+        group="engine",
+        label="Apps ÆHub may open",
+        kind="apps",
+        default="",
+        help=(
+            'JSON: the name you say -> the program, e.g. {"spotify": "spotify", "code": ["code", "--new-window"]}. '
+            "Only these can be opened, and only when ÆHub runs on this computer (not in Docker)."
+        ),
     ),
     # Tools (F5, ADR-026): read when a run starts and on every tool call.
     SettingSpec(

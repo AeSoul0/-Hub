@@ -65,7 +65,7 @@ export default function SettingsForm({
             {fields.map((field) => {
                 const id = `setting-${field.name}`;
                 const { label, help } = settingText(field, lang);
-                const multiline = field.kind === "roles" || field.kind === "prices";
+                const multiline = field.kind === "roles" || field.kind === "prices" || field.kind === "apps";
                 const common = {
                     id,
                     value: draft[field.name] ?? "",

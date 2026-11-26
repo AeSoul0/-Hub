@@ -9,6 +9,8 @@ FROM mcr.microsoft.com/playwright/python:v1.65.2-noble
 # PREVENT PYTHON FROM BUFFERING STDOUT/STDERR (Real-time logs)
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
+# Apps and folders of the user's computer cannot be opened from here (ADR-035).
+ENV AEHUB_IN_CONTAINER=1
 
 # WORKDIR ASSIGNMENT: Establish the execution path within the container
 WORKDIR /app
