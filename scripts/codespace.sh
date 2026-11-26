@@ -121,11 +121,24 @@ start() {
         printf '%s' "$roles" | python3 -c 'import json, sys
 for role, models in json.load(sys.stdin).items(): print("  %-12s %s" % (role, " -> ".join(models)))'
     elif [ -z "${AEHUB_MODEL_ROLES:-}" ]; then
-        say "No model chosen: add ANTHROPIC_API_KEY, GEMINI_API_KEY or OPENROUTER_API_KEY as Codespaces secrets (or check the ones above), then restart; or pick the models in IMPOSTAZIONI."
+        say "No model chosen: add ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY or GITHUB_MODELS_TOKEN as Codespaces secrets (or check the ones above), then restart; or pick the models in IMPOSTAZIONI."
     fi
     if [ -z "${AEHUB_MODEL_PRICES:-}" ] && [ -n "$prices" ]; then
         export AEHUB_MODEL_PRICES="$prices"
     fi
+    # GitHub Models through the "local" provider: the token's variable name
+    # comes back, never the token.
+    local github
+    github="$(printf '%s' "$chosen" | python3 -c 'import json,sys; d=json.load(sys.stdin); print((d.get("github_models") or {}).get("token_variable", ""))' 2>/dev/null || true)"
+    case "$github" in
+        GITHUB_MODELS_TOKEN | GITHUB_TOKEN)
+            if [ -z "${AEHUB_LOCAL_BASE_URL:-}" ]; then
+                export AEHUB_LOCAL_BASE_URL="https://models.github.ai/inference"
+                export AEHUB_LOCAL_API_KEY="${!github}"
+                say "GitHub Models in use (free, with daily limits), with the token in $github."
+            fi
+            ;;
+    esac
 
     say "Starting ÆHub…"
     (
