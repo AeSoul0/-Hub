@@ -68,6 +68,10 @@ pauses the run (`WAITING_APPROVAL`); after the decision it resumes with the
 same `run_id`, and a tool already executed is not executed again
 (`state/idempotency.py`). An approval left undecided is denied after
 `AEHUB_APPROVAL_TTL_SECONDS`.
+The reply of a run that stops on an approval is one short question in the
+interface language ("May I delete old.txt? Yes or no."); while an approval
+waits, a command that is only a yes or a no decides the oldest one through
+the same path as the button (ADR-037).
 
 ### Subagents
 The `delegate_task` tool (ADR-029) starts a subagent with at most the

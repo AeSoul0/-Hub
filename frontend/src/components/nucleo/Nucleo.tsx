@@ -36,6 +36,7 @@ import {
 import { IMPLEMENTER_ROLES } from "@/lib/nucleo/models";
 import { initialRuns, liveCount, runsReducer, type LiveView } from "@/lib/nucleo/runs";
 import { resumedByVoice } from "@/lib/nucleo/voice";
+import { askNotifyPermissionOnce } from "@/lib/notify";
 import { catalog, useLanguage } from "@/lib/i18n";
 
 import ApprovalPrompt from "./ApprovalPrompt";
@@ -409,6 +410,8 @@ export default function Nucleo() {
     );
 
     const send = async (command: string) => {
+        // The first command is a click: the moment to ask for notifications (ADR-037).
+        askNotifyPermissionOnce();
         setSending(true);
         say("me", command, "text");
         const form = new FormData();
@@ -432,6 +435,7 @@ export default function Nucleo() {
 
     const toggleMic = async () => {
         if (!listening) {
+            askNotifyPermissionOnce();
             try {
                 const started = await startRecording(t.micMissing);
                 recording.current = started;

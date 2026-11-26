@@ -9,7 +9,7 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 - ⏸ vuol dire **sospesa**: riguarda solo l'app desktop (Tauri), sospesa dal 2026-11-24. Non conta né tra le coperte né tra le mancanti.
 
 **Ultimo aggiornamento:** F11, file dell'utente per gli agenti (2026-11-26): una riga nuova, e la riga 33 ora si modifica.
-**Copertura:** 58 righe su 58, cioè **100%**, più 2 righe sospese (⏸). F10 ha confrontato la tabella con tutte le route e tutte le impostazioni del backend: l'[indice](#indice-ogni-route-e-ogni-impostazione) in fondo dice quale riga copre ciascuna, e un test in CI lo tiene allineato al codice.
+**Copertura:** 59 righe su 59, cioè **100%**, più 2 righe sospese (⏸). F10 ha confrontato la tabella con tutte le route e tutte le impostazioni del backend: l'[indice](#indice-ogni-route-e-ogni-impostazione) in fondo dice quale riga copre ciascuna, e un test in CI lo tiene allineato al codice.
 
 ## Conversazione e voce
 
@@ -71,6 +71,7 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 | 56 | Comandi istantanei: i comandi semplici (aprire un'app o una cartella, una luce, chiudere a chiave) partono senza il modello (`AEHUB_INSTANT_COMMANDS`) | Nucleo, la risposta segna "istantaneo · N ms"; IMPOSTAZIONI → Motore | ✓ | V1, ADR-035 |
 | 57 | App che ÆHub può aprire (`AEHUB_APPS`, skill `apps`: `open_app`, `open_folder`) | IMPOSTAZIONI → App, una riga per app (nome, programma, argomenti) | ✓ | V1, ADR-035 |
 | 58 | File dell'utente per gli agenti (skill `files`: elencare, cercare, leggere, scrivere, creare cartelle, spostare; sostituire ed eliminare con approvazione) | STRUMENTI: i tool, ognuno con il suo interruttore e il rischio; le cartelle in Confini (riga 33) | ✓ | F11, ADR-036 |
+| 59 | Approvazioni in una parola e notifiche: la domanda breve di una run in attesa, «sì»/«no» a voce o scritto, la notifica del sistema e il conteggio nel titolo | Nucleo (la domanda, la risposta segna "istantaneo · N ms"); notifica su ogni pagina; APPROVAZIONI: lo stato delle notifiche e il bottone per attivarle | ✓ | ADR-037 |
 | 34 | Registro di audit, con la provenienza | Control Plane → SICUREZZA | ✓ | M11, F5 |
 
 ## Memoria e documenti
@@ -130,6 +131,7 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 | ADR-033 e ADR-034 (client MCP, lingua dell'interfaccia: quattro righe nuove) | 55 su 55 | 100% |
 | V1 (comandi istantanei e lista delle app) | 57 su 57 | 100% |
 | F11 (file dell'utente per gli agenti, cartelle scelte dall'utente) | 58 su 58 | 100% |
+| ADR-037 (approvazioni in una parola e notifiche del sistema) | 59 su 59 | 100% |
 
 ## Indice: ogni route e ogni impostazione
 
@@ -139,8 +141,8 @@ F10 (2026-11-24, aggiornato in P1): l'elenco viene dal codice (`tests/security/t
 
 | Route | Riga |
 |---|---|
-| `GET /api/approvals` | 11 |
-| `POST /api/approvals/{approval_id}` | 11 |
+| `GET /api/approvals` | 11, 59 |
+| `POST /api/approvals/{approval_id}` | 11, 59 |
 | `GET /api/audit` | 34 |
 | `POST /api/auth/login` | 41 |
 | `POST /api/auth/logout` | 41 |

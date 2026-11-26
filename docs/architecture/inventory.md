@@ -23,7 +23,7 @@ sidecar dell'app desktop (PostgreSQL e API su `127.0.0.1`).
 - `app/core/`: database e migrazioni Alembic, event bus e cache (Redis o in processo), sicurezza (sessioni, policy, middleware), configurazione a runtime, protezione SSRF, telemetria.
 - `app/memory/`: memoria a lungo termine (`store.py`, pgvector e ricerca full-text).
 - `app/documents/`: indice dei documenti della cartella di lavoro, con le citazioni.
-- `app/instant/`: i comandi istantanei (ADR-035): riconoscimento senza modello, lista delle app, esecuzione dal Tool Gateway.
+- `app/instant/`: i comandi istantanei (ADR-035): riconoscimento senza modello, lista delle app, esecuzione dal Tool Gateway; `approvals.py`, la domanda breve di una run in attesa e il «sì»/«no» che decide (ADR-037).
 - `app/skills/`: le skill e i loro tool:
   - web, browser, sandbox, memoria, documenti e casa;
   - file (ADR-036): elencare, cercare, leggere e scrivere i file nelle cartelle scelte dall'utente; sostituire ed eliminare con approvazione;
