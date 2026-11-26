@@ -58,7 +58,8 @@ export interface ToolsView {
     disabled: string[];
     selection: { enabled: boolean; top_k: number; tools: number; active: boolean };
     boundaries: {
-        directories: { path: string; exists: boolean }[];
+        /** "working": AEHUB_ALLOWED_DIRS, set at start; "agent": a folder the owner chose (AEHUB_AGENT_FOLDERS, F11). */
+        directories: { path: string; exists: boolean; kind: "working" | "agent" }[];
         api_hosts: string[];
         mcp_servers: string[];
     };
@@ -121,6 +122,30 @@ export function serversValue(rows: string[]): string | null {
 /** A server URL the backend will accept: http(s), a host, no credentials or spaces. */
 export function validServer(url: string): boolean {
     return /^https?:\/\/[^\s,@/]+(\/[^\s,@]*)?$/.test(url.trim());
+}
+
+/** The folders the owner chose for the agents (F11), as the page shows them. */
+export function agentFolders(view: ToolsView): string[] {
+    return view.boundaries.directories
+        .filter((folder) => folder.kind === "agent")
+        .map((folder) => folder.path);
+}
+
+/** AEHUB_AGENT_FOLDERS for these rows: a JSON list, or null (none) when every row is empty. */
+export function foldersValue(rows: string[]): string | null {
+    const folders = rows.map((row) => row.trim()).filter(Boolean);
+    return folders.length ? JSON.stringify(folders) : null;
+}
+
+/** A full path the backend will accept: /home/..., ~/..., C:\... or \\server\share. */
+export function absolutePath(path: string): boolean {
+    const value = path.trim();
+    return (
+        value.startsWith("/") ||
+        value.startsWith("~") ||
+        /^[A-Za-z]:[\\/]/.test(value) ||
+        value.startsWith("\\\\")
+    );
 }
 
 /** AEHUB_MCP_TOOL_RISK after setting one MCP tool's risk; high is the default, so it is not written. */

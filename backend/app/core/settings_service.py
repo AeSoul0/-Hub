@@ -119,6 +119,13 @@ def _check_value(name: str, value: str) -> Optional[str]:
 
             parse_apps(value)
 
+        elif spec.kind == "folders":
+            from app.agent_engine.guardrails import parse_agent_folders
+
+            missing = [folder for folder in parse_agent_folders(value) if not os.path.isdir(os.path.expanduser(folder))]
+            if missing:
+                return f"These folders do not exist here: {', '.join(missing)}."
+
         elif spec.kind == "price_pair":
             from app.agent_engine.pricing import parse_price_pair
 

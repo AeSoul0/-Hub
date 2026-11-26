@@ -21,7 +21,10 @@ import styles from "@/components/control-plane/control.module.css";
 import { getJson, postJson } from "@/lib/api/client";
 import { useSettings, type SettingChanges } from "@/lib/api/settings";
 import {
+    absolutePath,
+    agentFolders,
     disabledValue,
+    foldersValue,
     riskValue,
     serversValue,
     validServer,
@@ -95,8 +98,17 @@ const TEXT = catalog({
         cleaned: "List cleaned.",
         removeFromList: "Remove from the list",
         boundaries: "Boundaries",
-        folders: "Tool folders",
-        foldersHelp: "Tools that read or write files stay inside these. They are chosen at start, by the launcher or with",
+        folders: "Folders of the agents",
+        foldersHelp: "The working folder is chosen at start, by the launcher or with",
+        agentFoldersHelp:
+            "Add the folders the agents may use: list, find, read and write files there. Replacing or deleting a file always waits for your approval. ÆHub's own files, hidden files (.ssh, .env…) and AppData stay out of reach.",
+        working: "working folder",
+        folderN: (index: number) => `Agent folder ${index}`,
+        removeFolder: (index: number) => `Remove folder ${index}`,
+        addFolder: "+ add a folder",
+        saveFolders: "Save the folders",
+        foldersSaved: "Folders saved: the agents use them from the next call.",
+        folderInvalid: "Write the full path of each folder.",
         exists: "exists",
         notYet: "does not exist yet",
         hosts: "API hosts",
@@ -181,8 +193,17 @@ const TEXT = catalog({
         cleaned: "Elenco ripulito.",
         removeFromList: "Togli dall'elenco",
         boundaries: "Confini",
-        folders: "Cartelle dei tool",
-        foldersHelp: "I tool che leggono o scrivono file restano qui dentro. Si scelgono all'avvio, dal launcher o da",
+        folders: "Cartelle degli agenti",
+        foldersHelp: "La cartella di lavoro si sceglie all'avvio, dal launcher o da",
+        agentFoldersHelp:
+            "Aggiungi le cartelle che gli agenti possono usare: elencare, cercare, leggere e scrivere file lì dentro. Sostituire o eliminare un file aspetta sempre la tua approvazione. I file di ÆHub, i file nascosti (.ssh, .env…) e AppData restano fuori portata.",
+        working: "cartella di lavoro",
+        folderN: (index: number) => `Cartella degli agenti ${index}`,
+        removeFolder: (index: number) => `Togli la cartella ${index}`,
+        addFolder: "+ aggiungi una cartella",
+        saveFolders: "Salva le cartelle",
+        foldersSaved: "Cartelle salvate: gli agenti le usano dalla prossima chiamata.",
+        folderInvalid: "Scrivi il percorso completo di ogni cartella.",
         exists: "esiste",
         notYet: "non esiste ancora",
         hosts: "Host dell'API",
@@ -358,6 +379,7 @@ export default function ToolsPage() {
     const [note, setNote] = useState<string | null>(null);
     const [selection, setSelection] = useState<{ enabled: boolean; topK: string } | null>(null);
     const [servers, setServers] = useState<string[]>([]);
+    const [folders, setFolders] = useState<string[]>([]);
 
     const refresh = useCallback(async () => {
         try {
@@ -365,6 +387,8 @@ export default function ToolsPage() {
             setView(next);
             setSelection({ enabled: next.selection.enabled, topK: String(next.selection.top_k) });
             setServers(next.boundaries.mcp_servers.length ? next.boundaries.mcp_servers : [""]);
+            const chosen = agentFolders(next);
+            setFolders(chosen.length ? chosen : [""]);
             setError(null);
         } catch (err) {
             setError(message(err));
@@ -418,6 +442,8 @@ export default function ToolsPage() {
     const topKValid = Number.isInteger(topK) && topK >= 1 && topK <= 50;
     const serversDirty = serversValue(servers) !== serversValue(view.boundaries.mcp_servers);
     const serversValid = servers.every((row) => !row.trim() || validServer(row));
+    const foldersDirty = foldersValue(folders) !== foldersValue(agentFolders(view));
+    const foldersValid = folders.every((row) => !row.trim() || absolutePath(row));
 
     const setRisk = (tool: ToolInfo, risk: Risk) =>
         apply(
@@ -566,13 +592,63 @@ export default function ToolsPage() {
                         {t.foldersHelp} <code className={styles.mono}>AEHUB_ALLOWED_DIRS</code>.
                     </p>
                     <ul className={styles.lines}>
-                        {view.boundaries.directories.map((folder) => (
-                            <li key={folder.path}>
-                                <span className={styles.mono}>{folder.path}</span>
-                                <b>{folder.exists ? t.exists : t.notYet}</b>
+                        {view.boundaries.directories
+                            .filter((folder) => folder.kind !== "agent")
+                            .map((folder) => (
+                                <li key={folder.path}>
+                                    <span className={styles.mono}>{folder.path}</span>
+                                    <b>
+                                        {t.working} · {folder.exists ? t.exists : t.notYet}
+                                    </b>
+                                </li>
+                            ))}
+                    </ul>
+                    <p className={styles.help}>{t.agentFoldersHelp}</p>
+                    <ul className={styles.servers}>
+                        {folders.map((row, index) => (
+                            <li key={index} data-invalid={Boolean(row.trim()) && !absolutePath(row)}>
+                                <input
+                                    className={styles.input}
+                                    value={row}
+                                    placeholder={"C:\\Users\\me\\Documents"}
+                                    aria-label={t.folderN(index + 1)}
+                                    spellCheck={false}
+                                    onChange={(event) => setFolders(folders.map((item, at) => (at === index ? event.target.value : item)))}
+                                />
+                                <span className={styles.icons}>
+                                    <button
+                                        type="button"
+                                        className={styles.icon}
+                                        aria-label={t.removeFolder(index + 1)}
+                                        onClick={() => {
+                                            const next = folders.filter((_, at) => at !== index);
+                                            setFolders(next.length ? next : [""]);
+                                        }}
+                                    >
+                                        ×
+                                    </button>
+                                </span>
                             </li>
                         ))}
                     </ul>
+                    <div className={styles.row}>
+                        <button type="button" className={styles.linkBtn} onClick={() => setFolders([...folders, ""])}>
+                            {t.addFolder}
+                        </button>
+                        <button
+                            type="button"
+                            className={`${styles.btn} ${styles.go}`}
+                            disabled={busy || !foldersDirty || !foldersValid}
+                            onClick={() => apply({ AEHUB_AGENT_FOLDERS: foldersValue(folders) }, t.foldersSaved)}
+                        >
+                            {t.saveFolders}
+                        </button>
+                        {!foldersValid && (
+                            <span className={styles.error} role="alert">
+                                {t.folderInvalid}
+                            </span>
+                        )}
+                    </div>
                 </div>
 
                 <div className={styles.setting}>

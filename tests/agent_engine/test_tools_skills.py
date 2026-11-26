@@ -569,7 +569,7 @@ def test_tool_catalog(monkeypatch, tmp_path):
 
     assert view["disabled"] == ["gone_tool", "wipe_records"]
     assert view["selection"]["tools"] == 2
-    assert view["boundaries"]["directories"] == [{"path": str(workspace.resolve()), "exists": True}]
+    assert view["boundaries"]["directories"] == [{"path": str(workspace.resolve()), "exists": True, "kind": "working"}]
     assert view["boundaries"]["mcp_servers"] == ["https://mcp.example.com/sse"]
     assert "testserver" in view["boundaries"]["api_hosts"]
     assert set(view["sandbox"]) == {"docker", "image", "memory_limit", "network"}

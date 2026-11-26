@@ -57,7 +57,8 @@ The model, price and limit variables (`OPENAI_MODEL`, `AEHUB_CHECKER_MODEL`, `AE
 | `AEHUB_MEMORY_ENABLED` | Cross-session long-term memory: recall at run start, indexing of accepted runs (`on`/`off`; also on the MEMORIA page) | `on` |
 | `AEHUB_EMBEDDER` / `AEHUB_EMBEDDING_MODEL` | Memory embedder: `sentence-transformers` (local model) or `hash` (no download, weaker recall); also on the MEMORIA page | `sentence-transformers` / `all-MiniLM-L6-v2` |
 | `AEHUB_MEMORY_MIN_SIMILARITY` | Minimum cosine similarity for a vector match in hybrid retrieval; also on the MEMORIA page | `0.25` |
-| `AEHUB_ALLOWED_DIRS` | Folders that filesystem tools may touch (`os.pathsep`-separated); the first one is the working folder searched by `search_documents` | `./workspace` |
+| `AEHUB_ALLOWED_DIRS` | The working folders (`os.pathsep`-separated), set at start; the first one is the folder searched by `search_documents` | `./workspace` |
+| `AEHUB_AGENT_FOLDERS` | JSON list of folders the agents' file tools may use besides the working folders, e.g. `["C:\\Users\\me\\Documents"]`; each must exist. ÆHub's own code and data, the home device file, hidden files and folders, and AppData stay out of reach (ADR-036). Set from the STRUMENTI page | none |
 | `AEHUB_DOCUMENTS_MAX_FILE_MB` | Files larger than this are listed in the document index with an error and are not searched (0.1–200; also on the DOCUMENTI page) | `5` |
 | `AEHUB_MCP_ALLOWED_SERVERS` | Comma-separated MCP server URLs (Streamable HTTP) the client connects to: https, or http only to this computer; also editable on the STRUMENTI page | none (no MCP server) |
 | `AEHUB_MCP_TOOL_RISK` | Comma-separated `tool=low\|medium\|high` for MCP tools. A tool not listed is high and asks for approval on every call (ADR-033); set from the STRUMENTI page | none (every MCP tool high) |

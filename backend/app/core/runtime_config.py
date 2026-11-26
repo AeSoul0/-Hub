@@ -40,7 +40,7 @@ class SettingSpec:
     name: str
     group: Literal["models", "prices", "limits", "engine", "voice", "tools", "memory", "documents", "home", "interface"]
     label: str
-    kind: Literal["text", "roles", "prices", "price_pair", "number", "integer", "ratio", "choice", "apps"]
+    kind: Literal["text", "roles", "prices", "price_pair", "number", "integer", "ratio", "choice", "apps", "folders"]
     default: str
     help: str
     # "choice": the accepted values. "text": a regular expression the whole
@@ -297,6 +297,18 @@ SPECS: Tuple[SettingSpec, ...] = (
             "approval on every call (ADR-033)."
         ),
         pattern=r"mcp_[A-Za-z0-9_]+=(low|medium|high)(,mcp_[A-Za-z0-9_]+=(low|medium|high))*",
+    ),
+    # The agents' folders (F11, ADR-036): read on every file tool call.
+    SettingSpec(
+        name="AEHUB_AGENT_FOLDERS",
+        group="tools",
+        label="Agent folders",
+        kind="folders",
+        default="",
+        help=(
+            "JSON list of folders the agents may use besides the working folder, e.g. "
+            '["/home/me/Documents"]. ÆHub\'s own files, hidden files and AppData stay out of reach.'
+        ),
     ),
     # Memory and documents (F6, ADR-027): read on every use, so a change
     # applies to the next run, recall or sync without a restart.

@@ -40,6 +40,7 @@ TOOL_SETTINGS = (
     "AEHUB_TOOL_TOP_K",
     "AEHUB_MCP_ALLOWED_SERVERS",
     "AEHUB_MCP_TOOL_RISK",
+    "AEHUB_AGENT_FOLDERS",
 )
 
 
@@ -117,7 +118,7 @@ def sandbox_status() -> Dict[str, Any]:
 async def list_tools(
     principal: Principal = Depends(resolve_principal),
 ) -> Dict[str, Any]:
-    from app.agent_engine.guardrails import allowed_directories
+    from app.agent_engine.guardrails import agent_folders, working_directories
     from app.agent_engine.tool_selection import selection_status
     from app.core.runtime_config import source_of
     from app.core.security import allowed_hosts, disabled_tools
@@ -133,9 +134,15 @@ async def list_tools(
         "disabled": sorted(disabled),
         "selection": selection_status(skill_registry),
         "boundaries": {
+            # The working folders (AEHUB_ALLOWED_DIRS, set at start), then
+            # the folders the owner chose for the agents (F11).
             "directories": [
-                {"path": str(path), "exists": path.is_dir()}
-                for path in allowed_directories()
+                {"path": str(path), "exists": path.is_dir(), "kind": "working"}
+                for path in working_directories()
+            ]
+            + [
+                {"path": str(path), "exists": path.is_dir(), "kind": "agent"}
+                for path in agent_folders()
             ],
             "api_hosts": allowed_hosts(),
             "mcp_servers": configured_mcp_servers(),

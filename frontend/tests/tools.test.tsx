@@ -93,7 +93,7 @@ function toolsView(disabled: string[] = [], servers: string[] = []): ToolsView {
             active: false,
         },
         boundaries: {
-            directories: [{ path: "C:\\Users\\me\\ÆHub", exists: true }],
+            directories: [{ path: "C:\\Users\\me\\ÆHub", exists: true, kind: "working" }],
             api_hosts: ["localhost", "127.0.0.1", "::1"],
             mcp_servers: servers,
         },
@@ -258,6 +258,51 @@ describe("Strumenti", () => {
         await waitFor(() =>
             expect(putBody(fetchMock, "/api/settings")).toEqual({
                 values: { AEHUB_DISABLED_TOOLS: null },
+            })
+        );
+    });
+});
+
+describe("Strumenti, cartelle degli agenti (F11)", () => {
+    it("shows the working folder, adds a folder of yours and removes it", async () => {
+        const view = toolsView();
+        view.boundaries.directories.push({ path: "D:\\Foto", exists: true, kind: "agent" });
+        const fetchMock = stubFetch({
+            "GET /api/tools": () => ({ status: 200, body: view }),
+            "GET /api/settings": () => ({ status: 200, body: {} }),
+            "PUT /api/settings": () => ({ status: 200, body: {} }),
+        });
+
+        render(<ToolsPage />);
+
+        expect(await screen.findByText(/cartella di lavoro · esiste/)).toBeInTheDocument();
+        expect(screen.getByLabelText("Cartella degli agenti 1")).toHaveValue("D:\\Foto");
+        expect(screen.getByRole("button", { name: "Salva le cartelle" })).toBeDisabled();
+
+        fireEvent.click(screen.getByRole("button", { name: "+ aggiungi una cartella" }));
+        const second = screen.getByLabelText("Cartella degli agenti 2");
+        fireEvent.change(second, { target: { value: "Documenti" } });
+        expect(screen.getByRole("alert")).toHaveTextContent(
+            "Scrivi il percorso completo di ogni cartella."
+        );
+        expect(screen.getByRole("button", { name: "Salva le cartelle" })).toBeDisabled();
+
+        fireEvent.change(second, { target: { value: "C:\\Users\\me\\Documents" } });
+        fireEvent.click(screen.getByRole("button", { name: "Salva le cartelle" }));
+        await waitFor(() =>
+            expect(putBody(fetchMock, "/api/settings")).toEqual({
+                values: {
+                    AEHUB_AGENT_FOLDERS: JSON.stringify(["D:\\Foto", "C:\\Users\\me\\Documents"]),
+                },
+            })
+        );
+
+        fireEvent.click(screen.getByRole("button", { name: "Togli la cartella 1" }));
+        fireEvent.click(screen.getByRole("button", { name: "Togli la cartella 1" }));
+        fireEvent.click(screen.getByRole("button", { name: "Salva le cartelle" }));
+        await waitFor(() =>
+            expect(putBody(fetchMock, "/api/settings")).toEqual({
+                values: { AEHUB_AGENT_FOLDERS: null },
             })
         );
     });
