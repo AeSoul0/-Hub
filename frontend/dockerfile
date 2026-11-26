@@ -19,6 +19,8 @@ COPY . .
 # Pass API URL during build for Next.js SSG/SSR components
 ARG NEXT_PUBLIC_API_URL=http://localhost:3002
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+# The standalone server (O1): server.js with only the modules it needs.
+ENV AEHUB_STANDALONE=1
 
 # Build the Next.js optimized production bundle
 RUN npm run build
@@ -30,15 +32,20 @@ WORKDIR /app
 
 # Set to production environment
 ENV NODE_ENV=production
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
 
-# Copy only the compiled artifacts and dependencies from the builder
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/next.config.js ./next.config.js
+# Only the standalone server and the static assets (O1): about 42 MB instead
+# of the whole node_modules (about 550 MB). There is no public/ folder.
+COPY --from=builder --chown=node:node /app/.next/standalone ./
+COPY --from=builder --chown=node:node /app/.next/static ./.next/static
+
+# Not root at run time: the node image ships the "node" user.
+USER node
 
 # PORT EXPOSURE
 EXPOSE 3000
 
-# EXECUTION ENTRYPOINT
-CMD ["npm", "start"]
+# EXECUTION ENTRYPOINT: node itself, not `npm start`, which kept an npm
+# process (about 55 MB) and a shell alive around the server.
+CMD ["node", "server.js"]

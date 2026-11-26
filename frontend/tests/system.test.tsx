@@ -100,13 +100,19 @@ describe("system helpers", () => {
         expect(schemaText(null, "0001", "it")).toBe("non migrato (ultima 0001)");
     });
 
-    it("name the voice models in memory", () => {
+    it("name the local models in memory", () => {
         expect(voiceText({ kind: "stt", config: ["base", "it"], idle_seconds: 180 }, "it")).toBe("Whisper base, ferma da 3 min");
         expect(voiceText({ kind: "tts", config: ["piper", "it_IT-paola-medium"], idle_seconds: 5 }, "it")).toBe(
             "Piper it_IT-paola-medium, ferma da 5 s",
         );
         expect(voiceText({ kind: "tts", config: ["elevenlabs", "v1", "m", "it_IT-paola-medium"], idle_seconds: 5 }, "it")).toBe(
             "Piper it_IT-paola-medium (riserva di ElevenLabs), ferma da 5 s",
+        );
+        expect(voiceText({ kind: "tts", config: ["spacexai", "eve", "it", "it_IT-paola-medium"], idle_seconds: 5 }, "it")).toBe(
+            "Piper it_IT-paola-medium (riserva di SpaceXAI), ferma da 5 s",
+        );
+        expect(voiceText({ kind: "embedder", config: ["all-MiniLM-L6-v2"], idle_seconds: 60 }, "en")).toBe(
+            "all-MiniLM-L6-v2 (memory), idle for 1 min",
         );
     });
 

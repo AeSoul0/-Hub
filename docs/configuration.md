@@ -56,7 +56,7 @@ The model, price and limit variables (`OPENAI_MODEL`, `AEHUB_CHECKER_MODEL`, `AE
 | `AEHUB_CONTEXT_BUDGET` | Token budget of one model request, split across the Context Manager levels L0–L5 (spec 4.2; also in Settings) | `88000` |
 | `AEHUB_SNAPSHOT_EVERY` | Tool calls between State Snapshots; older calls leave the recent window and are summarized (clamped to 10–20) | `15` |
 | `AEHUB_MEMORY_ENABLED` | Cross-session long-term memory: recall at run start, indexing of accepted runs (`on`/`off`; also on the MEMORIA page) | `on` |
-| `AEHUB_EMBEDDER` / `AEHUB_EMBEDDING_MODEL` | Memory embedder: `sentence-transformers` (local model) or `hash` (no download, weaker recall); also on the MEMORIA page | `sentence-transformers` / `all-MiniLM-L6-v2` |
+| `AEHUB_EMBEDDER` / `AEHUB_EMBEDDING_MODEL` | Memory embedder: `sentence-transformers` (a local MiniLM model on ONNX Runtime, no torch, ADR-039; the model must publish an ONNX export) or `hash` (no download, weaker recall); also on the MEMORIA page | `sentence-transformers` / `all-MiniLM-L6-v2` |
 | `AEHUB_MEMORY_MIN_SIMILARITY` | Minimum cosine similarity for a vector match in hybrid retrieval; also on the MEMORIA page | `0.25` |
 | `AEHUB_ALLOWED_DIRS` | The working folders (`os.pathsep`-separated), set at start; the first one is the folder searched by `search_documents` | `./workspace` |
 | `AEHUB_AGENT_FOLDERS` | JSON list of folders the agents' file tools may use besides the working folders, e.g. `["C:\\Users\\me\\Documents"]`; each must exist. ÆHub's own code and data, the home device file, hidden files and folders, and AppData stay out of reach (ADR-036). Set from the STRUMENTI page | none |
@@ -75,7 +75,7 @@ The model, price and limit variables (`OPENAI_MODEL`, `AEHUB_CHECKER_MODEL`, `AE
 | `AEHUB_FRONTEND_DIR` | Static frontend export the API serves from its own origin (the desktop app) | none |
 | `AEHUB_DATA_DIR` / `AEHUB_PG_BIN` | Desktop app: folder of the database cluster and logs; folder with `initdb` and `pg_ctl` | `%LOCALAPPDATA%\AEHub` / bundled |
 | `AEHUB_VOICE` | `local` (faster-whisper + Piper on this machine) or `off`; also on the VOCE page, no restart | `local` |
-| `AEHUB_VOICE_IDLE_MINUTES` | Whisper and Piper leave memory after this long without use and load again with the next sentence; `0` keeps them (also on the VOCE page) | `15` |
+| `AEHUB_VOICE_IDLE_MINUTES` | Whisper, Piper and the memory's embedding model leave memory after this long without use and load again when needed; `0` keeps them (also on the VOCE page) | `15` |
 | `AEHUB_STT_MODEL` / `AEHUB_STT_LANGUAGE` / `AEHUB_TTS_VOICE` | Whisper model, spoken language (`auto` to detect), Piper voice; also editable on the VOCE page | `base` / `it` / `it_IT-paola-medium` |
 | `AEHUB_TTS_ENGINE` | `piper` (on this machine), `elevenlabs` (the reply text goes to ElevenLabs, ADR-024) or `spacexai` (it goes to SpaceXAI, 15 $ per million characters, ADR-038); also editable on the VOCE page | `piper` |
 | `AEHUB_ELEVENLABS_VOICE` / `AEHUB_ELEVENLABS_MODEL` | ElevenLabs voice ID and model | none / `eleven_flash_v2_5` |

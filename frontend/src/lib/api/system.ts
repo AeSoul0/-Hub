@@ -22,7 +22,7 @@ export interface MemoryGroup {
 export type MemoryKind = "backend" | "postgres" | "browser" | "window" | "other";
 
 export interface LoadedVoice {
-    kind: "stt" | "tts";
+    kind: "stt" | "tts" | "embedder";
     config: string[];
     idle_seconds: number;
 }
@@ -292,15 +292,21 @@ export function metricText(name: string, value: number, lang: Lang = "en"): stri
     return lang === "it" ? percent.replace(".", ",") : percent;
 }
 
-/** The voice model in memory, in words: "Whisper base, idle for 3 min". */
+const CLOUD_VOICES: Record<string, string> = { elevenlabs: "ElevenLabs", spacexai: "SpaceXAI" };
+
+/** A local model in memory, in words: "Whisper base, idle for 3 min". */
 export function voiceText(voice: LoadedVoice, lang: Lang = "en"): string {
-    const fallback = lang === "it" ? "riserva di ElevenLabs" : "ElevenLabs fallback";
+    const cloud = CLOUD_VOICES[voice.config[0] ?? ""];
+    const fallback = lang === "it" ? `riserva di ${cloud}` : `${cloud} fallback`;
+    const memory = lang === "it" ? "memoria" : "memory";
     const name =
         voice.kind === "stt"
             ? `Whisper ${voice.config[0] ?? ""}`
-            : voice.config[0] === "elevenlabs"
-              ? `Piper ${voice.config[3] ?? ""} (${fallback})`
-              : `Piper ${voice.config[1] ?? ""}`;
+            : voice.kind === "embedder"
+              ? `${voice.config[0] ?? ""} (${memory})`
+              : cloud
+                ? `Piper ${voice.config[3] ?? ""} (${fallback})`
+                : `Piper ${voice.config[1] ?? ""}`;
     const idle = uptimeText(voice.idle_seconds, lang);
     return lang === "it" ? `${name.trim()}, ferma da ${idle}` : `${name.trim()}, idle for ${idle}`;
 }

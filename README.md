@@ -76,7 +76,7 @@ The frontend is a **Next.js application** using React, TypeScript and Tailwind C
   - **SICUREZZA** shows the audit hash chain, the log (Control Plane changes included) filtered by decision and tool, and which entries returned untrusted content.
 - **SISTEMA** (ADR-030), for the owner only:
   - the state of the database and the event bus, the app's version and uptime;
-  - the RAM of ÆHub's processes (backend with voice, PostgreSQL, the browser's Chromium, the desktop window) and the voice models in memory;
+  - the RAM of ÆHub's processes (backend with voice, PostgreSQL, the browser's Chromium, the desktop window) and the local models in memory (voice and the memory's embedder);
   - whether a newer desktop version is published;
   - the startup parameters, read only, with no password shown;
   - flight recorder search and JSONL export;
@@ -689,7 +689,7 @@ All rights reserved: see [LICENSE](LICENSE). ÆHub is not open source; using, co
 
 # Acknowledgements
 
-ÆHub is built on open-source projects, among them [Python](https://www.python.org/), [FastAPI](https://fastapi.tiangolo.com/), [Pydantic AI](https://ai.pydantic.dev/), [Next.js](https://nextjs.org/), [React](https://react.dev/), [PostgreSQL](https://www.postgresql.org/) and [pgvector](https://github.com/pgvector/pgvector), [Alembic](https://alembic.sqlalchemy.org/), [Redis](https://redis.io/), [faster-whisper](https://github.com/SYSTRAN/faster-whisper), [Piper](https://github.com/rhasspy/piper), [sentence-transformers](https://www.sbert.net/), [Playwright](https://playwright.dev/), [Tauri](https://tauri.app/), [MCP](https://modelcontextprotocol.io/) and [Docker](https://www.docker.com/).
+ÆHub is built on open-source projects, among them [Python](https://www.python.org/), [FastAPI](https://fastapi.tiangolo.com/), [Pydantic AI](https://ai.pydantic.dev/), [Next.js](https://nextjs.org/), [React](https://react.dev/), [PostgreSQL](https://www.postgresql.org/) and [pgvector](https://github.com/pgvector/pgvector), [Alembic](https://alembic.sqlalchemy.org/), [Redis](https://redis.io/), [faster-whisper](https://github.com/SYSTRAN/faster-whisper), [Piper](https://github.com/rhasspy/piper), [ONNX Runtime](https://onnxruntime.ai/) with the [sentence-transformers](https://www.sbert.net/) MiniLM model, [Playwright](https://playwright.dev/), [Tauri](https://tauri.app/), [MCP](https://modelcontextprotocol.io/) and [Docker](https://www.docker.com/).
 
 ---
 

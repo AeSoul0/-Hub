@@ -68,7 +68,7 @@ Guscio Tauri dell'app Windows (ADR-020): `src-tauri/` (Rust), `scripts/` (bundle
 - **Modelli**: Pydantic AI (`pydantic-ai-slim` con gli extra openai, groq, anthropic, google) e l'SDK `openai` (ADR-032).
 - **Persistenza**: SQLAlchemy, Alembic, psycopg (psycopg2 per il PostgreSQL del desktop), pgvector (PostgreSQL 16+ con l'estensione `vector`).
 - **Event bus e cache**: Redis (in processo nell'app desktop).
-- **Memoria e documenti**: sentence-transformers (CPU), pypdf.
+- **Memoria e documenti**: il modello MiniLM di sentence-transformers su ONNX Runtime, senza torch (ADR-039), pypdf.
 - **Web e strumenti**: duckduckgo-search, Playwright, BeautifulSoup, mcp.
 - **Voce**: faster-whisper, Piper.
 - **Casa**: paho-mqtt.

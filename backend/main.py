@@ -167,16 +167,19 @@ async def lifespan(
     # The SISTEMA page shows the recent warnings and errors (F9).
     log_buffer.install()
 
-    # Voice models unused for AEHUB_VOICE_IDLE_MINUTES leave memory (F9).
+    # Voice models (F9) and the embedding model (O1) unused for
+    # AEHUB_VOICE_IDLE_MINUTES leave memory.
     async def release_idle_voice() -> None:
+        from app.memory.embeddings import release_idle_embedder
         from app.voice.engines import release_idle_engines
 
         while True:
             await asyncio.sleep(VOICE_SWEEP_SECONDS)
             try:
                 await asyncio.to_thread(release_idle_engines)
+                await asyncio.to_thread(release_idle_embedder)
             except Exception as exc:  # noqa: BLE001 - a failed sweep must not stop the next one
-                logger.warning("Voice release failed: %s", exc)
+                logger.warning("Model release failed: %s", exc)
 
     voice_sweeper = asyncio.create_task(release_idle_voice())
 
