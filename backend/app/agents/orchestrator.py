@@ -19,6 +19,7 @@ import logging
 
 import asyncio
 import base64
+import os
 import re
 from contextvars import ContextVar
 from typing import Any, Optional
@@ -103,6 +104,19 @@ AESOUL_SYSTEM_PROMPT = (
 
 
 logger = logging.getLogger(__name__)
+
+
+# How long a command may take before the answer gives up: models on a CPU
+# (Ollama in a codespace) need minutes, so it can be raised.
+ANSWER_TIMEOUT_SECONDS = 45.0
+
+
+def _answer_timeout() -> float:
+    try:
+        value = float(os.getenv("AEHUB_ANSWER_TIMEOUT_SECONDS", ""))
+    except ValueError:
+        return ANSWER_TIMEOUT_SECONDS
+    return value if value > 0 else ANSWER_TIMEOUT_SECONDS
 
 
 def clean_text_for_speech(
@@ -420,7 +434,7 @@ async def _generate_ai_response(
                         "recursion_limit": 15,
                     },
                 ),
-                timeout=45.0,
+                timeout=_answer_timeout(),
             )
 
         messages = final_state.get(

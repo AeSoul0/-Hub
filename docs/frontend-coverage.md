@@ -300,6 +300,8 @@ F10 (2026-11-24, aggiornato in P1): l'elenco viene dal codice (`tests/security/t
 | `ELEVENLABS_API_KEY` | chiave della voce cloud, nel keyring | 5 |
 | `XAI_API_KEY` | chiave della voce SpaceXAI, nel keyring | 5 |
 | `AEHUB_LOCAL_API_KEY` | chiave del server locale, nel keyring | 24 |
+| `AEHUB_LOCAL_TIMEOUT_SECONDS` | attesa massima di una risposta del server locale (600 nel Codespace con Ollama, dallo script) | 24 |
+| `AEHUB_ANSWER_TIMEOUT_SECONDS` | attesa massima della risposta a un comando nel Nucleo (900 nel Codespace con Ollama, dallo script) | 24 |
 | `AEHUB_MQTT_PASSWORD` | password del broker, nel keyring | 40 |
 | `AEHUB_MCP_TOKENS` | token dei server MCP con login (`host=token`), nel keyring | 52 |
 | `AEHUB_APP_VERSION` | versione passata dall'app desktop, mostrata in STATO | 43 |

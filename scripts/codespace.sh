@@ -96,6 +96,36 @@ stop() {
     fi
 }
 
+# Ollama: open models (Qwen) on the codespace's own CPU, with no account and
+# no key. Used when no provider key gives a model, or with AEHUB_USE_OLLAMA=1.
+OLLAMA_URL="http://127.0.0.1:11434"
+OLLAMA_MAIN="${AEHUB_OLLAMA_MODEL:-qwen2.5:3b}"
+OLLAMA_CRITIC="${AEHUB_OLLAMA_CRITIC:-llama3.2:3b}"
+
+start_ollama() {
+    if ! command -v ollama >/dev/null 2>&1; then
+        say "Installing Ollama (once)…"
+        as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y -q zstd >/dev/null
+        curl -fsSL https://ollama.com/install.sh | sh
+    fi
+    if ! curl -fsS -o /dev/null "$OLLAMA_URL/api/tags" 2>/dev/null; then
+        # One request at a time and a context large enough for ÆHub's tools,
+        # within the codespace's 8 GB.
+        OLLAMA_HOST=127.0.0.1:11434 OLLAMA_KEEP_ALIVE=30m OLLAMA_NUM_PARALLEL=1 \
+            OLLAMA_MAX_LOADED_MODELS=2 OLLAMA_CONTEXT_LENGTH=8192 \
+            nohup ollama serve > "$DATA/ollama.log" 2>&1 &
+        for _ in $(seq 1 30); do
+            curl -fsS -o /dev/null "$OLLAMA_URL/api/tags" 2>/dev/null && break
+            sleep 1
+        done
+    fi
+    local model
+    for model in "$OLLAMA_MAIN" "$OLLAMA_CRITIC"; do
+        say "Model $model (downloaded once, about 2 GB)…"
+        ollama pull "$model" || return 1
+    done
+}
+
 start() {
     if [ ! -x "$VENV/bin/python" ] || [ ! -d "$ROOT/frontend/out" ]; then
         install
@@ -113,6 +143,21 @@ start() {
     # The models of each role, from the keys this codespace has (unless set).
     local chosen roles prices
     chosen="$(python3 "$ROOT/scripts/codespace_models.py" || true)"
+    # No key gives a model (or Ollama asked for): Qwen on this machine.
+    if [ -z "${AEHUB_MODEL_ROLES:-}" ] && {
+        [ "${AEHUB_USE_OLLAMA:-}" = "1" ] || ! printf '%s' "$chosen" | grep -q '"roles": {"'
+    }; then
+        if start_ollama; then
+            chosen="$(python3 "$ROOT/scripts/codespace_models.py" --ollama "$OLLAMA_MAIN" "$OLLAMA_CRITIC")"
+            export AEHUB_LOCAL_BASE_URL="$OLLAMA_URL/v1"
+            # A CPU answers slowly: minutes, not seconds.
+            export AEHUB_LOCAL_TIMEOUT_SECONDS="${AEHUB_LOCAL_TIMEOUT_SECONDS:-600}"
+            export AEHUB_ANSWER_TIMEOUT_SECONDS="${AEHUB_ANSWER_TIMEOUT_SECONDS:-900}"
+            say "Ollama: $OLLAMA_MAIN does the work, $OLLAMA_CRITIC checks it (slow on 2 cores; log: ~/.aehub/ollama.log)."
+        else
+            say "Ollama could not start (see ~/.aehub/ollama.log); pick the models in IMPOSTAZIONI."
+        fi
+    fi
     roles="$(printf '%s' "$chosen" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps(d["roles"]) if d.get("roles") else "")' 2>/dev/null || true)"
     prices="$(printf '%s' "$chosen" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps(d["prices"]) if d.get("prices") else "")' 2>/dev/null || true)"
     if [ -z "${AEHUB_MODEL_ROLES:-}" ] && [ -n "$roles" ]; then
@@ -120,25 +165,10 @@ start() {
         say "Models of each role (change them in IMPOSTAZIONI):"
         printf '%s' "$roles" | python3 -c 'import json, sys
 for role, models in json.load(sys.stdin).items(): print("  %-12s %s" % (role, " -> ".join(models)))'
-    elif [ -z "${AEHUB_MODEL_ROLES:-}" ]; then
-        say "No model chosen: add ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY or GITHUB_MODELS_TOKEN as Codespaces secrets (or check the ones above), then restart; or pick the models in IMPOSTAZIONI."
     fi
     if [ -z "${AEHUB_MODEL_PRICES:-}" ] && [ -n "$prices" ]; then
         export AEHUB_MODEL_PRICES="$prices"
     fi
-    # GitHub Models through the "local" provider: the token's variable name
-    # comes back, never the token.
-    local github
-    github="$(printf '%s' "$chosen" | python3 -c 'import json,sys; d=json.load(sys.stdin); print((d.get("github_models") or {}).get("token_variable", ""))' 2>/dev/null || true)"
-    case "$github" in
-        GITHUB_MODELS_TOKEN | GITHUB_TOKEN)
-            if [ -z "${AEHUB_LOCAL_BASE_URL:-}" ]; then
-                export AEHUB_LOCAL_BASE_URL="https://models.github.ai/inference"
-                export AEHUB_LOCAL_API_KEY="${!github}"
-                say "GitHub Models in use (free, with daily limits), with the token in $github."
-            fi
-            ;;
-    esac
 
     say "Starting ÆHub…"
     (

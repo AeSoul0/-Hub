@@ -55,6 +55,15 @@ LOCAL_KEY_VARIABLE = "AEHUB_LOCAL_API_KEY"
 PROVIDERS = ("openai", "openrouter", "local", "groq", "anthropic", "google")
 
 
+def _seconds(variable: str, default: float) -> float:
+    """A positive number of seconds from the environment, else the default."""
+    try:
+        value = float(os.getenv(variable, ""))
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
 class PydanticAIAdapter(ModelProvider):
     """
     ModelProvider for every provider, through Pydantic AI.
@@ -107,6 +116,8 @@ class PydanticAIAdapter(ModelProvider):
         elif provider == "local":
             kwargs.setdefault("base_url", config_value("AEHUB_LOCAL_BASE_URL") or LOCAL_BASE_URL)
             kwargs.setdefault("api_key", os.getenv(LOCAL_KEY_VARIABLE, "local"))
+            # A model on a CPU can take minutes for one answer.
+            kwargs.setdefault("timeout", _seconds("AEHUB_LOCAL_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS))
 
         if provider in PROVIDER_KEYS:
             kwargs.setdefault("api_key", os.getenv(PROVIDER_KEYS[provider]))

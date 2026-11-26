@@ -22,7 +22,7 @@
         "OPENROUTER_API_KEY": { "description": "OpenRouter key (optional)." },
         "ANTHROPIC_API_KEY": { "description": "Anthropic key (optional)." },
         "GEMINI_API_KEY": { "description": "Google Gemini key (optional)." },
-        "GITHUB_MODELS_TOKEN": { "description": "Fine-grained GitHub token with Models: Read-only, for the free GitHub Models (optional: without it, the codespace's own token is tried)." },
+        "AEHUB_USE_OLLAMA": { "description": "1: open models (Qwen) on the codespace's own CPU with Ollama, even with provider keys (optional; used anyway when no key gives a model)." },
         "GROQ_API_KEY": { "description": "Groq key (optional)." },
         "XAI_API_KEY": { "description": "SpaceXAI (xAI) key for the cloud voice (optional)." },
         "ELEVENLABS_API_KEY": { "description": "ElevenLabs key for the cloud voice (optional)." }
