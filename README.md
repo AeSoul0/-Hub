@@ -227,6 +227,10 @@ The models of each role are chosen at start from the keys you gave, reading each
 - **Anthropic and Gemini:** Claude Opus plans, Gemini Pro researches, Claude Haiku and Gemini Flash-Lite do the quick jobs; the Critic is Gemini Flash, so another family checks Claude's answers, with Claude Sonnet as its fallback. Each role falls back on the other provider.
 - **Only one of them:** the same split inside it (with Claude alone, Opus plans and Sonnet is the Critic; with Gemini alone, Flash is the Critic).
 - **Only OpenRouter:** its free models that can call tools, the largest first, with a different one as the Critic. Free models have tight daily limits.
+- **GitHub Models**, free with your GitHub account, through ÆHub's "local" provider. It uses the codespace's own `GITHUB_TOKEN`, or a fine-grained token with **Models: Read-only** saved as the `GITHUB_MODELS_TOKEN` secret.
+  - **With no other provider:** a larger model plans and researches, a small one does the quick jobs, and the Critic is another publisher's model, all costing nothing.
+  - **With other providers:** each role falls back on it last.
+  - **Checks and limits:** the token is checked at start with one one-token request. The daily limits are tight: a few dozen requests per model.
 
 What you save in IMPOSTAZIONI wins over this choice.
 
