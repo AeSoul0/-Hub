@@ -1,0 +1,29 @@
+// ÆHub in GitHub Codespaces: try it from the browser, without installing
+// anything on your computer. scripts/codespace.sh installs and starts it
+// (PostgreSQL with pgvector, the backend, the pages served by the backend).
+{
+    "name": "ÆHub",
+    "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+    "features": {
+        "ghcr.io/devcontainers/features/node:1": { "version": "22" }
+    },
+    "hostRequirements": { "cpus": 2, "memory": "8gb" },
+    "forwardPorts": [3002],
+    "portsAttributes": {
+        "3002": { "label": "ÆHub", "onAutoForward": "openBrowser" }
+    },
+    "postCreateCommand": "bash scripts/codespace.sh install",
+    "postStartCommand": "bash scripts/codespace.sh start",
+    // Asked when the codespace is created; each becomes an environment
+    // variable of the codespace, never a file in the repository.
+    "secrets": {
+        "AEHUB_SECRET_KEY": { "description": "The key you log in with (long and random). Left empty, one is made and shown by: bash scripts/codespace.sh key" },
+        "OPENAI_API_KEY": { "description": "OpenAI key, for the models (at least one provider key is needed)." },
+        "OPENROUTER_API_KEY": { "description": "OpenRouter key (optional)." },
+        "ANTHROPIC_API_KEY": { "description": "Anthropic key (optional)." },
+        "GEMINI_API_KEY": { "description": "Google Gemini key (optional)." },
+        "GROQ_API_KEY": { "description": "Groq key (optional)." },
+        "XAI_API_KEY": { "description": "SpaceXAI (xAI) key for the cloud voice (optional)." },
+        "ELEVENLABS_API_KEY": { "description": "ElevenLabs key for the cloud voice (optional)." }
+    }
+}
