@@ -25,7 +25,10 @@ export type ControlEventType =
     | "interface.changed"
     // The draft of the answer while the model writes it, and its reset (N1).
     | "answer.delta"
-    | "answer.reset";
+    | "answer.reset"
+    // The end of a live command, for a request a proxy cut before it ended.
+    | "answer.final"
+    | "answer.failed";
 
 export interface ControlEvent {
     type: string;

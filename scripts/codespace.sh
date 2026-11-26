@@ -130,6 +130,12 @@ start() {
     if [ ! -x "$VENV/bin/python" ] || [ ! -d "$ROOT/frontend/out" ]; then
         install
     fi
+    # The pages again when the frontend changed since they were built (after a git pull).
+    local pages
+    pages="$(git -C "$ROOT" log -1 --format=%H -- frontend 2>/dev/null || true)"
+    if [ -n "$pages" ] && [ "$(cat "$DATA/pages-commit" 2>/dev/null)" != "$pages" ]; then
+        build_pages && echo "$pages" > "$DATA/pages-commit"
+    fi
     start_database
     stop >/dev/null 2>&1 || true
     mkdir -p "$DATA/workspace" "$DATA/voice"

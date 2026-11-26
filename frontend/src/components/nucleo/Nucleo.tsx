@@ -74,6 +74,8 @@ interface Reply {
     instant?: { tool: string; ms: number; success: boolean };
     // "sentences": no audio here, the Nucleo speaks the answer piece by piece (N1).
     speak?: "sentences";
+    // The run was stopped (by you, the global stop, a limit or the budget): a system line.
+    stopped?: string;
 }
 
 interface Budget {
@@ -86,6 +88,7 @@ const TEXT = catalog({
         denied: "denied · the call does not start",
         allowed: "allowed",
         commandFailed: "The command did not start:",
+        stillWorking: "The connection was cut, but ÆHub is still working: the answer will appear here.",
         instant: "instant",
         draft: "draft · being checked",
         micUnavailable: "Microphone not available:",
@@ -139,6 +142,7 @@ const TEXT = catalog({
         denied: "negata · la chiamata non parte",
         allowed: "consentita",
         commandFailed: "Il comando non è partito:",
+        stillWorking: "La connessione si è interrotta, ma ÆHub sta ancora lavorando: la risposta arriverà qui.",
         instant: "istantaneo",
         draft: "bozza · in verifica",
         micUnavailable: "Microfono non disponibile:",
@@ -240,6 +244,9 @@ export default function Nucleo() {
     // The answer while the model writes it (N1); only while a command waits.
     const [draft, setDraft] = useState("");
     const waiting = useRef(false);
+    // The request was cut by a proxy (GitHub's port forwarding after about a
+    // minute) while the command goes on: its end arrives as an event.
+    const adrift = useRef(false);
     // A newer answer stops the voice of the older one.
     const voiceTurn = useRef(0);
     // The worker role for the next commands; "" lets triage pick (F8).
@@ -363,13 +370,56 @@ export default function Nucleo() {
         }
     }, []);
 
+    const handleReply = useCallback(
+        async (reply: Reply) => {
+            setDraft("");
+            if (reply.stopped) {
+                say("system", reply.stopped);
+                return;
+            }
+            if (reply.transcription) {
+                const note = reply.instant ? `${t.instant} · ${reply.instant.ms} ms` : undefined;
+                say("aehub", reply.transcription, undefined, note);
+            }
+            if (reply.speak === "sentences" && reply.transcription) {
+                await speakText(reply.transcription);
+            } else if (reply.audio_base64) {
+                await playAudio(reply.audio_base64);
+            }
+        },
+        [say, playAudio, speakText, t.instant],
+    );
+
     // A run asked by voice answers by voice also when it resumes after an
     // approval (F3). Best effort: the written reply is already in the chat.
     const speakResumed = speakText;
 
     const connection = useWorkspaceEvents(
-        ["engine.event", "run.state", "approval.requested", "approval.decided", "run.resumed", "answer.delta", "answer.reset"],
+        [
+            "engine.event",
+            "run.state",
+            "approval.requested",
+            "approval.decided",
+            "run.resumed",
+            "answer.delta",
+            "answer.reset",
+            "answer.final",
+            "answer.failed",
+        ],
         (event) => {
+            if (event.type === "answer.final" || event.type === "answer.failed") {
+                if (adrift.current) {
+                    adrift.current = false;
+                    waiting.current = false;
+                    setDraft("");
+                    if (event.type === "answer.final") {
+                        void handleReply(event.data.reply as Reply);
+                    } else {
+                        say("system", `${TEXT[langRef.current].commandFailed} ${String(event.data.detail ?? "")}`);
+                    }
+                }
+                return;
+            }
             if (event.type === "answer.delta") {
                 if (waiting.current) {
                     setDraft(String(event.data.text ?? ""));
@@ -464,21 +514,15 @@ export default function Nucleo() {
     // Leaving the page closes the microphone.
     useEffect(() => () => recording.current?.cancel(), []);
 
-    const handleReply = useCallback(
-        async (reply: Reply) => {
-            setDraft("");
-            if (reply.transcription) {
-                const note = reply.instant ? `${t.instant} · ${reply.instant.ms} ms` : undefined;
-                say("aehub", reply.transcription, undefined, note);
-            }
-            if (reply.speak === "sentences" && reply.transcription) {
-                await speakText(reply.transcription);
-            } else if (reply.audio_base64) {
-                await playAudio(reply.audio_base64);
-            }
-        },
-        [say, playAudio, speakText, t.instant],
-    );
+    /** A gateway cut the request: wait for the command's end on the event stream. */
+    const cutByProxy = (response: Response) => {
+        if (response.status !== 502 && response.status !== 504) {
+            return false;
+        }
+        adrift.current = true;
+        say("system", t.stillWorking);
+        return true;
+    };
 
     const send = async (command: string) => {
         // The first command is a click: the moment to ask for notifications (ADR-037).
@@ -495,6 +539,9 @@ export default function Nucleo() {
         setDraft("");
         try {
             const response = await fetchApi("/api/orchestrator/ask", { method: "POST", body: form });
+            if (cutByProxy(response)) {
+                return;
+            }
             if (!response.ok) {
                 throw new Error(await detailOf(response));
             }
@@ -505,7 +552,9 @@ export default function Nucleo() {
             setDraft("");
             say("system", `${t.commandFailed} ${errorOf(error)}`);
         } finally {
-            waiting.current = false;
+            if (!adrift.current) {
+                waiting.current = false;
+            }
             setSending(false);
         }
     };
@@ -547,6 +596,9 @@ export default function Nucleo() {
             waiting.current = true;
             setDraft("");
             const response = await fetchApi("/api/orchestrator/listen", { method: "POST", body: form });
+            if (cutByProxy(response)) {
+                return;
+            }
             waiting.current = false;
             if (!response.ok) {
                 throw new Error(await detailOf(response));
@@ -563,7 +615,9 @@ export default function Nucleo() {
             setDraft("");
             say("system", `${t.voiceFailed} ${errorOf(error)}`);
         } finally {
-            waiting.current = false;
+            if (!adrift.current) {
+                waiting.current = false;
+            }
             setSending(false);
         }
     };

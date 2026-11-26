@@ -153,6 +153,13 @@ async def test_live_delivery_leaves_the_voice_to_the_nucleo(monkeypatch, publish
     live = await orchestrator.generate_ai_response("accendi la luce", "", "", "s", principal=OWNER, delivery="live")
     assert live == {"transcription": "La luce è accesa.", "audio_base64": "", "audio_mime": "", "speak": "sentences"}
     spoken.assert_not_called()
+    # The answer also goes on the workspace channel, for a request cut by a proxy.
+    assert [event for event in published if event[0] == "answer.final"][-1] == (
+        "answer.final",
+        {"reply": {"transcription": "La luce è accesa.", "speak": "sentences"}},
+        "workspace-n1",
+    )
+    published.clear()
 
     class Plain(Engine):
         async def ainvoke(self, state: Dict[str, Any], config: Any = None) -> Dict[str, Any]:
@@ -162,6 +169,19 @@ async def test_live_delivery_leaves_the_voice_to_the_nucleo(monkeypatch, publish
     monkeypatch.setattr(orchestrator, "get_aurora_app", AsyncMock(return_value=Plain()))
     full = await orchestrator.generate_ai_response("accendi la luce", "", "", "s", principal=OWNER)
     assert full["audio_base64"] == "QUJD" and "speak" not in full
+    assert [event for event in published if event[0].startswith("answer.")] == []
+
+    # A live command that fails says so on the channel too.
+    class Broken(Engine):
+        async def ainvoke(self, state: Dict[str, Any], config: Any = None) -> Dict[str, Any]:
+            raise RuntimeError("no provider")
+
+    monkeypatch.setattr(orchestrator, "get_aurora_app", AsyncMock(return_value=Broken()))
+    with pytest.raises(RuntimeError):
+        await orchestrator.generate_ai_response("x", "", "", "s", principal=OWNER, delivery="live")
+    assert [event for event in published if event[0].startswith("answer.")] == [
+        ("answer.failed", {"detail": "no provider"}, "workspace-n1")
+    ]
 
     with pytest.raises(ValueError):
         await orchestrator.generate_ai_response("x", "", "", "s", principal=OWNER, delivery="odd")
@@ -182,3 +202,36 @@ async def test_a_sentence_of_a_long_reply_is_spoken_by_piper(monkeypatch):
 
     assert await pipeline.speak("Prima frase.") == ("Y2xvdWQ=", "audio/mpeg")
     assert await pipeline.speak("Prima frase.", local=True) == ("bG9jYWw=", "audio/wav")
+
+
+async def test_a_stopped_run_is_one_line_not_its_state(monkeypatch, published):
+    """The run's raw state ({'status': 'CANCELLED', ...}) is never the answer."""
+    from app.core import interface
+
+    monkeypatch.setattr(interface, "interface_language", lambda: "it")
+    monkeypatch.setattr(orchestrator, "_decision_reply", AsyncMock(return_value=None))
+    monkeypatch.setattr(orchestrator, "_instant_reply", AsyncMock(return_value=None))
+    states = {
+        "Comando fermato dallo stop generale.": {
+            "status": "CANCELLED",
+            "run_id": "r",
+            "reason": "Stopped by the global kill switch (owner).",
+            "usage": {"model_calls": None},
+        },
+        "Comando fermato.": {"status": "CANCELLED", "run_id": "r", "reason": "Cancelled by owner."},
+        "Comando fermato: budget raggiunto (monthly budget).": {
+            "status": "BUDGET_EXCEEDED",
+            "run_id": "r",
+            "reason": "monthly budget",
+        },
+    }
+    for line, state in states.items():
+
+        class Stopped:
+            async def ainvoke(self, _state: Dict[str, Any], config: Any = None, state=state) -> Dict[str, Any]:
+                return {"messages": [{"content": state}]}
+
+        monkeypatch.setattr(orchestrator, "get_aurora_app", AsyncMock(return_value=Stopped()))
+        reply = await orchestrator.generate_ai_response("x", "", "", "s", principal=OWNER, delivery="live")
+        assert reply["stopped"] == line
+        assert reply["transcription"] == ""
