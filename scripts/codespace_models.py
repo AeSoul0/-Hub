@@ -8,11 +8,12 @@ Claude models, whose prices are known; the others use ÆHub's fallback price,
 which overestimates, until you set them in IMPOSTAZIONI). The model names are read from each provider's own list with your key,
 so only models that exist today are chosen:
 
-- Anthropic and Gemini: Claude Sonnet plans and works, Gemini Pro researches,
-  Claude Haiku and Gemini Flash-Lite do the quick jobs, and the Critic is
-  Gemini Flash (another family checks Claude's answers), with Claude Opus as
-  its fallback. Each role falls back on the other provider.
-- Anthropic only: Sonnet, Haiku for the quick jobs, Opus as the Critic.
+- Anthropic and Gemini: Claude Opus plans, Gemini Pro researches, Claude
+  Haiku and Gemini Flash-Lite do the quick jobs, and the Critic is Gemini
+  Flash (another family checks Claude's answers), with Claude Sonnet as its
+  fallback. Each role falls back on the other provider.
+- Anthropic only: Opus plans and researches, Haiku does the quick jobs,
+  Sonnet is the Critic.
 - Gemini only: Pro, Flash-Lite for the quick jobs, Flash as the Critic.
 - OpenRouter only: its free models that can call tools, the largest first;
   the Critic is a different one.
@@ -125,19 +126,19 @@ def roles(anthropic: Dict[str, str], gemini: Dict[str, str], free: List[str]) ->
 
     if a and g:
         config = {
-            "architect": chain(a.get("sonnet"), g.get("pro")),
-            "research": chain(g.get("pro"), a.get("sonnet")),
+            "architect": chain(a.get("opus"), g.get("pro")),
+            "research": chain(g.get("pro"), a.get("opus")),
             "fast_worker": chain(a.get("haiku"), g.get("flash-lite")),
             "triage": chain(g.get("flash-lite"), a.get("haiku")),
-            "critic": chain(g.get("flash"), a.get("opus")),
+            "critic": chain(g.get("flash"), a.get("sonnet")),
         }
     elif a:
         config = {
-            "architect": chain(a.get("sonnet")),
-            "research": chain(a.get("sonnet")),
-            "fast_worker": chain(a.get("haiku"), a.get("sonnet")),
+            "architect": chain(a.get("opus")),
+            "research": chain(a.get("opus")),
+            "fast_worker": chain(a.get("haiku"), a.get("opus")),
             "triage": chain(a.get("haiku")),
-            "critic": chain(a.get("opus")),
+            "critic": chain(a.get("sonnet")),
         }
     elif g:
         config = {

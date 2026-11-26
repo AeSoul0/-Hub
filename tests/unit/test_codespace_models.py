@@ -3,8 +3,9 @@
 @description scripts/codespace_models.py: the models of each role in a
 codespace, from the providers' own model lists (faked here, no network).
 
-- Anthropic and Gemini: Claude plans and works, Gemini researches and
-  checks; each role falls back on the other provider;
+- Anthropic and Gemini: Claude Opus plans, Gemini researches and checks
+  (Claude Sonnet as the Critic's fallback); each role falls back on the
+  other provider;
 - only one provider, or only OpenRouter's free models with tools;
 - the newest stable Gemini of each tier, the "latest" alias when there is
   none; the newest Claude of a family when the known id is not listed;
@@ -82,11 +83,11 @@ def valid(roles, monkeypatch):
 def test_claude_and_gemini(providers, capsys, monkeypatch):
     out = run(capsys, monkeypatch, ANTHROPIC_API_KEY="test-a", GEMINI_API_KEY="test-g")
     assert out["roles"] == {
-        "architect": ["anthropic:claude-sonnet-5-5", "google:gemini-3.5-pro"],
-        "research": ["google:gemini-3.5-pro", "anthropic:claude-sonnet-5-5"],
+        "architect": ["anthropic:claude-opus-5-5", "google:gemini-3.5-pro"],
+        "research": ["google:gemini-3.5-pro", "anthropic:claude-opus-5-5"],
         "fast_worker": ["anthropic:claude-haiku-5-5", "google:gemini-3.5-flash-lite"],
         "triage": ["google:gemini-3.5-flash-lite", "anthropic:claude-haiku-5-5"],
-        "critic": ["google:gemini-3.8-flash", "anthropic:claude-opus-5-5"],
+        "critic": ["google:gemini-3.8-flash", "anthropic:claude-sonnet-5-5"],
     }
     assert set(out["prices"]) == {"claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-5-5"}
     valid(out["roles"], monkeypatch)
@@ -96,8 +97,13 @@ def test_claude_and_gemini(providers, capsys, monkeypatch):
 
 def test_one_provider(providers, capsys, monkeypatch):
     claude = run(capsys, monkeypatch, ANTHROPIC_API_KEY="test-a")["roles"]
-    assert claude["critic"] == ["anthropic:claude-opus-5-5"]
-    assert claude["triage"] == ["anthropic:claude-haiku-5-5"]
+    assert claude == {
+        "architect": ["anthropic:claude-opus-5-5"],
+        "research": ["anthropic:claude-opus-5-5"],
+        "fast_worker": ["anthropic:claude-haiku-5-5", "anthropic:claude-opus-5-5"],
+        "triage": ["anthropic:claude-haiku-5-5"],
+        "critic": ["anthropic:claude-sonnet-5-5"],
+    }
     valid(claude, monkeypatch)
 
     monkeypatch.delenv("ANTHROPIC_API_KEY")
