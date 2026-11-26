@@ -83,7 +83,7 @@ SQL
     as_postgres psql -q -v ON_ERROR_STOP=1 -v user="$DB_USER" -v db="$DB_NAME" <<'SQL'
 SELECT format('CREATE DATABASE %I OWNER %I', :'db', :'user') WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'db')\gexec
 SQL
-    as_postgres psql -q -d "$DB_NAME" -c "CREATE EXTENSION IF NOT EXISTS vector" >/dev/null
+    as_postgres psql -q -d "$DB_NAME" -c "SET client_min_messages = warning; CREATE EXTENSION IF NOT EXISTS vector" >/dev/null
 }
 
 stop() {
@@ -107,6 +107,23 @@ start() {
     host="${url#*://}"
     password="$(secret_file db-password)"
     key="$(login_key)"
+
+    # The models of each role, from the keys this codespace has (unless set).
+    local chosen roles prices
+    chosen="$(python3 "$ROOT/scripts/codespace_models.py" || true)"
+    roles="$(printf '%s' "$chosen" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps(d["roles"]) if d.get("roles") else "")' 2>/dev/null || true)"
+    prices="$(printf '%s' "$chosen" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps(d["prices"]) if d.get("prices") else "")' 2>/dev/null || true)"
+    if [ -z "${AEHUB_MODEL_ROLES:-}" ] && [ -n "$roles" ]; then
+        export AEHUB_MODEL_ROLES="$roles"
+        say "Models of each role (change them in IMPOSTAZIONI):"
+        printf '%s' "$roles" | python3 -c 'import json, sys
+for role, models in json.load(sys.stdin).items(): print("  %-12s %s" % (role, " -> ".join(models)))'
+    elif [ -z "${AEHUB_MODEL_ROLES:-}" ]; then
+        say "No model chosen: add ANTHROPIC_API_KEY, GEMINI_API_KEY or OPENROUTER_API_KEY as Codespaces secrets (or check the ones above), then restart; or pick the models in IMPOSTAZIONI."
+    fi
+    if [ -z "${AEHUB_MODEL_PRICES:-}" ] && [ -n "$prices" ]; then
+        export AEHUB_MODEL_PRICES="$prices"
+    fi
 
     say "Starting ÆHub…"
     (

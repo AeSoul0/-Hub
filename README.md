@@ -222,6 +222,14 @@ cd -Hub
 bash scripts/codespace.sh key
 ```
 
+The models of each role are chosen at start from the keys you gave, reading each provider's own model list (`scripts/codespace_models.py`):
+
+- **Anthropic and Gemini:** Claude Sonnet plans and works, Gemini Pro researches, Claude Haiku and Gemini Flash-Lite do the quick jobs; the Critic is Gemini Flash, so another family checks Claude's answers, with Claude Opus as its fallback. Each role falls back on the other provider.
+- **Only one of them:** the same split inside it (the Critic is Opus, or Flash).
+- **Only OpenRouter:** its free models that can call tools, the largest first, with a different one as the Critic. Free models have tight daily limits.
+
+What you save in IMPOSTAZIONI wins over this choice.
+
 Other commands: `bash scripts/codespace.sh start` (again, after a stop), `stop`, `status`, `logs`, and `build` after changing the frontend. Keys stay in the codespace's secrets, data in `~/.aehub`.
 
 In a codespace ÆHub is on GitHub's machine, not on your PC: opening your apps and your folders, and the home devices on your network, do not reach your computer. Free accounts have a monthly allowance of codespace hours; stop the codespace when you are done.
