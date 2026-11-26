@@ -63,6 +63,8 @@ The model, price and limit variables (`OPENAI_MODEL`, `AEHUB_CHECKER_MODEL`, `AE
 | `AEHUB_MCP_TOOL_RISK` | Comma-separated `tool=low\|medium\|high` for MCP tools. A tool not listed is high and asks for approval on every call (ADR-033); set from the STRUMENTI page | none (every MCP tool high) |
 | `AEHUB_UI_LANGUAGE` | Language of the pages: `en` or `it`; set on the Settings page or by Aurora (ADR-034). The voice keeps the language of the chosen voice | `en` |
 | `AEHUB_VOICE_LANGUAGE_WARNING` | `on` shows a notice when the chosen voice speaks another language than the interface; its "Don't show this again" sets `off`, Settings or Aurora set it back | `on` |
+| `AEHUB_INSTANT_COMMANDS` | `on` runs simple commands (open an app or a folder, a light on or off, lock a door) at once, without the model; anything else goes to the engine (ADR-035). Also in Settings | `on` |
+| `AEHUB_APPS` | JSON: the name you say -> the program, a path or a list of program and arguments, e.g. `{"spotify": "spotify", "code": ["code", "--new-window"]}`. Only these apps can be opened (`open_app`), and only when ÆHub runs on this computer, not in a container. Set from Settings → Apps | none |
 | `AEHUB_DISABLED_TOOLS` | Comma-separated tools the agent can neither see nor call; set by the switches on the STRUMENTI page | none |
 | `FRONTEND_URL` / `AEHUB_ALLOWED_ORIGINS` | Browser origins allowed by CORS and the WebSocket; any other origin cannot send POST, PUT, PATCH or DELETE | `http://localhost:3000` |
 | `AEHUB_ALLOWED_HOSTS` | Extra host names the API answers to (comma-separated), besides `localhost`, `127.0.0.1` and `[::1]`; needed when the API is served under another name, e.g. on the LAN | none |

@@ -169,6 +169,10 @@ def normalize_changes(changes: Mapping[str, Optional[str]]) -> Dict[str, Optiona
     return normalized
 
 
+# The settings the model routing is built from (RoutingConfig.from_env).
+ROUTING_SETTINGS = frozenset({"OPENAI_MODEL", "AEHUB_CHECKER_MODEL", "AEHUB_MODEL_ROLES"})
+
+
 def validate_changes(changes: Mapping[str, Optional[str]]) -> Dict[str, Optional[str]]:
     """
     Return the normalized changes or raise SettingsValidationError.
@@ -189,11 +193,15 @@ def validate_changes(changes: Mapping[str, Optional[str]]) -> Dict[str, Optional
     if errors:
         raise SettingsValidationError(errors)
 
-    with candidate_values(normalized):
-        try:
-            validate_critic_independence(RoutingConfig.from_env())
-        except RoutingConfigError as exc:
-            raise SettingsValidationError({"routing": str(exc)}) from exc
+    # Only a change to the models can break the routing. On a new install the
+    # Critic still shares the worker's model until the owner picks one, and
+    # that must not block the language, the app list or any other setting.
+    if ROUTING_SETTINGS.intersection(normalized):
+        with candidate_values(normalized):
+            try:
+                validate_critic_independence(RoutingConfig.from_env())
+            except RoutingConfigError as exc:
+                raise SettingsValidationError({"routing": str(exc)}) from exc
 
     return normalized
 

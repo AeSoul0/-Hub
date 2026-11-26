@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Dict, List, Tuple
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 

@@ -49,8 +49,13 @@ class AdvancedSecurityMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         
         # 4. Strict Security Headers
-        is_page = response.headers.get("content-type", "").startswith("text/html")
-        response.headers["Content-Security-Policy"] = PAGE_CSP if is_page else API_CSP
+        # A 304 carries no content type, and the browser copies its headers
+        # onto the cached page: the strict API policy there would block the
+        # page's inline boot scripts on every reload. It keeps the policy of
+        # the page it revalidates.
+        if response.status_code != 304:
+            is_page = response.headers.get("content-type", "").startswith("text/html")
+            response.headers["Content-Security-Policy"] = PAGE_CSP if is_page else API_CSP
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-Content-Type-Options"] = "nosniff"

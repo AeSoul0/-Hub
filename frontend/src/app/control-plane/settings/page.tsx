@@ -12,6 +12,7 @@
 import Link from "next/link";
 import React, { useMemo, useState } from "react";
 
+import AppListEditor from "@/components/control-plane/AppListEditor";
 import DesktopKeys, { useDesktopMode } from "@/components/control-plane/DesktopKeys";
 import RoleEditor from "@/components/control-plane/RoleEditor";
 import SettingsForm from "@/components/control-plane/SettingsForm";
@@ -57,6 +58,9 @@ const TEXT = catalog({
             "From the provider's price list. Without a price the cost is estimated high, so the budget stops runs early rather than late.",
         limits: "Budget and limits",
         engine: "Engine",
+        apps: "Apps",
+        appsHelp:
+            "The apps you can open by saying their name (\"open Spotify\"), at once and without the model. Only these, and only when ÆHub runs on this computer, not in Docker.",
         workspace: "Working folder",
         exists: "exists",
         missing: "missing",
@@ -87,6 +91,9 @@ const TEXT = catalog({
             "Dal listino del provider. Senza prezzo il costo si stima alto, così il budget ferma le run prima e non dopo.",
         limits: "Budget e limiti",
         engine: "Motore",
+        apps: "App",
+        appsHelp:
+            "Le app che apri dicendone il nome (\"apri Spotify\"), subito e senza il modello. Solo queste, e solo quando ÆHub gira su questo computer, non in Docker.",
         workspace: "Cartella di lavoro",
         exists: "esiste",
         missing: "mancante",
@@ -96,8 +103,8 @@ const TEXT = catalog({
 });
 
 const DEFAULT_MODELS = ["OPENAI_MODEL", "AEHUB_CHECKER_MODEL", "AEHUB_FORCE_ROLE", "AEHUB_LOCAL_BASE_URL"];
-// Written by the role editor and the price table; editable as JSON under "advanced".
-const JSON_FIELDS = ["AEHUB_MODEL_ROLES", "AEHUB_MODEL_PRICES"];
+// Written by the role editor, the price table and the app list; editable as JSON under "advanced".
+const JSON_FIELDS = ["AEHUB_MODEL_ROLES", "AEHUB_MODEL_PRICES", "AEHUB_APPS"];
 
 export default function SettingsPage() {
     const lang = useLanguage();
@@ -259,6 +266,18 @@ export default function SettingsPage() {
             <section className={`${styles.card} ${styles.section}`}>
                 <h2 className={styles.h2}>{t.engine}</h2>
                 <SettingsForm key={version} fields={group("engine")} errors={errors} busy={busy} onSave={(changes) => void apply(changes)} />
+            </section>
+
+            <section className={`${styles.card} ${styles.section}`} aria-label={t.apps}>
+                <h2 className={styles.h2}>{t.apps}</h2>
+                <p className={styles.help}>{t.appsHelp}</p>
+                <AppListEditor
+                    key={`a-${version}`}
+                    value={valueOf("AEHUB_APPS")}
+                    busy={busy}
+                    error={errors.AEHUB_APPS}
+                    onSave={(json) => void apply({ AEHUB_APPS: json })}
+                />
             </section>
 
             <section className={`${styles.card} ${styles.section}`}>
