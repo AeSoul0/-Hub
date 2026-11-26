@@ -291,17 +291,84 @@ async def _parked_question(content: Any, principal: Any) -> Optional[str]:
     return question or waiting_question(language)
 
 
+_STOPPED = {
+    "it": {
+        "CANCELLED": "Comando fermato.",
+        "KILL": "Comando fermato dallo stop generale.",
+        "LIMIT_EXCEEDED": "Comando fermato: ha superato un limite della run ({reason}).",
+        "BUDGET_EXCEEDED": "Comando fermato: budget raggiunto ({reason}).",
+    },
+    "en": {
+        "CANCELLED": "Command stopped.",
+        "KILL": "Command stopped by the global stop.",
+        "LIMIT_EXCEEDED": "Command stopped: it went over a run limit ({reason}).",
+        "BUDGET_EXCEEDED": "Command stopped: budget reached ({reason}).",
+    },
+}
+
+
+def _stopped_note(content: Any) -> Optional[str]:
+    """
+    One line for a run that was stopped (by you, the global stop, a limit or
+    the budget), instead of the run's raw state as the answer.
+    """
+    if not isinstance(content, dict):
+        return None
+    status = str(content.get("status") or "")
+    if status not in ("CANCELLED", "LIMIT_EXCEEDED", "BUDGET_EXCEEDED"):
+        return None
+    from app.core.interface import interface_language
+
+    texts = _STOPPED.get(interface_language(), _STOPPED["it"])
+    reason = str(content.get("reason") or "")
+    if status == "CANCELLED" and "kill switch" in reason.lower():
+        return texts["KILL"]
+    return texts[status].format(reason=reason)
+
+
+async def _publish_outcome(args: tuple, kwargs: dict, event_type: str, data: dict) -> None:
+    """
+    The end of a live command on the workspace channel: the Nucleo still
+    gets the answer (answer.final) or the error (answer.failed) when the
+    HTTP request was cut first, as GitHub's port forwarding does after about
+    a minute while a model on a CPU is still writing.
+    """
+    session_id = kwargs.get("session_id", args[3] if len(args) > 3 else "")
+    principal = kwargs.get("principal", args[4] if len(args) > 4 else None)
+    try:
+        await event_bus.publish(
+            str(session_id or ""),
+            event_type,
+            data,
+            workspace_id=getattr(principal, "workspace_id", "") or "",
+        )
+    except Exception:  # noqa: BLE001 - the HTTP reply still carries the answer
+        logger.warning("The %s event of a live command was not published.", event_type)
+
+
 async def generate_ai_response(*args: Any, delivery: str = "full", **kwargs: Any) -> dict[str, Any]:
     """See _generate_ai_response; "live" delivery opens the draft and leaves the voice to the Nucleo."""
     if delivery not in DELIVERIES:
         raise ValueError(f"Unknown delivery '{delivery}'.")
-    token = _live.set(delivery == "live")
+    live = delivery == "live"
+    token = _live.set(live)
     try:
         reply = await _generate_ai_response(*args, delivery=delivery, **kwargs)
+    except Exception as exc:
+        if live:
+            await _publish_outcome(args, kwargs, "answer.failed", {"detail": str(exc)})
+        raise
     finally:
         _live.reset(token)
-    if delivery == "live":
+    if live:
         reply["speak"] = "sentences"
+        # Without the audio: the Nucleo speaks the text itself.
+        await _publish_outcome(
+            args,
+            kwargs,
+            "answer.final",
+            {"reply": {key: value for key, value in reply.items() if key not in ("audio_base64", "audio_mime")}},
+        )
     return reply
 
 
@@ -460,6 +527,13 @@ async def _generate_ai_response(
                 "audio_mime": audio_mime,
                 "awaiting_approval": True,
             }
+
+        # A stopped run: a line saying so, not its state as the answer.
+        stopped = _stopped_note(
+            last_message.get("content") if isinstance(last_message, dict) else getattr(last_message, "content", None)
+        )
+        if stopped is not None:
+            return {"transcription": "", "audio_base64": "", "audio_mime": "", "stopped": stopped}
 
         if isinstance(
             last_message,

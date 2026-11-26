@@ -183,4 +183,91 @@ describe("the draft in the Nucleo", () => {
             reply_chars: 41,
         });
     });
+
+    it("keeps waiting when a proxy cuts the request, and shows the answer that comes as an event", async () => {
+        installEventSource();
+        let status = 504;
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async (input: RequestInfo | URL) => {
+                const url = new URL(String(input));
+                const json = (body: unknown, code = 200) =>
+                    new Response(JSON.stringify(body), { status: code });
+                if (url.pathname === "/api/orchestrator/ask") {
+                    // GitHub's port forwarding after about a minute.
+                    return new Response("Gateway Timeout", { status });
+                }
+                if (url.pathname === "/api/runs/live") {
+                    return json({ halted: false, halt_reason: null, limits: LIMITS, runs: [] });
+                }
+                if (url.pathname === "/api/runs/stats") {
+                    return json({ budget: { month_spent: 0, monthly_budget: 2 } });
+                }
+                return json([]);
+            })
+        );
+
+        render(<Nucleo />);
+        const stream = FakeEventSource.instances[0];
+        act(() => stream.open());
+
+        // The end of someone else's command (none cut here) is ignored.
+        act(() => stream.emit("answer.final", { reply: { transcription: "estranea" } }));
+        expect(screen.queryByText("estranea")).not.toBeInTheDocument();
+
+        const command = screen.getByRole("textbox", { name: "Comando" });
+        fireEvent.change(command, { target: { value: "presentati" } });
+        fireEvent.click(screen.getByRole("button", { name: "INVIA" }));
+        expect(
+            await screen.findByText(
+                "La connessione si è interrotta, ma ÆHub sta ancora lavorando: la risposta arriverà qui."
+            )
+        ).toBeInTheDocument();
+        expect(screen.queryByText(/Il comando non è partito/)).not.toBeInTheDocument();
+
+        // The drafts still show, then the answer arrives on the stream.
+        act(() => stream.emit("answer.delta", { text: "Sono Aurora" }));
+        expect(await screen.findByTestId("answer-draft")).toHaveTextContent("Sono Aurora");
+        act(() =>
+            stream.emit("answer.final", {
+                reply: { transcription: "Sono Aurora, il tuo assistente." },
+            })
+        );
+        expect(await screen.findByText("Sono Aurora, il tuo assistente.")).toBeInTheDocument();
+        expect(screen.queryByTestId("answer-draft")).not.toBeInTheDocument();
+
+        // A failure that comes the same way is shown as one.
+        status = 502;
+        fireEvent.change(command, { target: { value: "ancora" } });
+        fireEvent.click(screen.getByRole("button", { name: "INVIA" }));
+        await waitFor(() =>
+            expect(
+                screen.getAllByText(
+                    "La connessione si è interrotta, ma ÆHub sta ancora lavorando: la risposta arriverà qui."
+                )
+            ).toHaveLength(2)
+        );
+        act(() => stream.emit("answer.failed", { detail: "Worker failed: timeout" }));
+        expect(
+            await screen.findByText("Il comando non è partito: Worker failed: timeout")
+        ).toBeInTheDocument();
+
+        // A stopped run is a system line, not its raw state.
+        fireEvent.change(command, { target: { value: "lungo" } });
+        fireEvent.click(screen.getByRole("button", { name: "INVIA" }));
+        await waitFor(() =>
+            expect(
+                screen.getAllByText(
+                    "La connessione si è interrotta, ma ÆHub sta ancora lavorando: la risposta arriverà qui."
+                )
+            ).toHaveLength(3)
+        );
+        act(() =>
+            stream.emit("answer.final", {
+                reply: { transcription: "", stopped: "Comando fermato dallo stop generale." },
+            })
+        );
+        expect(await screen.findByText("Comando fermato dallo stop generale.")).toBeInTheDocument();
+        expect(screen.queryByText(/CANCELLED/)).not.toBeInTheDocument();
+    });
 });
