@@ -80,6 +80,7 @@ The model, price and limit variables (`OPENAI_MODEL`, `AEHUB_CHECKER_MODEL`, `AE
 | `AEHUB_TTS_ENGINE` | `piper` (on this machine), `elevenlabs` (the reply text goes to ElevenLabs, ADR-024) or `spacexai` (it goes to SpaceXAI, 15 $ per million characters, ADR-038); also editable on the VOCE page | `piper` |
 | `AEHUB_ELEVENLABS_VOICE` / `AEHUB_ELEVENLABS_MODEL` | ElevenLabs voice ID and model | none / `eleven_flash_v2_5` |
 | `AEHUB_SPACEXAI_VOICE` / `AEHUB_SPACEXAI_LANGUAGE` | SpaceXAI voice (`eve` or `altair`) and the language it reads in, always a code (`it`, `en`, `fr`; never `auto`) | `eve` / `it` |
+| `AEHUB_WAKE_WORD` / `AEHUB_WAKE_SENSITIVITY` | Wake word the Nucleo listens for, recognized in the page with openWakeWord on onnxruntime-web, no audio leaves the page before it (ADR-041): `off`, `hey_jarvis`, `alexa`, `hey_mycroft` (pinned release models, SHA-256 checked) or `aurora` (your own model in `<AEHUB_VOICE_MODELS_DIR>/wake/aurora.onnx`); sensitivity `low`, `medium` or `high` (threshold 0.7, 0.5, 0.35). Also on the VOCE page | `off` / `medium` |
 | `AEHUB_VOICE_MODELS_DIR` | Where the speech models are downloaded on first use | `~/.cache/aehub/voice` |
 | `AEHUB_HOME_DEVICES` | JSON file of the home devices, outside the working folder (see Home devices); optional, devices can also be declared on the CASA page | none |
 | `AEHUB_MQTT_URL` / `AEHUB_MQTT_USERNAME` | Home MQTT broker (`mqtt://host:1883`, `mqtts://host:8883`) and user; also editable on the CASA page, without a restart | none |

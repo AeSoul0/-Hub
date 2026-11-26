@@ -14,6 +14,11 @@
  * being checked) and is replaced by the accepted answer; the answer is then
  * spoken sentence by sentence, the next one synthesized while one plays.
  *
+ * N2 (ADR-041): with a wake word chosen, the page listens for it (in the
+ * browser, wakeListener.ts) and, once heard, records the command until the
+ * speaker stops, as if the microphone had been pressed. Listening pauses
+ * while a command is recorded, sent or spoken.
+ *
  * F2: the right pane also shows the runs of this session with their totals
  * against the limits and their timeline; a run, or all of them, stops from
  * here (POST /api/runs/{id}/cancel, /api/runs/stop-all, /api/runs/resume).
@@ -27,7 +32,7 @@ import type { ApprovalRequest, Decision } from "@/components/control-plane/Appro
 import CitedText from "@/components/control-plane/CitedText";
 import { fetchApi, getJson, postJson } from "@/lib/api/client";
 import { useWorkspaceEvents } from "@/lib/api/events";
-import { playReply, startRecording, type Recording } from "@/lib/nucleo/audio";
+import { chime, playReply, startRecording, type Recording } from "@/lib/nucleo/audio";
 import {
     initialNucleo,
     MODE_LABELS,
@@ -41,8 +46,9 @@ import {
 import { IMPLEMENTER_ROLES } from "@/lib/nucleo/models";
 import { initialRuns, liveCount, runsReducer, type LiveView } from "@/lib/nucleo/runs";
 import { resumedByVoice, speakInSentences, splitSentences, type SpokenPiece } from "@/lib/nucleo/voice";
+import { startWakeListener, type WakeListener, type WakeStatus } from "@/lib/nucleo/wakeListener";
 import { askNotifyPermissionOnce } from "@/lib/notify";
-import { catalog, useLanguage } from "@/lib/i18n";
+import { catalog, useInterface, useLanguage } from "@/lib/i18n";
 
 import ApprovalPrompt from "./ApprovalPrompt";
 import Orb from "./Orb";
@@ -120,6 +126,14 @@ const TEXT = catalog({
         placeholder: "Type a command…",
         send: "SEND",
         hint: "SPACE to speak · drag the edge of the panels to make them taller",
+        wake: {
+            loading: (word: string) => `Wake word: loading «${word}»…`,
+            listening: (word: string) => `Listening for «${word}»`,
+            paused: (word: string) => `«${word}» paused while I listen or answer`,
+            blocked: (word: string) => `Touch the page to start listening for «${word}»`,
+            error: (word: string, detail: string) => `«${word}» not available: ${detail}`,
+            speak: "speak now · it ends when you stop",
+        },
     },
     it: {
         denied: "negata · la chiamata non parte",
@@ -165,6 +179,14 @@ const TEXT = catalog({
         placeholder: "Scrivi un comando…",
         send: "INVIA",
         hint: "SPAZIO per parlare · trascina il bordo dei pannelli per allungarli",
+        wake: {
+            loading: (word: string) => `Parola di attivazione: carico «${word}»…`,
+            listening: (word: string) => `In ascolto di «${word}»`,
+            paused: (word: string) => `«${word}» in pausa mentre ascolto o rispondo`,
+            blocked: (word: string) => `Tocca la pagina per ascoltare «${word}»`,
+            error: (word: string, detail: string) => `«${word}» non disponibile: ${detail}`,
+            speak: "parla ora · finisce quando smetti",
+        },
     },
 });
 
@@ -231,6 +253,15 @@ export default function Nucleo() {
     const [rightTab, setRightTab] = useState<"events" | "runs">("events");
     const [confirmStop, setConfirmStop] = useState(false);
     const liveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // The wake word (N2): only with the voice on and a word chosen.
+    const iface = useInterface();
+    const wake = iface?.voice.enabled && iface.wake && iface.wake.word !== "off" ? iface.wake : null;
+    const wakeWord = wake?.word ?? "";
+    const wakeThreshold = wake?.threshold ?? 0;
+    const [wakeStatus, setWakeStatus] = useState<{ status: WakeStatus; detail: string } | null>(null);
+    const wakeListener = useRef<WakeListener | null>(null);
+    // The recording was started by the word: it ends by itself.
+    const [byWordNow, setByWordNow] = useState(false);
 
     const level = useRef<() => number>(silence);
     const recording = useRef<Recording | null>(null);
@@ -479,16 +510,22 @@ export default function Nucleo() {
         }
     };
 
-    const toggleMic = async () => {
+    // `byWord`: started by the wake word, so it ends by itself when the speaker stops.
+    const toggleMic = async (byWord = false) => {
         if (!listening) {
             askNotifyPermissionOnce();
             try {
-                const started = await startRecording(t.micMissing);
+                const started = await startRecording(
+                    t.micMissing,
+                    byWord ? { onEnd: () => void toggleRef.current() } : {},
+                );
                 recording.current = started;
                 level.current = started.level;
+                setByWordNow(byWord);
                 setListening(true);
             } catch (error) {
                 say("system", `${t.micUnavailable} ${errorOf(error)}`);
+                wakeListener.current?.resume();
             }
             return;
         }
@@ -596,8 +633,71 @@ export default function Nucleo() {
         return () => window.removeEventListener("keydown", onKey);
     }, []);
 
+    // The word was heard: a short tone, then the command, as with the button.
+    const busyRef = useRef(false);
+    const onWake = useCallback(async () => {
+        if (busyRef.current) {
+            wakeListener.current?.resume();
+            return;
+        }
+        await chime();
+        await toggleRef.current(true);
+    }, []);
+
+    useEffect(() => {
+        if (!wakeWord) {
+            return;
+        }
+        let cancelled = false;
+        let listener: WakeListener | null = null;
+        startWakeListener({
+            word: wakeWord,
+            threshold: wakeThreshold,
+            onWake: () => void onWake(),
+            onStatus: (status, detail) => {
+                if (!cancelled) {
+                    setWakeStatus({ status, detail: detail ?? "" });
+                }
+            },
+        }).then(
+            (started) => {
+                if (cancelled) {
+                    started.stop();
+                    return;
+                }
+                listener = started;
+                wakeListener.current = started;
+                if (busyRef.current) {
+                    started.pause();
+                }
+            },
+            (error) => {
+                if (!cancelled) {
+                    setWakeStatus({ status: "error", detail: errorOf(error) });
+                }
+            },
+        );
+        return () => {
+            cancelled = true;
+            listener?.stop();
+            wakeListener.current = null;
+            setWakeStatus(null);
+        };
+    }, [wakeWord, wakeThreshold, onWake]);
+
     const mode = orbMode(state, { listening, speaking, sending }, now);
     const busy = sending || listening;
+
+    // Not while a command is recorded, sent or spoken: the reply must not wake it.
+    const voiceBusy = busy || speaking;
+    useEffect(() => {
+        busyRef.current = voiceBusy;
+        if (voiceBusy) {
+            wakeListener.current?.pause();
+        } else {
+            wakeListener.current?.resume();
+        }
+    }, [voiceBusy]);
     const appClass = [styles.app, showChat ? "" : styles.noLeft, showEvents ? "" : styles.noRight].join(" ");
     const spent = budget?.month_spent;
     const running = Math.max(state.activeRuns.length, liveCount(runs));
@@ -698,7 +798,7 @@ export default function Nucleo() {
                 <span className={`${styles.tick} ${styles.br}`} />
                 <div className={styles.state} data-mode={mode} aria-live="polite">
                     <strong>{MODE_LABELS[lang][mode]}</strong>
-                    <span>{modeDetail(mode, state, lang)}</span>
+                    <span>{listening && byWordNow ? t.wake.speak : modeDetail(mode, state, lang)}</span>
                 </div>
                 <ApprovalPrompt pending={approvals} busy={deciding} onDecide={decide} />
             </main>
@@ -797,6 +897,14 @@ export default function Nucleo() {
                         </button>
                     </form>
                 </div>
+                {wake && wakeStatus && (
+                    <div className={styles.wake} data-testid="wake-status" data-status={wakeStatus.status} role="status">
+                        <span className={styles.wakeDot} aria-hidden="true" />
+                        {wakeStatus.status === "error"
+                            ? t.wake.error(wake.label, wakeStatus.detail)
+                            : t.wake[wakeStatus.status](wake.label)}
+                    </div>
+                )}
                 <div className={styles.hint}>{t.hint}</div>
             </footer>
         </div>

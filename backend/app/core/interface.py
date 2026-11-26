@@ -98,6 +98,8 @@ def interface_state() -> Dict[str, Any]:
     """
     What every page needs to know, for GET /api/interface.
     """
+    from app.voice.wake import wake_state
+
     engine = config_value("AEHUB_TTS_ENGINE", "piper") or "piper"
     name = (
         config_value("AEHUB_ELEVENLABS_VOICE", "") if engine == "elevenlabs"
@@ -115,6 +117,8 @@ def interface_state() -> Dict[str, Any]:
             "name": name,
             "language": voice_language(),
         },
+        # The wake word (N2, ADR-041): the Nucleo listens for it in the page.
+        "wake": wake_state(),
     }
 
 

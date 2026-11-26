@@ -483,6 +483,29 @@ SPECS: Tuple[SettingSpec, ...] = (
         minimum=0,
         maximum=1440,
     ),
+    # The wake word (N2, ADR-041): recognized in the browser, off by default.
+    SettingSpec(
+        name="AEHUB_WAKE_WORD",
+        group="voice",
+        label="Wake word",
+        kind="choice",
+        default="off",
+        help=(
+            "off: press the microphone. A word starts listening without pressing anything; it is recognized "
+            "in the page, and no audio leaves it before the word. aurora needs your own model in "
+            "<voice models>/wake/aurora.onnx."
+        ),
+        options=("off", "hey_jarvis", "alexa", "hey_mycroft", "aurora"),
+    ),
+    SettingSpec(
+        name="AEHUB_WAKE_SENSITIVITY",
+        group="voice",
+        label="Wake word sensitivity",
+        kind="choice",
+        default="medium",
+        help="high hears the word more easily, and other words by mistake more often; low the opposite.",
+        options=("low", "medium", "high"),
+    ),
     # Home (F7, ADR-028): the broker of the home devices, read on every
     # message. The password is a keyring secret (AEHUB_MQTT_PASSWORD).
     SettingSpec(

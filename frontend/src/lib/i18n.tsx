@@ -36,6 +36,8 @@ export interface InterfaceState {
         /** The language the chosen voice speaks; null when it cannot be known. */
         language: string | null;
     };
+    /** The wake word (N2, ADR-041); "off" when the microphone must be pressed. */
+    wake?: { word: string; label: string; threshold: number };
 }
 
 const STORAGE_KEY = "aehub.language";

@@ -27,7 +27,19 @@ export interface VoiceStatus {
         max_cloud_chars: number;
     };
     downloaded: { whisper: DownloadedModel[]; piper: DownloadedModel[] };
+    /** The wake word (N2, ADR-041). */
+    wake?: {
+        word: string;
+        label: string;
+        threshold: number;
+        own_model_path: string;
+        downloaded: Record<string, boolean>;
+    };
 }
+
+/** The wake words: three ready-made, and your own "aurora" model. */
+export const WAKE_WORDS = ["off", "hey_jarvis", "alexa", "hey_mycroft", "aurora"] as const;
+export const WAKE_SENSITIVITIES = ["low", "medium", "high"] as const;
 
 export interface CloudVoice {
     id: string;
@@ -48,6 +60,9 @@ export const VOICE_SETTINGS = [
     "AEHUB_ELEVENLABS_MODEL",
     "AEHUB_SPACEXAI_VOICE",
     "AEHUB_SPACEXAI_LANGUAGE",
+    // The wake word (N2).
+    "AEHUB_WAKE_WORD",
+    "AEHUB_WAKE_SENSITIVITY",
 ] as const;
 
 export type VoiceSetting = (typeof VOICE_SETTINGS)[number];

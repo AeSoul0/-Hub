@@ -198,6 +198,15 @@
 .ask button { background: transparent; border: 0; color: var(--dim); font-family: var(--font-code); font-size: 11px; letter-spacing: 0.14em; cursor: pointer; padding-inline: 6px; }
 .ask button:disabled { opacity: 0.4; cursor: default; }
 .hint { font-family: var(--font-code); font-size: 10px; color: var(--faint); letter-spacing: 0.1em; }
+/* The wake word (N2): whether the page listens for it. */
+.wake { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-code); font-size: 10px; letter-spacing: 0.1em; color: var(--dim); }
+.wakeDot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); flex: none; }
+.wake[data-status="listening"] .wakeDot { background: var(--ok); box-shadow: 0 0 8px var(--ok); animation: wakePulse 2.4s ease-in-out infinite; }
+.wake[data-status="loading"] .wakeDot, .wake[data-status="blocked"] .wakeDot { background: var(--amber); }
+.wake[data-status="error"] { color: var(--danger); }
+.wake[data-status="error"] .wakeDot { background: var(--danger); }
+@keyframes wakePulse { 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) { .wake[data-status="listening"] .wakeDot { animation: none; } }
 
 @media (max-width: 860px) {
     .app {

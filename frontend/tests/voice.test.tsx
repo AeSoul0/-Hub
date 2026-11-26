@@ -52,6 +52,8 @@ function settingsView(values: Record<string, string> = {}, issues: SettingsView[
             voiceField("AEHUB_ELEVENLABS_MODEL", value("AEHUB_ELEVENLABS_MODEL", "eleven_flash_v2_5")),
             voiceField("AEHUB_SPACEXAI_VOICE", value("AEHUB_SPACEXAI_VOICE", "eve"), ["eve", "altair"]),
             voiceField("AEHUB_SPACEXAI_LANGUAGE", value("AEHUB_SPACEXAI_LANGUAGE", "it"), ["it", "en", "fr"]),
+            voiceField("AEHUB_WAKE_WORD", value("AEHUB_WAKE_WORD", "off"), ["off", "hey_jarvis", "alexa", "hey_mycroft", "aurora"]),
+            voiceField("AEHUB_WAKE_SENSITIVITY", value("AEHUB_WAKE_SENSITIVITY", "medium"), ["low", "medium", "high"]),
         ],
         secrets: [],
         issues,
@@ -265,5 +267,58 @@ describe("VoicePage", () => {
         await waitFor(() => expect(fetch.mock.calls.some(([url]) => String(url).endsWith("/api/voice/speak"))).toBe(true));
         const speak = fetch.mock.calls.find(([url]) => String(url).endsWith("/api/voice/speak"));
         expect(JSON.parse(String(speak?.[1]?.body))).toEqual({ text: "Bonjour, je suis ÆHub. Voici ma voix.", preview: true });
+    });
+
+    it("chooses a wake word and its sensitivity; aurora says where its model goes", async () => {
+        let current = settingsView();
+        const fetch = stubFetch({
+            "GET /api/settings": () => ({ status: 200, body: current }),
+            "PUT /api/settings": () => {
+                current = settingsView({ AEHUB_WAKE_WORD: "aurora", AEHUB_WAKE_SENSITIVITY: "high" });
+                return { status: 200, body: current };
+            },
+            "GET /api/voice": () => ({
+                status: 200,
+                body: {
+                    ...status(),
+                    wake: {
+                        word: "off",
+                        label: "",
+                        threshold: 0.5,
+                        own_model_path: "/home/me/.cache/aehub/voice/wake/aurora.onnx",
+                        downloaded: { aurora: false },
+                    },
+                },
+            }),
+            "GET /api/desktop": () => ({ status: 200, body: { desktop: false } }),
+        });
+
+        render(<VoicePage />);
+
+        const word = await screen.findByRole("combobox", { name: "Parola" });
+        expect(within(word).getAllByRole("option").map((option) => option.textContent)).toEqual([
+            "spenta · premi il microfono",
+            "Hey Jarvis",
+            "Alexa",
+            "Hey Mycroft",
+            "Aurora · il tuo modello",
+        ]);
+        const sensitivity = screen.getByRole("combobox", { name: "Sensibilità" });
+        // Nothing to tune while the word is off.
+        expect(sensitivity).toBeDisabled();
+        expect(screen.getByText(/nessun audio viene registrato né inviato/)).toBeInTheDocument();
+
+        fireEvent.change(word, { target: { value: "aurora" } });
+        expect(
+            screen.getByText(/Aurora richiede un tuo modello openWakeWord .* in \/home\/me\/.cache\/aehub\/voice\/wake\/aurora.onnx\. Il file non c'è ancora\./)
+        ).toBeInTheDocument();
+        fireEvent.change(sensitivity, { target: { value: "high" } });
+
+        fireEvent.click(screen.getByRole("button", { name: "Salva" }));
+        await screen.findByText("Salvato: vale dalla prossima frase.");
+        const put = fetch.mock.calls.find(([, init]) => init?.method === "PUT");
+        expect(JSON.parse(String(put?.[1]?.body))).toEqual({
+            values: { AEHUB_WAKE_WORD: "aurora", AEHUB_WAKE_SENSITIVITY: "high" },
+        });
     });
 });

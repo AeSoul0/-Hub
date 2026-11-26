@@ -34,7 +34,7 @@ sidecar dell'app desktop (PostgreSQL e API su `127.0.0.1`).
   - client MCP (ADR-033): i tool dei server consentiti, a rischio alto finché non lo abbassi;
   - interfaccia (ADR-034): Aurora cambia la lingua delle pagine e l'avviso sulla lingua della voce;
   - indice delle skill.
-- `app/voice/`: voce locale (faster-whisper, Piper) ed ElevenLabs facoltativo.
+- `app/voice/`: voce locale (faster-whisper, Piper), ElevenLabs e SpaceXAI facoltativi; `wake.py` consegna i modelli della parola di attivazione (N2, ADR-041).
 - `app/home/`: dispositivi di casa via MQTT.
 - `app/system/`: stato del sistema, log, eval, flight recorder e aggiornamenti per la pagina SISTEMA.
 - `app/desktop/`: chiavi nel keyring e avvio per l'app desktop.
@@ -47,7 +47,7 @@ sidecar dell'app desktop (PostgreSQL e API su `127.0.0.1`).
 Next.js 16 con React 19 e TypeScript. L'interfaccia è in inglese o in italiano (ADR-034, `src/lib/i18n.tsx`), con tema spaziale blu profondo e angoli squircle.
 - `src/app/`: le pagine. La home è il Nucleo (`/`); il Control Plane sta sotto `/control-plane`.
 - `src/components/`: componenti del Nucleo e del Control Plane.
-- `src/lib/`: client API, eventi dal vivo, logica delle pagine.
+- `src/lib/`: client API, eventi dal vivo, logica delle pagine; `nucleo/wake.ts` e `nucleo/wakeListener.ts` riconoscono la parola di attivazione nella pagina (onnxruntime-web, N2, ADR-041).
 - `tests/`: test Vitest (Testing Library, jsdom).
 
 ### Desktop (`desktop/`)

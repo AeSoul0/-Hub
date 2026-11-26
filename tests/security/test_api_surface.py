@@ -72,6 +72,9 @@ MANAGEMENT = {
     ("GET", "/api/voice"),
     ("GET", "/api/voice/elevenlabs/voices"),
     ("POST", "/api/voice/speak"),
+    # N2 (ADR-041): the wake word models, only the feature models and the
+    # chosen word; files of a pinned release (SHA-256) or the user's own.
+    ("GET", "/api/voice/wake/{model}"),
     # F5: the tool catalog (read only; switching tools is a setting) and
     # skills imported as SKILL.md text. A skill never runs from here: the
     # agent reads an enabled one through the use_skill tool, untrusted.
