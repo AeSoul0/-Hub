@@ -121,6 +121,12 @@ jobs:
         run: |
           bandit -r app -ll -q
 
+      # The memory's embedding model is pinned to one commit with the SHA-256
+      # of each file (O1, ADR-039): the hub must serve exactly those files.
+      - name: Check the Pinned Embedding Model
+        run: |
+          python scripts/check_embedding_pin.py
+
       # =========================================================================
       # BACKEND CODE QUALITY
       # =========================================================================

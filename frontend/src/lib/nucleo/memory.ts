@@ -42,14 +42,14 @@ export const EMBEDDERS = catalog<Record<string, { label: string; help: string }>
     en: {
         "sentence-transformers": {
             label: "Local model",
-            help: "Finds memories by meaning. The model (~90 MB) is downloaded the first time and runs on this computer.",
+            help: "Finds memories by meaning. The model (~90 MB) is downloaded the first time, checked, and runs on this computer. Another model is named with its commit: owner/name@commit.",
         },
         hash: { label: "Hash, without a model", help: "No download, but it finds almost only the same words." },
     },
     it: {
         "sentence-transformers": {
             label: "Modello locale",
-            help: "Trova i ricordi per significato. Il modello (~90 MB) si scarica al primo uso e gira su questo computer.",
+            help: "Trova i ricordi per significato. Il modello (~90 MB) si scarica al primo uso, viene controllato e gira su questo computer. Un altro modello si indica con il suo commit: owner/nome@commit.",
         },
         hash: { label: "Hash, senza modello", help: "Niente download, ma trova quasi solo le parole uguali." },
     },

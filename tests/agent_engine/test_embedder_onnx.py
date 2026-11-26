@@ -2,8 +2,10 @@
 @file tests/agent_engine/test_embedder_onnx.py
 @description O1: the memory's embedder on ONNX Runtime, without torch.
 
-- the model is the sentence-transformers repository's ONNX export and its
-  tokenizer, downloaded from the hub (faked here: no network in tests);
+- the model is an ONNX export and its tokenizer, downloaded from the hub
+  (faked here: no network in tests) at a pinned commit; the default model's
+  files are checked against their SHA-256, another model must name its
+  commit;
 - the vector is the mean of the token vectors, padding excluded, at unit
   length, as sentence-transformers computes it; texts are cut at 256 tokens;
 - the name stays "st:<model>", so stored vectors keep matching;
@@ -14,6 +16,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
 from typing import Any, Dict, List
 
@@ -68,8 +71,8 @@ def hub(tmp_path, monkeypatch):
 
     asked: List[tuple] = []
 
-    def download(repository: str, filename: str) -> str:
-        asked.append((repository, filename))
+    def download(repository: str, filename: str, revision: str = "") -> str:
+        asked.append((repository, filename, revision))
         if repository.endswith("no-onnx") and filename == embeddings.ONNX_FILE:
             raise FileNotFoundError("404 onnx/model.onnx")
         return str(tokenizer_file if filename == "tokenizer.json" else model_file)
@@ -77,6 +80,20 @@ def hub(tmp_path, monkeypatch):
     import huggingface_hub
     import onnxruntime
 
+    # The pinned default, with the hashes of these stand-in files.
+    pinned = embeddings.PINNED_MODELS["all-MiniLM-L6-v2"]
+    monkeypatch.setitem(
+        embeddings.PINNED_MODELS,
+        "all-MiniLM-L6-v2",
+        {
+            **pinned,
+            "files": {
+                embeddings.ONNX_FILE: hashlib.sha256(model_file.read_bytes()).hexdigest(),
+                embeddings.TOKENIZER_FILE: hashlib.sha256(tokenizer_file.read_bytes()).hexdigest(),
+            },
+        },
+    )
+    monkeypatch.setattr(embeddings, "_verified", set())
     monkeypatch.setattr(huggingface_hub, "hf_hub_download", download)
     monkeypatch.setattr(onnxruntime, "InferenceSession", FakeSession)
     FakeSession.opened = 0
@@ -95,9 +112,10 @@ def test_mean_pooling_at_unit_length_and_the_same_name(hub):
 
     vector = embedder.embed("ciao mondo")
 
+    revision = "751bff37182d3f1213fa05d7196b954e230abad9"
     assert hub == [
-        ("sentence-transformers/all-MiniLM-L6-v2", "onnx/model.onnx"),
-        ("sentence-transformers/all-MiniLM-L6-v2", "tokenizer.json"),
+        ("Xenova/all-MiniLM-L6-v2", "onnx/model.onnx", revision),
+        ("Xenova/all-MiniLM-L6-v2", "tokenizer.json", revision),
     ]
     # Tokens 1 and 2: components 1 and 2 hold 2 and 3, averaged then normalized.
     assert len(vector) == EMBEDDING_DIMENSION
@@ -117,7 +135,30 @@ def test_long_texts_are_cut_at_256_tokens(hub):
 
 def test_a_model_without_an_onnx_export_says_so(hub):
     with pytest.raises(RuntimeError, match="AEHUB_EMBEDDER=hash"):
-        SentenceTransformerEmbedder("someone/no-onnx").embed("ciao")
+        SentenceTransformerEmbedder("someone/no-onnx@abcdef1").embed("ciao")
+
+
+def test_downloads_are_pinned_and_checked(hub, tmp_path, monkeypatch):
+    # Another model must name its commit.
+    with pytest.raises(RuntimeError, match="owner/name@<commit>"):
+        SentenceTransformerEmbedder("intfloat/e5-small-v2").embed("ciao")
+    assert embeddings.model_source("intfloat/e5-small-v2@0123abc") == {
+        "repository": "intfloat/e5-small-v2",
+        "revision": "0123abc",
+        "files": {},
+    }
+    SentenceTransformerEmbedder("intfloat/e5-small-v2@0123abc").embed("ciao")
+    assert hub[-1] == ("intfloat/e5-small-v2", "tokenizer.json", "0123abc")
+
+    # A default file that does not match its hash is not used.
+    pinned = embeddings.PINNED_MODELS["all-MiniLM-L6-v2"]
+    monkeypatch.setitem(
+        embeddings.PINNED_MODELS, "all-MiniLM-L6-v2", {**pinned, "files": {embeddings.ONNX_FILE: "0" * 64}}
+    )
+    opened = FakeSession.opened
+    with pytest.raises(RuntimeError, match="expected 0000"):
+        SentenceTransformerEmbedder("all-MiniLM-L6-v2").embed("ciao")
+    assert FakeSession.opened == opened
 
 
 def test_the_model_leaves_memory_when_idle(hub):

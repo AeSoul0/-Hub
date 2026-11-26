@@ -5,11 +5,13 @@
 AEHUB_EMBEDDER selects the provider (Control Plane, then environment; a
 change applies to the next embedding, F6):
 - "sentence-transformers" (default): all-MiniLM-L6-v2, or AEHUB_EMBEDDING_MODEL,
-  run with ONNX Runtime (O1): the ONNX export the sentence-transformers
-  repository publishes (onnx/model.onnx) and its tokenizer, mean pooling and
-  L2 normalization as sentence-transformers does, without torch (about
-  750 MB of RAM less). The name stays "st:<model>": same model, same
-  vectors, so the vectors already stored keep matching;
+  run with ONNX Runtime (O1): an ONNX export (onnx/model.onnx) and its
+  tokenizer, mean pooling and L2 normalization as sentence-transformers
+  does, without torch (about 750 MB of RAM less). The name stays
+  "st:<model>": same model, same vectors, so the vectors already stored keep
+  matching. Downloads are pinned: the default model comes from one commit of
+  Xenova/all-MiniLM-L6-v2 and each file is checked against its SHA-256;
+  another model is named with its commit, "owner/name@<commit>";
 - "hash": deterministic feature hashing. No model download, weaker recall;
   meant for tests and minimal installs.
 
@@ -82,11 +84,71 @@ class HashingEmbedder:
 # sentence-transformers' own setting for all-MiniLM-L6-v2: longer texts are cut.
 MAX_TOKENS = 256
 ONNX_FILE = "onnx/model.onnx"
+TOKENIZER_FILE = "tokenizer.json"
+
+# The default model, pinned (O1): the fp32 ONNX export of
+# sentence-transformers/all-MiniLM-L6-v2 at one commit, each file checked.
+# The CI checks this commit and these hashes against the hub.
+PINNED_MODELS: Dict[str, Dict[str, Any]] = {
+    "all-MiniLM-L6-v2": {
+        "repository": "Xenova/all-MiniLM-L6-v2",
+        "revision": "751bff37182d3f1213fa05d7196b954e230abad9",
+        "files": {
+            ONNX_FILE: "759c3cd2b7fe7e93933ad23c4c9181b7396442a2ed746ec7c1d46192c469c46e",
+            TOKENIZER_FILE: "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0",
+        },
+    },
+}
+
+_COMMIT = re.compile(r"[0-9a-f]{7,40}")
+# Files already checked in this process: a reload after release skips the hash.
+_verified: set = set()
 
 
-def _repository(model_name: str) -> str:
-    """all-MiniLM-L6-v2 -> sentence-transformers/all-MiniLM-L6-v2, as sentence-transformers resolves it."""
-    return model_name if "/" in model_name else f"sentence-transformers/{model_name}"
+def model_source(model_name: str) -> Dict[str, Any]:
+    """
+    Where a model comes from: repository, commit and, for the pinned default,
+    the SHA-256 of each file. Another model must name its commit,
+    "owner/name@<commit>": a download is never "whatever main is today".
+    """
+    if model_name in PINNED_MODELS:
+        return PINNED_MODELS[model_name]
+
+    repository, _, revision = model_name.partition("@")
+    if not _COMMIT.fullmatch(revision):
+        raise RuntimeError(
+            f"Embedding model {model_name}: name it with its commit, as owner/name@<commit>, "
+            "so the download is pinned; or use all-MiniLM-L6-v2, or AEHUB_EMBEDDER=hash."
+        )
+    if "/" not in repository:
+        repository = f"sentence-transformers/{repository}"
+    return {"repository": repository, "revision": revision, "files": {}}
+
+
+def _sha256(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _download(source: Dict[str, Any], filename: str) -> str:
+    """One file of the model at its commit, checked against its SHA-256 when known."""
+    from huggingface_hub import hf_hub_download
+
+    repository, revision = source["repository"], source["revision"]
+    path = hf_hub_download(repository, filename, revision=revision)
+    expected = source["files"].get(filename)
+    if expected and path not in _verified:
+        actual = _sha256(path)
+        if actual != expected:
+            raise RuntimeError(
+                f"Embedding model {repository}@{revision}: {filename} has SHA-256 {actual}, "
+                f"expected {expected}. The file was not used."
+            )
+        _verified.add(path)
+    return path
 
 
 class SentenceTransformerEmbedder:
@@ -113,19 +175,20 @@ class SentenceTransformerEmbedder:
 
     def _open(self) -> Any:
         import onnxruntime
-        from huggingface_hub import hf_hub_download
         from tokenizers import Tokenizer
 
-        repository = _repository(self.model_name)
+        source = model_source(self.model_name)
         try:
-            model_path = hf_hub_download(repository, ONNX_FILE)
+            model_path = _download(source, ONNX_FILE)
+        except RuntimeError:
+            raise
         except Exception as exc:  # noqa: BLE001 - said in words: a model without an ONNX export, or no network
             raise RuntimeError(
-                f"Embedding model {repository}: {ONNX_FILE} not available ({exc}). "
-                "Choose a sentence-transformers model that publishes an ONNX export, or AEHUB_EMBEDDER=hash."
+                f"Embedding model {source['repository']}@{source['revision']}: {ONNX_FILE} not available ({exc}). "
+                "Choose a model that publishes an ONNX export, or AEHUB_EMBEDDER=hash."
             ) from exc
 
-        tokenizer = Tokenizer.from_file(hf_hub_download(repository, "tokenizer.json"))
+        tokenizer = Tokenizer.from_file(_download(source, TOKENIZER_FILE))
         tokenizer.enable_truncation(max_length=MAX_TOKENS)
         tokenizer.no_padding()
 
@@ -252,8 +315,10 @@ __all__ = [
     "HashingEmbedder",
     "SentenceTransformerEmbedder",
     "cosine_similarity",
+    "PINNED_MODELS",
     "get_embedder",
     "loaded_embedder",
+    "model_source",
     "release_idle_embedder",
     "tokenize",
 ]

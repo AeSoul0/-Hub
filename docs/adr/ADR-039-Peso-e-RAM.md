@@ -18,7 +18,11 @@ Misure del 2026-11-25:
 
 ## Decision
 1. **Embedding su ONNX Runtime.**
-   - Lo stesso modello (`all-MiniLM-L6-v2`, o quello in `AEHUB_EMBEDDING_MODEL`), dall'export ONNX che il repository di sentence-transformers pubblica (`onnx/model.onnx`), con il suo `tokenizer.json`.
+   - Lo stesso modello `all-MiniLM-L6-v2`, dal suo export ONNX in fp32 (`onnx/model.onnx`), con il suo `tokenizer.json`.
+   - **Download fissato:** l'export viene da `Xenova/all-MiniLM-L6-v2` al commit `751bff37…`, e ogni file è controllato con il suo SHA-256 prima di usarlo.
+     - Un altro modello in `AEHUB_EMBEDDING_MODEL` si indica con il suo commit, `owner/nome@<commit>`. Mai "quello che c'è oggi su main".
+     - Lo chiede anche bandit (B615) in CI.
+     - Uno script della CI (`scripts/check_embedding_pin.py`) verifica sul hub che commit e hash esistano.
    - Il vettore si calcola come fa sentence-transformers: media dei vettori dei token, escluso il padding, normalizzata a lunghezza 1, con i testi tagliati a 256 token.
    - Il nome resta `st:<modello>`: stesso modello e stessi vettori, quindi quelli già salvati continuano a valere.
    - Pacchetti: `onnxruntime`, `tokenizers`, `huggingface-hub`, `numpy`, già presenti per Whisper e Piper. Escono `torch` e `sentence-transformers`, anche dal dockerfile.
@@ -44,7 +48,7 @@ Misure su Linux, 2026-11-26:
 
 - **Somiglianze come sentence-transformers.** Sulle tre frasi del README di sentence-transformers, l'embedder dà 0,666 / 0,1046 / 0,1411, gli stessi valori pubblicati per `all-MiniLM-L6-v2`.
   - Per la prova, i file del modello sono stati presi da un pacchetto npm che li ripubblica da `Xenova/all-MiniLM-L6-v2`, perché da qui Hugging Face non è raggiungibile.
-  - Nell'uso normale il backend li scarica dal repository di sentence-transformers.
+  - Nell'uso normale il backend scarica gli stessi file, dallo stesso commit, e ne controlla l'hash.
 - **Test:**
   - `tests/agent_engine/test_embedder_onnx.py`: pooling, taglio a 256 token, nome, modello senza ONNX, rilascio dopo l'inattività;
   - `frontend/tests/system.test.tsx`: il nome dei modelli in memoria.
