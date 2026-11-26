@@ -68,6 +68,9 @@
 .me .who { color: var(--faint); }
 .me p { color: #b3c1e2; }
 .system p { color: var(--danger); font-size: 13px; }
+/* The answer while the model writes it (N1): lighter, until the Critic accepts it. */
+.draft p { color: var(--dim); }
+.draft .who { color: var(--faint); }
 
 .ev { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px; font-family: var(--font-code); font-size: 12px; line-height: 1.45; }
 .ev time { color: var(--faint); font-variant-numeric: tabular-nums; font-size: 11px; padding-top: 1px; }

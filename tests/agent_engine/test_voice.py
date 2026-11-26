@@ -341,8 +341,10 @@ def test_voice_run_marks_its_subagents():
 def _listen_client(captured: List[Dict[str, Any]], admin: Principal) -> TestClient:
     from app.agents import orchestrator
 
-    async def fake_response(intent, system_prompt, ui_context, session_id, principal=None, input_channel="text"):
-        captured.append({"intent": intent, "channel": input_channel, "principal": principal})
+    async def fake_response(
+        intent, system_prompt, ui_context, session_id, principal=None, input_channel="text", delivery="full"
+    ):
+        captured.append({"intent": intent, "channel": input_channel, "principal": principal, "delivery": delivery})
         return {"transcription": "Luce accesa.", "audio_base64": "", "audio_mime": ""}
 
     app = FastAPI()
@@ -385,7 +387,24 @@ def test_listen_runs_the_transcript_as_voice(voice_on, admin):
 
     assert response.status_code == 200
     assert response.json()["heard"] == "accendi la luce del soggiorno"
-    assert captured == [{"intent": "accendi la luce del soggiorno", "channel": "voice", "principal": admin}]
+    assert captured == [
+        {"intent": "accendi la luce del soggiorno", "channel": "voice", "principal": admin, "delivery": "full"}
+    ]
+
+
+def test_listen_passes_the_live_delivery(voice_on, admin):
+    # N1: the Nucleo asks for the draft and speaks the answer itself.
+    engines.set_engines(stt=FakeSTT("accendi la luce"), tts=FakeTTS())
+    captured: List[Dict[str, Any]] = []
+    client = _listen_client(captured, admin)
+
+    try:
+        client.post("/api/orchestrator/listen", files={"file": ("a.webm", b"audio", "audio/webm")}, data={"delivery": "live"})
+        client.post("/api/orchestrator/listen", files={"file": ("a.webm", b"audio", "audio/webm")}, data={"delivery": "odd"})
+    finally:
+        _close(client)
+
+    assert [item["delivery"] for item in captured] == ["live", "full"]
 
 
 def test_listen_says_when_voice_is_off(monkeypatch, admin):

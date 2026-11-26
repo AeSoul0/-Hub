@@ -241,21 +241,25 @@ class SubagentsMixin:
             role=role,
         )
 
-        result = await self.execute_task(
-            task=task,
-            orchestrator=None,
-            worker=worker,
-            checker=checker,
-            timeout=runtime_seconds,
-            run_id=child_run_id,
-            session_id=session_id,
-            workspace_id=workspace_id,
-            principal=principal,
-            capabilities=capability_set,
-            max_cost=child_budget,
-            inherit_untrusted=inherit_untrusted,
-            parent_run_id=parent_run_id,
-        )
+        from app.agent_engine.streaming import streaming_answer
+
+        # A subagent's words are never the user's answer: no draft (N1).
+        with streaming_answer(None):
+            result = await self.execute_task(
+                task=task,
+                orchestrator=None,
+                worker=worker,
+                checker=checker,
+                timeout=runtime_seconds,
+                run_id=child_run_id,
+                session_id=session_id,
+                workspace_id=workspace_id,
+                principal=principal,
+                capabilities=capability_set,
+                max_cost=child_budget,
+                inherit_untrusted=inherit_untrusted,
+                parent_run_id=parent_run_id,
+            )
 
         EventDispatcher().dispatch(
             "subagent.completed",

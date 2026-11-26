@@ -22,7 +22,10 @@ export type ControlEventType =
     // Every run event, pushed live for the Nucleo (F1).
     | "engine.event"
     // The language, the voice or the voice notice changed (ADR-034).
-    | "interface.changed";
+    | "interface.changed"
+    // The draft of the answer while the model writes it, and its reset (N1).
+    | "answer.delta"
+    | "answer.reset";
 
 export interface ControlEvent {
     type: string;

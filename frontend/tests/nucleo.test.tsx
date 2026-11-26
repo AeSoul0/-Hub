@@ -252,7 +252,8 @@ describe("Nucleo", () => {
         await waitFor(() => {
             const spoken = fetch.mock.calls.filter(([url]) => String(url).endsWith("/api/voice/speak"));
             expect(spoken).toHaveLength(1);
-            expect(JSON.parse(String(spoken[0][1]?.body))).toEqual({ text: "Garage aperto." });
+            // Sentence by sentence (N1), with the length of the whole reply.
+            expect(JSON.parse(String(spoken[0][1]?.body))).toEqual({ text: "Garage aperto.", reply_chars: 14 });
         });
     });
 

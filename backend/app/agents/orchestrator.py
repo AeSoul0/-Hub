@@ -20,6 +20,7 @@ import logging
 import asyncio
 import base64
 import re
+from contextvars import ContextVar
 from typing import Any, Optional
 
 from dotenv import load_dotenv
@@ -178,6 +179,20 @@ async def execute_slash_command(
 # ==============================================================================
 
 
+# "live" delivery (N1, ADR-040): the Nucleo shows the draft while the model
+# writes and speaks the accepted answer sentence by sentence itself, so the
+# reply carries no audio.
+DELIVERIES = ("full", "live")
+_live: ContextVar[bool] = ContextVar("aehub_live_delivery", default=False)
+
+
+async def _voice(text: str) -> tuple[str, str]:
+    """The reply spoken here, or nothing when the Nucleo speaks it sentence by sentence."""
+    if _live.get():
+        return "", ""
+    return await speak(text)
+
+
 async def _instant_reply(
     text: str,
     principal: Any,
@@ -201,7 +216,7 @@ async def _instant_reply(
         f"[System] Instant command {instant['tool']} in {instant['ms']} ms",
     )
     reply = clean_text_for_speech(instant["text"])
-    base64_audio, audio_mime = await speak(reply)
+    base64_audio, audio_mime = await _voice(reply)
     return {
         "transcription": reply,
         "audio_base64": base64_audio,
@@ -236,7 +251,7 @@ async def _decision_reply(
         "log",
         f"[System] Approval {decided['decision'] or 'closed'} in a word, {decided['ms']} ms",
     )
-    base64_audio, audio_mime = await speak(decided["text"])
+    base64_audio, audio_mime = await _voice(decided["text"])
     return {
         "transcription": decided["text"],
         "audio_base64": base64_audio,
@@ -262,7 +277,21 @@ async def _parked_question(content: Any, principal: Any) -> Optional[str]:
     return question or waiting_question(language)
 
 
-async def generate_ai_response(
+async def generate_ai_response(*args: Any, delivery: str = "full", **kwargs: Any) -> dict[str, Any]:
+    """See _generate_ai_response; "live" delivery opens the draft and leaves the voice to the Nucleo."""
+    if delivery not in DELIVERIES:
+        raise ValueError(f"Unknown delivery '{delivery}'.")
+    token = _live.set(delivery == "live")
+    try:
+        reply = await _generate_ai_response(*args, delivery=delivery, **kwargs)
+    finally:
+        _live.reset(token)
+    if delivery == "live":
+        reply["speak"] = "sentences"
+    return reply
+
+
+async def _generate_ai_response(
     user_intent: str | list,
     system_prompt: str,
     ui_context: str,
@@ -270,9 +299,14 @@ async def generate_ai_response(
     principal: Optional[Any] = None,
     input_channel: str = "text",
     role: Optional[str] = None,
+    delivery: str = "full",
 ) -> dict[str, Any]:
     """
     Delegate an authenticated interaction to the native Aurora runtime.
+
+    delivery "live" (N1): a draft of the answer is published while the model
+    writes, and the reply has no audio: the Nucleo speaks it sentence by
+    sentence. "full": the reply carries the spoken answer, as before.
 
     input_channel is "voice" when the intent is a transcript (ADR-021).
     role is the worker role chosen for this command (F8); None lets triage
@@ -364,21 +398,30 @@ async def generate_ai_response(
         "role": role,
     }
 
+    from app.agent_engine.streaming import DraftStream, streaming_answer
+
+    draft = (
+        DraftStream(session_id, getattr(principal, "workspace_id", "") or "")
+        if delivery == "live"
+        else None
+    )
+
     try:
         app_instance = await get_aurora_app()
 
-        final_state = await asyncio.wait_for(
-            app_instance.ainvoke(
-                initial_state,
-                config={
-                    "configurable": {
-                        "thread_id": session_id,
+        with streaming_answer(draft):
+            final_state = await asyncio.wait_for(
+                app_instance.ainvoke(
+                    initial_state,
+                    config={
+                        "configurable": {
+                            "thread_id": session_id,
+                        },
+                        "recursion_limit": 15,
                     },
-                    "recursion_limit": 15,
-                },
-            ),
-            timeout=45.0,
-        )
+                ),
+                timeout=45.0,
+            )
 
         messages = final_state.get(
             "messages",
@@ -396,7 +439,7 @@ async def generate_ai_response(
         # (ADR-037), not with its state.
         question = await _parked_question(getattr(last_message, "content", None), principal)
         if question is not None:
-            base64_audio, audio_mime = await speak(question)
+            base64_audio, audio_mime = await _voice(question)
             return {
                 "transcription": question,
                 "audio_base64": base64_audio,
@@ -432,7 +475,7 @@ async def generate_ai_response(
     )
 
     # Best effort: without the speech engine the written reply still arrives.
-    base64_audio, audio_mime = await speak(
+    base64_audio, audio_mime = await _voice(
         clean_response
     )
 
@@ -453,6 +496,7 @@ async def process_orchestration_voice(
     request: Request,
     file: UploadFile = File(...),
     ui_context: str = Form(default=""),
+    delivery: str = Form(default="full"),
     x_session_id: str = Header(
         default="default-session"
     ),
@@ -515,6 +559,7 @@ async def process_orchestration_voice(
             principal.id,
             principal,
             input_channel="voice",
+            delivery=delivery if delivery in DELIVERIES else "full",
         )
     except Exception as exc:
         raise HTTPException(
@@ -539,6 +584,7 @@ async def process_orchestration_text(
     text: str = Form(...),
     ui_context: str = Form(default=""),
     role: str = Form(default=""),
+    delivery: str = Form(default="full"),
     image: UploadFile = File(default=None),
     x_session_id: str = Header(
         default="default-session"
@@ -606,6 +652,7 @@ async def process_orchestration_text(
             principal.id,
             principal,
             role=role or None,
+            delivery=delivery if delivery in DELIVERIES else "full",
         )
 
     except Exception as exc:

@@ -17,17 +17,25 @@ Providers, each with its native Pydantic AI model:
 
 The input is rebuilt from the durable context on every turn
 (`model_input.build_input`), so a run can change provider mid-way.
+
+While a draft is open for the command (N1, `agent_engine.streaming`), the
+request is streamed and its text goes to the draft as it arrives; the result
+is the same. A provider that cannot stream is asked again without it.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any, Dict, List, Optional
 
 from app.agent_engine.adapters.base import ModelProvider
 from app.agent_engine.model_input import DEFAULT_SYSTEM_PROMPT, build_input, tool_proposals
 from app.agent_engine.pricing import usage_from_response
+from app.agent_engine.streaming import DraftStream, current_draft
 from app.core.runtime_config import config_value
+
+logger = logging.getLogger(__name__)
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 LOCAL_BASE_URL = "http://localhost:11434/v1"
@@ -251,6 +259,19 @@ class PydanticAIAdapter(ModelProvider):
     # MODEL EXECUTION
     # ==========================================================================
 
+    async def _streamed(self, draft: DraftStream, arguments: Dict[str, Any]) -> Any:
+        """The same request, streamed: its text goes to the draft as it arrives."""
+        from pydantic_ai.direct import model_request_stream
+        from pydantic_ai.messages import PartDeltaEvent, PartStartEvent, TextPart, TextPartDelta
+
+        async with model_request_stream(**arguments) as stream:
+            async for event in stream:
+                if isinstance(event, PartStartEvent) and isinstance(event.part, TextPart):
+                    await draft.delta(event.part.content)
+                elif isinstance(event, PartDeltaEvent) and isinstance(event.delta, TextPartDelta):
+                    await draft.delta(event.delta.content_delta)
+            return stream.get()
+
     async def generate(self, context: Dict[str, Any]) -> Dict[str, Any]:
         from pydantic_ai.direct import model_request
         from pydantic_ai.messages import TextPart, ToolCallPart
@@ -259,13 +280,26 @@ class PydanticAIAdapter(ModelProvider):
         system_prompt = str(context.get("system_prompt", DEFAULT_SYSTEM_PROMPT))
         run_id = str(context.get("run_id", ""))
 
-        response = await model_request(
-            self._get_model(),
-            self.to_messages(system_prompt, build_input(context)),
-            model_settings={"timeout": self._timeout},
-            model_request_parameters=ModelRequestParameters(function_tools=self.to_tools(context.get("tools") or [])),
-            instrument=False,
-        )
+        arguments: Dict[str, Any] = {
+            "model": self._get_model(),
+            "messages": self.to_messages(system_prompt, build_input(context)),
+            "model_settings": {"timeout": self._timeout},
+            "model_request_parameters": ModelRequestParameters(
+                function_tools=self.to_tools(context.get("tools") or [])
+            ),
+            "instrument": False,
+        }
+
+        draft = current_draft()
+        response = None
+        if draft is not None:
+            try:
+                response = await self._streamed(draft, arguments)
+            except Exception as exc:  # noqa: BLE001 - the draft is optional: the answer comes unstreamed
+                logger.info("Streaming from %s failed, asking without it: %s", self.model_name, exc)
+                await draft.reset()
+        if response is None:
+            response = await model_request(**arguments)
 
         text = "".join(part.content for part in response.parts if isinstance(part, TextPart))
         calls = [
@@ -273,6 +307,13 @@ class PydanticAIAdapter(ModelProvider):
             for part in response.parts
             if isinstance(part, ToolCallPart)
         ]
+
+        if draft is not None:
+            # A turn that calls tools was not the answer: its words leave the draft.
+            if calls:
+                await draft.reset()
+            else:
+                await draft.flush()
 
         return {
             "output": text,
