@@ -383,8 +383,11 @@ SPECS: Tuple[SettingSpec, ...] = (
         label="Voice engine",
         kind="choice",
         default="piper",
-        help="piper speaks on this computer; elevenlabs sends the reply text to ElevenLabs (ADR-024).",
-        options=("piper", "elevenlabs"),
+        help=(
+            "piper speaks on this computer; elevenlabs sends the reply text to ElevenLabs (ADR-024); "
+            "spacexai sends it to SpaceXAI (xAI) TTS, 15 $ per million characters (ADR-038)."
+        ),
+        options=("piper", "elevenlabs", "spacexai"),
     ),
     SettingSpec(
         name="AEHUB_TTS_VOICE",
@@ -412,6 +415,24 @@ SPECS: Tuple[SettingSpec, ...] = (
         default="eleven_flash_v2_5",
         help="eleven_flash_v2_5 is the fastest and cheapest; eleven_multilingual_v2 sounds richer.",
         pattern=r"[a-z0-9_]{3,64}",
+    ),
+    SettingSpec(
+        name="AEHUB_SPACEXAI_VOICE",
+        group="voice",
+        label="SpaceXAI voice",
+        kind="choice",
+        default="eve",
+        help="eve: energetic and cheerful, British accent (default); altair: formal, elegant, premium.",
+        options=("eve", "altair"),
+    ),
+    SettingSpec(
+        name="AEHUB_SPACEXAI_LANGUAGE",
+        group="voice",
+        label="SpaceXAI language",
+        kind="choice",
+        default="it",
+        help="The language the SpaceXAI voice reads in, always given as a code (never auto).",
+        options=("it", "en", "fr"),
     ),
     # The interface (ADR-034): the language of the pages, and the notice when
     # the chosen voice speaks another one. Aurora can change both.

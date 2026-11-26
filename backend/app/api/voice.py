@@ -58,9 +58,11 @@ async def voice_status(
         "stt": {"model": model, "language": language or "auto"},
         "tts": {
             "engine": tts[0],
-            "piper_voice": tts[-1] if tts[0] == "elevenlabs" else tts[1],
+            "piper_voice": tts[-1] if tts[0] != "piper" else tts[1],
             "elevenlabs_voice": tts[1] if tts[0] == "elevenlabs" else "",
             "elevenlabs_key": bool((os.getenv("ELEVENLABS_API_KEY") or "").strip()),
+            "spacexai_key": bool((os.getenv("XAI_API_KEY") or "").strip()),
+            "spacexai_usd_per_million_chars": engines.SPACEXAI_USD_PER_MILLION_CHARS,
             "max_cloud_chars": engines.MAX_CLOUD_CHARS,
         },
         "downloaded": engines.downloaded_models(),

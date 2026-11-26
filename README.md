@@ -454,6 +454,7 @@ Voice runs on this machine: faster-whisper turns speech into text and Piper spea
 - `AEHUB_VOICE=off` turns voice off. Without the speech engine the written reply still arrives.
 - **The VOCE page** of the Control Plane (F3, ADR-024) changes the recognition model and language, the voice and its engine without a restart, plays a preview and lists the models already downloaded with their size.
 - **ElevenLabs (optional, off by default).** Choose it on the VOCE page and add `ELEVENLABS_API_KEY` (the desktop app saves it in the OS keyring; with Docker use `python scripts/aehub.py setup`). The text of the replies then goes to ElevenLabs; your voice never does. Piper speaks whenever ElevenLabs cannot: no key or voice, an error, or a reply over 2,500 characters.
+- **SpaceXAI (optional, off by default, ADR-038).** Choose it on the VOCE page, with the voice `eve` (energetic and cheerful, British accent) or `altair` (formal, elegant) and the language it reads in (`it`, `en`, `fr`, always explicit). Add `XAI_API_KEY` the same way as the ElevenLabs key. Pay per use: 15 $ per million characters, about 2.25 $ a month for 10 replies of 500 characters a day. Piper speaks whenever SpaceXAI cannot.
 - A run asked by voice answers by voice also when it resumes after an approval.
 
 ## Home devices

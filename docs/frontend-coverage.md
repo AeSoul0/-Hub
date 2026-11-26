@@ -19,7 +19,7 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 | 2 | Comando a voce (`POST /api/orchestrator/listen`) | Nucleo, microfono | ✓ | F1 |
 | 3 | Voce e testo via WebSocket (`/ws/orchestrator`) | stesso controllo di 1 e 2, per altri client (i Canali C1 e C2) | ✓ | F1 |
 | 4 | Modello e lingua del riconoscimento vocale | Control Plane → VOCE | ✓ | F3 |
-| 5 | Motore della voce (Piper o ElevenLabs), voce, modello, chiave | Control Plane → VOCE | ✓ | F3 |
+| 5 | Motore della voce (Piper, ElevenLabs o SpaceXAI), voce, modello o lingua, chiave | Control Plane → VOCE | ✓ | F3 |
 | 6 | Anteprima della voce | Control Plane → VOCE | ✓ | F3 |
 | 7 | Risposta a voce di una run chiesta a voce e ripresa dopo un'approvazione | Nucleo | ✓ | F3 |
 | 8 | Modelli vocali già scaricati, con il peso | Control Plane → VOCE | ✓ | F3 |
@@ -132,6 +132,7 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 | V1 (comandi istantanei e lista delle app) | 57 su 57 | 100% |
 | F11 (file dell'utente per gli agenti, cartelle scelte dall'utente) | 58 su 58 | 100% |
 | ADR-037 (approvazioni in una parola e notifiche del sistema) | 59 su 59 | 100% |
+| ADR-038 (voce SpaceXAI nella riga 5) | 59 su 59 | 100% |
 
 ## Indice: ogni route e ogni impostazione
 
@@ -245,6 +246,8 @@ F10 (2026-11-24, aggiornato in P1): l'elenco viene dal codice (`tests/security/t
 | `AEHUB_RUN_MAX_SUBAGENTS` | 49 |
 | `AEHUB_RUN_TIMEOUT_SECONDS` | 22 |
 | `AEHUB_SNAPSHOT_EVERY` | 27 |
+| `AEHUB_SPACEXAI_LANGUAGE` | 5 |
+| `AEHUB_SPACEXAI_VOICE` | 5 |
 | `AEHUB_STT_LANGUAGE` | 4 |
 | `AEHUB_STT_MODEL` | 4 |
 | `AEHUB_TOOL_SELECTION` | 32 |
@@ -289,6 +292,7 @@ F10 (2026-11-24, aggiornato in P1): l'elenco viene dal codice (`tests/security/t
 | `OPENAI_API_KEY` | chiave del provider, nel keyring | 23 |
 | `OPENROUTER_API_KEY` | chiave del provider, nel keyring | 23 |
 | `ELEVENLABS_API_KEY` | chiave della voce cloud, nel keyring | 5 |
+| `XAI_API_KEY` | chiave della voce SpaceXAI, nel keyring | 5 |
 | `AEHUB_LOCAL_API_KEY` | chiave del server locale, nel keyring | 24 |
 | `AEHUB_MQTT_PASSWORD` | password del broker, nel keyring | 40 |
 | `AEHUB_MCP_TOKENS` | token dei server MCP con login (`host=token`), nel keyring | 52 |

@@ -2,12 +2,12 @@
  * @file frontend/src/app/control-plane/voice/page.tsx
  * @description Voice (F3, ADR-021, ADR-024): speech recognition model and
  * language, the voice of the replies (Piper on this computer or, optional,
- * ElevenLabs) and the language it speaks, a preview in that language
+ * ElevenLabs or SpaceXAI, ADR-038) and the language it speaks, a preview in that language
  * (ADR-034), and the speech models already on disk.
  *
  * Reads GET /api/voice and the "voice" group of GET /api/settings; saves
  * through PUT /api/settings (applied to the next sentence, no restart). The
- * ElevenLabs key goes to the OS keyring (PUT /api/desktop/secrets) and is
+ * ElevenLabs and SpaceXAI keys go to the OS keyring (PUT /api/desktop/secrets) and is
  * never shown again. The preview is POST /api/voice/speak with preview=true.
  */
 "use client";
@@ -28,6 +28,9 @@ import {
     PIPER_VOICES,
     piperLanguage,
     previewText as sampleSentence,
+    SPACEXAI_LANGUAGES,
+    SPACEXAI_VOICES,
+    spacexaiMonthlyCost,
     sttModels,
     voiceChanges,
     voiceForm,
@@ -68,6 +71,14 @@ const TEXT = catalog({
         engine: "Voice engine",
         piper: "Piper · on this computer",
         elevenlabs: "ElevenLabs · in the cloud",
+        spacexai: "SpaceXAI · in the cloud",
+        spacexaiWarning: (chars: number) =>
+            `With SpaceXAI the text of the replies goes to xAI's servers to become voice; the microphone stays local. If the cloud does not answer, or the reply is longer than ${chars} characters, Piper speaks.`,
+        spacexaiKey: "SpaceXAI (xAI) API key",
+        spacexaiVoice: "SpaceXAI voice",
+        spacexaiLanguage: "Language it reads in",
+        spacexaiPrice: (perMillion: string, low: string, high: string) =>
+            `Pay per use, no subscription: ${perMillion} $ per million characters. With replies of about 500 characters: about ${low} $ a month at 10 a day, ${high} $ at 100 a day. The model that writes the replies is paid apart.`,
         piperFallback: "Fallback Piper voice",
         piperVoice: "Piper voice",
         speaks: (language: string) => `This voice speaks ${language}: replies are read in ${language}.`,
@@ -123,6 +134,14 @@ const TEXT = catalog({
         engine: "Motore della voce",
         piper: "Piper · su questo computer",
         elevenlabs: "ElevenLabs · nel cloud",
+        spacexai: "SpaceXAI · nel cloud",
+        spacexaiWarning: (chars: number) =>
+            `Con SpaceXAI il testo delle risposte va ai server di xAI per diventare voce; il microfono resta locale. Se il cloud non risponde, o la risposta supera ${chars} caratteri, parla Piper.`,
+        spacexaiKey: "Chiave API SpaceXAI (xAI)",
+        spacexaiVoice: "Voce SpaceXAI",
+        spacexaiLanguage: "Lingua in cui legge",
+        spacexaiPrice: (perMillion: string, low: string, high: string) =>
+            `A consumo, senza abbonamento: ${perMillion} $ per milione di caratteri. Con risposte da circa 500 caratteri: circa ${low} $ al mese con 10 al giorno, ${high} $ con 100 al giorno. Il modello che scrive le risposte si paga a parte.`,
         piperFallback: "Voce Piper di riserva",
         piperVoice: "Voce Piper",
         speaks: (language: string) => `Questa voce parla ${language}: le risposte vengono lette in ${language}.`,
@@ -241,13 +260,13 @@ export default function VoicePage() {
         }
     };
 
-    const saveKey = async () => {
+    const saveKey = async (name: "ELEVENLABS_API_KEY" | "XAI_API_KEY") => {
         if (!key.trim()) {
             return;
         }
         setBusy(true);
         try {
-            await putJson("/api/desktop/secrets", { ELEVENLABS_API_KEY: key.trim() });
+            await putJson("/api/desktop/secrets", { [name]: key.trim() });
             setKey("");
             setNote(t.keySaved);
             await refreshStatus();
@@ -270,7 +289,14 @@ export default function VoicePage() {
     };
 
     const voiceLanguage = form ? piperLanguage(form.AEHUB_TTS_VOICE) : null;
-    const sample = sampleSentence(form?.AEHUB_TTS_ENGINE === "elevenlabs" ? null : voiceLanguage, lang);
+    const sample = sampleSentence(
+        form?.AEHUB_TTS_ENGINE === "elevenlabs"
+            ? null
+            : form?.AEHUB_TTS_ENGINE === "spacexai"
+              ? form.AEHUB_SPACEXAI_LANGUAGE
+              : voiceLanguage,
+        lang,
+    );
 
     const preview = async () => {
         setPreviewing(true);
@@ -312,7 +338,46 @@ export default function VoicePage() {
         );
     }
 
-    const cloud = form.AEHUB_TTS_ENGINE === "elevenlabs";
+    const eleven = form.AEHUB_TTS_ENGINE === "elevenlabs";
+    const spacex = form.AEHUB_TTS_ENGINE === "spacexai";
+    const cloud = eleven || spacex;
+    const perMillion = status?.tts.spacexai_usd_per_million_chars ?? 15;
+    const money = (value: number) =>
+        value.toLocaleString(lang === "it" ? "it-IT" : "en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const keyField = (name: "ELEVENLABS_API_KEY" | "XAI_API_KEY", label: string, isSet: boolean) => (
+        <div className={styles.row}>
+            <span className={styles.badge} data-tone={isSet ? "ok" : "warn"}>
+                {isSet ? t.keySet : t.keyMissing}
+            </span>
+            {desktop ? (
+                <>
+                    <label className={styles.field}>
+                        {label}
+                        <input
+                            type="password"
+                            autoComplete="off"
+                            value={key}
+                            onChange={(event) => setKey(event.target.value)}
+                        />
+                    </label>
+                    <button
+                        type="button"
+                        className={styles.btn}
+                        onClick={() => saveKey(name)}
+                        disabled={busy || !key.trim()}
+                    >
+                        {t.saveKey}
+                    </button>
+                </>
+            ) : (
+                !isSet && (
+                    <span className={styles.muted}>
+                        {t.addWith} <code className={styles.mono}>python scripts/aehub.py setup</code>.
+                    </span>
+                )
+            )}
+        </div>
+    );
     const models = sttModels(lang);
     const sttInfo = models[form.AEHUB_STT_MODEL];
     const voiceIssues = view.issues.filter((issue) => issue.code.startsWith("voice"));
@@ -424,10 +489,19 @@ export default function VoicePage() {
                             <input
                                 type="radio"
                                 name="engine"
-                                checked={cloud}
+                                checked={eleven}
                                 onChange={() => set("AEHUB_TTS_ENGINE", "elevenlabs")}
                             />
                             {t.elevenlabs}
+                        </label>
+                        <label className={styles.check}>
+                            <input
+                                type="radio"
+                                name="engine"
+                                checked={spacex}
+                                onChange={() => set("AEHUB_TTS_ENGINE", "spacexai")}
+                            />
+                            {t.spacexai}
                         </label>
                     </div>
 
@@ -454,49 +528,57 @@ export default function VoicePage() {
                     )}
                     {fieldError("AEHUB_TTS_VOICE")}
 
-                    {cloud && (
+                    {spacex && (
+                        <div className={styles.stack}>
+                            <p className={styles.warn}>{t.spacexaiWarning(status?.tts.max_cloud_chars ?? 2500)}</p>
+                            {keyField("XAI_API_KEY", t.spacexaiKey, Boolean(status?.tts.spacexai_key))}
+                            <div className={styles.filters}>
+                                <label className={`${styles.field} ${styles.grow}`}>
+                                    {t.spacexaiVoice}
+                                    <select
+                                        value={form.AEHUB_SPACEXAI_VOICE || "eve"}
+                                        onChange={(event) => set("AEHUB_SPACEXAI_VOICE", event.target.value)}
+                                    >
+                                        {Object.entries(SPACEXAI_VOICES[lang]).map(([name, label]) => (
+                                            <option key={name} value={name}>
+                                                {label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </label>
+                                <label className={styles.field}>
+                                    {t.spacexaiLanguage}
+                                    <select
+                                        value={form.AEHUB_SPACEXAI_LANGUAGE || "it"}
+                                        onChange={(event) => set("AEHUB_SPACEXAI_LANGUAGE", event.target.value)}
+                                    >
+                                        {SPACEXAI_LANGUAGES.map((code) => (
+                                            <option key={code} value={code}>
+                                                {names[code] ?? code} ({code})
+                                            </option>
+                                        ))}
+                                    </select>
+                                </label>
+                            </div>
+                            <p className={styles.muted}>
+                                {t.speaks(names[form.AEHUB_SPACEXAI_LANGUAGE] ?? form.AEHUB_SPACEXAI_LANGUAGE)}
+                            </p>
+                            <p className={styles.muted}>
+                                {t.spacexaiPrice(
+                                    money(perMillion),
+                                    money(spacexaiMonthlyCost(10, 500, perMillion)),
+                                    money(spacexaiMonthlyCost(100, 500, perMillion)),
+                                )}
+                            </p>
+                            {fieldError("AEHUB_SPACEXAI_VOICE")}
+                            {fieldError("AEHUB_SPACEXAI_LANGUAGE")}
+                        </div>
+                    )}
+
+                    {eleven && (
                         <div className={styles.stack}>
                             <p className={styles.warn}>{t.cloudWarning(status?.tts.max_cloud_chars ?? 2500)}</p>
-
-                            <div className={styles.row}>
-                                <span
-                                    className={styles.badge}
-                                    data-tone={status?.tts.elevenlabs_key ? "ok" : "warn"}
-                                >
-                                    {status?.tts.elevenlabs_key ? t.keySet : t.keyMissing}
-                                </span>
-                                {desktop ? (
-                                    <>
-                                        <label className={styles.field}>
-                                            {t.apiKey}
-                                            <input
-                                                type="password"
-                                                autoComplete="off"
-                                                value={key}
-                                                onChange={(event) => setKey(event.target.value)}
-                                            />
-                                        </label>
-                                        <button
-                                            type="button"
-                                            className={styles.btn}
-                                            onClick={saveKey}
-                                            disabled={busy || !key.trim()}
-                                        >
-                                            {t.saveKey}
-                                        </button>
-                                    </>
-                                ) : (
-                                    !status?.tts.elevenlabs_key && (
-                                        <span className={styles.muted}>
-                                            {t.addWith}{" "}
-                                            <code className={styles.mono}>
-                                                python scripts/aehub.py setup
-                                            </code>
-                                            .
-                                        </span>
-                                    )
-                                )}
-                            </div>
+                            {keyField("ELEVENLABS_API_KEY", t.apiKey, Boolean(status?.tts.elevenlabs_key))}
 
                             <div className={styles.filters}>
                                 <label className={`${styles.field} ${styles.grow}`}>

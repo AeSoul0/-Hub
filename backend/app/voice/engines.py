@@ -10,7 +10,12 @@
     on this machine;
   - "elevenlabs" (optional, ADR-024): voice AEHUB_ELEVENLABS_VOICE, model
     AEHUB_ELEVENLABS_MODEL, key ELEVENLABS_API_KEY; the reply text leaves the
-    machine. Piper speaks whenever the cloud cannot.
+    machine;
+  - "spacexai" (optional, ADR-038): SpaceXAI (xAI) TTS, voice
+    AEHUB_SPACEXAI_VOICE (eve or altair), language AEHUB_SPACEXAI_LANGUAGE
+    (it, en, fr: always a code), key XAI_API_KEY; the reply text leaves the
+    machine.
+  Piper speaks whenever a cloud voice cannot.
 
 The settings are read on every use (Control Plane, app.core.runtime_config):
 a changed model or voice applies to the next sentence. Models are downloaded
@@ -47,6 +52,13 @@ WAV_MIME = "audio/wav"
 MP3_MIME = "audio/mpeg"
 
 ELEVENLABS_API = "https://api.elevenlabs.io"
+SPACEXAI_TTS_URL = "https://api.x.ai/v1/tts"
+DEFAULT_SPACEXAI_VOICE = "eve"
+DEFAULT_SPACEXAI_LANGUAGE = "it"
+SPACEXAI_VOICES = ("eve", "altair")
+SPACEXAI_LANGUAGES = ("it", "en", "fr")
+# Pay per use, no subscription: what one character costs (ADR-038).
+SPACEXAI_USD_PER_MILLION_CHARS = 15.0
 CLOUD_TIMEOUT_SECONDS = 20.0
 # Longer replies are spoken by Piper: cost is per character, and a long
 # reply is better read than listened to.
@@ -110,8 +122,9 @@ def stt_config() -> Tuple[str, Optional[str]]:
 
 def tts_config() -> Tuple[str, ...]:
     """
-    The engine and its voice as set now: ("piper", voice) or
-    ("elevenlabs", voice_id, model, piper voice for the fallback).
+    The engine and its voice as set now: ("piper", voice),
+    ("elevenlabs", voice_id, model, piper voice for the fallback) or
+    ("spacexai", voice, language, piper voice for the fallback).
     """
     piper_voice = config_value("AEHUB_TTS_VOICE", DEFAULT_TTS_VOICE) or DEFAULT_TTS_VOICE
 
@@ -120,6 +133,16 @@ def tts_config() -> Tuple[str, ...]:
             "elevenlabs",
             config_value("AEHUB_ELEVENLABS_VOICE", "") or "",
             config_value("AEHUB_ELEVENLABS_MODEL", DEFAULT_ELEVENLABS_MODEL) or DEFAULT_ELEVENLABS_MODEL,
+            piper_voice,
+        )
+
+    if config_value("AEHUB_TTS_ENGINE", "piper") == "spacexai":
+        voice = config_value("AEHUB_SPACEXAI_VOICE", DEFAULT_SPACEXAI_VOICE) or DEFAULT_SPACEXAI_VOICE
+        language = config_value("AEHUB_SPACEXAI_LANGUAGE", DEFAULT_SPACEXAI_LANGUAGE) or DEFAULT_SPACEXAI_LANGUAGE
+        return (
+            "spacexai",
+            voice if voice in SPACEXAI_VOICES else DEFAULT_SPACEXAI_VOICE,
+            language if language in SPACEXAI_LANGUAGES else DEFAULT_SPACEXAI_LANGUAGE,
             piper_voice,
         )
 
@@ -270,6 +293,85 @@ class ElevenLabsTTS:
             return self.fallback.synthesize(text)
 
 
+class SpaceXAITTS:
+    """
+    SpaceXAI (xAI) text to speech (ADR-038): the reply text goes to
+    api.x.ai with the voice and an explicit language code, MP3 comes back.
+    Without a key, on any failure and for a reply longer than
+    MAX_CLOUD_CHARS, Piper speaks instead.
+    """
+
+    def __init__(self, voice: str, language: str, fallback: TextToSpeech) -> None:
+        self.voice = voice
+        self.language = language
+        self.fallback = fallback
+        self.config: Tuple[str, ...] = ("spacexai", voice, language, getattr(fallback, "voice_name", ""))
+
+    def synthesize_cloud(self, text: str) -> Tuple[bytes, str]:
+        """
+        SpaceXAI only, errors raised (the Settings preview shows them).
+        """
+        key = (os.getenv("XAI_API_KEY") or "").strip()
+
+        if not key:
+            raise VoiceUnavailable("XAI_API_KEY is not set.")
+
+        if len(text) > MAX_CLOUD_CHARS:
+            raise VoiceUnavailable(f"Replies longer than {MAX_CLOUD_CHARS} characters are spoken by Piper.")
+
+        import httpx
+
+        response = httpx.post(
+            SPACEXAI_TTS_URL,
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            json={
+                "text": text,
+                "voice_id": self.voice,
+                "language": self.language,
+                "output_format": {"codec": "mp3", "sample_rate": 24000, "bit_rate": 128000},
+            },
+            timeout=CLOUD_TIMEOUT_SECONDS,
+        )
+
+        if response.status_code != 200:
+            raise VoiceUnavailable(f"SpaceXAI answered {response.status_code}: {_spacexai_error(response)}")
+
+        if not response.content:
+            raise VoiceUnavailable("SpaceXAI answered without audio.")
+
+        logger.info(
+            "SpaceXAI voice: %d characters, about %.4f $",
+            len(text),
+            len(text) * SPACEXAI_USD_PER_MILLION_CHARS / 1_000_000,
+        )
+        return response.content, MP3_MIME
+
+    def synthesize(self, text: str) -> Tuple[bytes, str]:
+        try:
+            return self.synthesize_cloud(text)
+        except Exception as exc:  # noqa: BLE001 - any cloud error falls back to Piper, logged
+            logger.warning("SpaceXAI voice unavailable, Piper speaks instead: %s", exc)
+            return self.fallback.synthesize(text)
+
+
+def _spacexai_error(response) -> str:
+    """
+    The API's own message ({"error": ...} or {"detail": ...}), short.
+    """
+    try:
+        body = response.json()
+    except ValueError:  # not JSON
+        body = None
+
+    detail = None
+    if isinstance(body, dict):
+        detail = body.get("error") or body.get("detail") or body.get("message")
+        if isinstance(detail, dict):
+            detail = detail.get("message") or detail.get("code")
+
+    return str(detail or response.reason_phrase or "error")[:200]
+
+
 def _cloud_error(response) -> str:
     """
     ElevenLabs' own message ({"detail": {"message": ...}}), short.
@@ -392,6 +494,10 @@ def _build(kind: str, config: Tuple):
         _name, voice_id, model, piper_voice = config
         return ElevenLabsTTS(voice_id, model, fallback=PiperTTS(piper_voice))
 
+    if config[0] == "spacexai":
+        _name, voice, language, piper_voice = config
+        return SpaceXAITTS(voice, language, fallback=PiperTTS(piper_voice))
+
     return PiperTTS(config[1])
 
 
@@ -428,7 +534,7 @@ def _model_loaded(engine: object) -> bool:
         return engine._model is not None
     if isinstance(engine, PiperTTS):
         return engine._voice is not None
-    if isinstance(engine, ElevenLabsTTS):
+    if isinstance(engine, (ElevenLabsTTS, SpaceXAITTS)):
         return _model_loaded(engine.fallback)
     return False
 

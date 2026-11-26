@@ -1,7 +1,7 @@
 /**
  * @file frontend/src/lib/nucleo/voice.ts
  * @description Voice settings for the Control Plane and the Nucleo (F3,
- * ADR-021, ADR-024): what GET /api/voice says, what the choices mean, and
+ * ADR-021, ADR-024, ADR-038): what GET /api/voice says, what the choices mean, and
  * the changes the Voice page saves through PUT /api/settings.
  */
 
@@ -18,10 +18,12 @@ export interface VoiceStatus {
     missing: string[];
     stt: { model: string; language: string };
     tts: {
-        engine: "piper" | "elevenlabs";
+        engine: "piper" | "elevenlabs" | "spacexai";
         piper_voice: string;
         elevenlabs_voice: string;
         elevenlabs_key: boolean;
+        spacexai_key?: boolean;
+        spacexai_usd_per_million_chars?: number;
         max_cloud_chars: number;
     };
     downloaded: { whisper: DownloadedModel[]; piper: DownloadedModel[] };
@@ -44,6 +46,8 @@ export const VOICE_SETTINGS = [
     "AEHUB_TTS_VOICE",
     "AEHUB_ELEVENLABS_VOICE",
     "AEHUB_ELEVENLABS_MODEL",
+    "AEHUB_SPACEXAI_VOICE",
+    "AEHUB_SPACEXAI_LANGUAGE",
 ] as const;
 
 export type VoiceSetting = (typeof VOICE_SETTINGS)[number];
@@ -137,6 +141,26 @@ export const ELEVENLABS_MODELS = catalog<Record<string, string>>({
         eleven_v3: "v3: il più espressivo, più lento",
     },
 });
+
+/** The two SpaceXAI voices ÆHub offers (ADR-038). */
+export const SPACEXAI_VOICES = catalog<Record<string, string>>({
+    en: {
+        eve: "eve · energetic and cheerful, British accent (default)",
+        altair: "altair · formal, elegant, premium",
+    },
+    it: {
+        eve: "eve · energica e allegra, accento britannico (predefinita)",
+        altair: "altair · formale, elegante, premium",
+    },
+});
+
+/** The languages a SpaceXAI voice reads in: always a code, never "auto". */
+export const SPACEXAI_LANGUAGES = ["it", "en", "fr"] as const;
+
+/** What a month of replies costs with SpaceXAI, in dollars: replies a day × characters × 30 days. */
+export function spacexaiMonthlyCost(repliesPerDay: number, charsPerReply: number, usdPerMillion = 15): number {
+    return (repliesPerDay * charsPerReply * 30 * usdPerMillion) / 1_000_000;
+}
 
 /** The language a Piper voice speaks, from its name: it_IT-paola-medium → it. */
 export function piperLanguage(voice: string): string | null {
