@@ -11,6 +11,7 @@ import type { SettingField, SettingsView } from "@/lib/api/settings";
 import {
     formatBytes,
     resumedByVoice,
+    spacexaiMonthlyCost,
     voiceChanges,
     voiceForm,
     type VoiceStatus,
@@ -45,10 +46,12 @@ function settingsView(values: Record<string, string> = {}, issues: SettingsView[
         settings: [
             voiceField("AEHUB_STT_MODEL", value("AEHUB_STT_MODEL", "base"), ["tiny", "base", "small"]),
             voiceField("AEHUB_STT_LANGUAGE", value("AEHUB_STT_LANGUAGE", "it"), ["it", "en", "auto"]),
-            voiceField("AEHUB_TTS_ENGINE", value("AEHUB_TTS_ENGINE", "piper"), ["piper", "elevenlabs"]),
+            voiceField("AEHUB_TTS_ENGINE", value("AEHUB_TTS_ENGINE", "piper"), ["piper", "elevenlabs", "spacexai"]),
             voiceField("AEHUB_TTS_VOICE", value("AEHUB_TTS_VOICE", "it_IT-paola-medium")),
             voiceField("AEHUB_ELEVENLABS_VOICE", value("AEHUB_ELEVENLABS_VOICE", "")),
             voiceField("AEHUB_ELEVENLABS_MODEL", value("AEHUB_ELEVENLABS_MODEL", "eleven_flash_v2_5")),
+            voiceField("AEHUB_SPACEXAI_VOICE", value("AEHUB_SPACEXAI_VOICE", "eve"), ["eve", "altair"]),
+            voiceField("AEHUB_SPACEXAI_LANGUAGE", value("AEHUB_SPACEXAI_LANGUAGE", "it"), ["it", "en", "fr"]),
         ],
         secrets: [],
         issues,
@@ -101,6 +104,12 @@ describe("voice helpers", () => {
             AEHUB_STT_MODEL: "small",
             AEHUB_TTS_VOICE: null,
         });
+    });
+
+    it("estimates what SpaceXAI costs a month", () => {
+        // 15 $ per million characters, replies of about 500 characters.
+        expect(spacexaiMonthlyCost(10, 500)).toBeCloseTo(2.25);
+        expect(spacexaiMonthlyCost(100, 500)).toBeCloseTo(22.5);
     });
 
     it("formats sizes and recognises a voice run", () => {
@@ -198,5 +207,63 @@ describe("VoicePage", () => {
 
         const speak = fetch.mock.calls.find(([url]) => String(url).endsWith("/api/voice/speak"));
         expect(JSON.parse(String(speak?.[1]?.body))).toEqual({ text: "Ciao, sono ÆHub. Questa è la mia voce.", preview: true });
+    });
+
+    it("chooses SpaceXAI with its voice, an explicit language and the key", async () => {
+        let current = settingsView();
+        const fetch = stubFetch({
+            "GET /api/settings": () => ({ status: 200, body: current }),
+            "PUT /api/settings": () => {
+                current = settingsView({
+                    AEHUB_TTS_ENGINE: "spacexai",
+                    AEHUB_SPACEXAI_VOICE: "altair",
+                    AEHUB_SPACEXAI_LANGUAGE: "fr",
+                });
+                return { status: 200, body: current };
+            },
+            "GET /api/voice": () => ({
+                status: 200,
+                body: status({ spacexai_key: false, spacexai_usd_per_million_chars: 15 }),
+            }),
+            "GET /api/desktop": () => ({ status: 200, body: { desktop: true } }),
+            "PUT /api/desktop/secrets": () => ({ status: 200, body: { saved: ["XAI_API_KEY"] } }),
+            "POST /api/voice/speak": () => ({ status: 200, body: { audio_base64: "", audio_mime: "" } }),
+        });
+
+        render(<VoicePage />);
+
+        fireEvent.click(await screen.findByRole("radio", { name: /SpaceXAI/ }));
+        expect(screen.getByText(/va ai server di xAI/)).toBeInTheDocument();
+        expect(screen.getByText("chiave mancante")).toBeInTheDocument();
+        expect(screen.getByText(/15,00 \$ per milione di caratteri/)).toBeInTheDocument();
+        expect(screen.getByText(/circa 2,25 \$ al mese con 10 al giorno, 22,50 \$ con 100 al giorno/)).toBeInTheDocument();
+
+        const voice = screen.getByRole("combobox", { name: "Voce SpaceXAI" });
+        expect(within(voice).getAllByRole("option").map((option) => option.getAttribute("value"))).toEqual(["eve", "altair"]);
+        fireEvent.change(voice, { target: { value: "altair" } });
+        const language = screen.getByRole("combobox", { name: "Lingua in cui legge" });
+        expect(within(language).getAllByRole("option").map((option) => option.getAttribute("value"))).toEqual(["it", "en", "fr"]);
+        fireEvent.change(language, { target: { value: "fr" } });
+        expect(screen.getByText("Questa voce parla francese: le risposte vengono lette in francese.")).toBeInTheDocument();
+
+        fireEvent.change(screen.getByLabelText("Chiave API SpaceXAI (xAI)"), { target: { value: "xai-test-key" } });
+        fireEvent.click(screen.getByRole("button", { name: "Salva la chiave" }));
+        await screen.findByText("Chiave salvata nel portachiavi del sistema.");
+        const secret = fetch.mock.calls.find(([url]) => String(url).endsWith("/api/desktop/secrets"));
+        expect(JSON.parse(String(secret?.[1]?.body))).toEqual({ XAI_API_KEY: "xai-test-key" });
+
+        fireEvent.click(screen.getByRole("button", { name: "Salva" }));
+        await screen.findByText("Salvato: vale dalla prossima frase.");
+        const put = fetch.mock.calls.find(([, init]) => init?.method === "PUT" && String(init?.body).includes("values"));
+        expect(JSON.parse(String(put?.[1]?.body))).toEqual({
+            values: { AEHUB_TTS_ENGINE: "spacexai", AEHUB_SPACEXAI_VOICE: "altair", AEHUB_SPACEXAI_LANGUAGE: "fr" },
+        });
+
+        const listen = screen.getByRole("button", { name: "Ascolta" });
+        await waitFor(() => expect(listen).toBeEnabled());
+        fireEvent.click(listen);
+        await waitFor(() => expect(fetch.mock.calls.some(([url]) => String(url).endsWith("/api/voice/speak"))).toBe(true));
+        const speak = fetch.mock.calls.find(([url]) => String(url).endsWith("/api/voice/speak"));
+        expect(JSON.parse(String(speak?.[1]?.body))).toEqual({ text: "Bonjour, je suis ÆHub. Voici ma voix.", preview: true });
     });
 });

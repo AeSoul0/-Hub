@@ -54,6 +54,7 @@ SECRETS = (
     ("AEHUB_MQTT_PASSWORD", "MQTT broker password", "home devices (optional)"),
     ("AEHUB_LOCAL_API_KEY", "Local server key", "models with the local provider (optional)"),
     ("ELEVENLABS_API_KEY", "ElevenLabs API key", "the cloud voice (optional)"),
+    ("XAI_API_KEY", "SpaceXAI (xAI) API key", "the SpaceXAI cloud voice (optional, ADR-038)"),
     ("AEHUB_MCP_TOKENS", "MCP server tokens", "MCP servers that need a login, as host=token (optional, ADR-033)"),
 )
 
@@ -465,6 +466,20 @@ def check_configuration() -> List[ConfigIssue]:
                     "AEHUB_ELEVENLABS_VOICE",
                 )
             )
+
+    if (
+        voice_enabled()
+        and config_value("AEHUB_TTS_ENGINE", "piper") == "spacexai"
+        and not _env_set("XAI_API_KEY")
+    ):
+        issues.append(
+            ConfigIssue(
+                "voice_spacexai_key_missing",
+                "warning",
+                "The SpaceXAI voice is chosen but XAI_API_KEY is not set: replies are spoken by Piper.",
+                "AEHUB_TTS_ENGINE",
+            )
+        )
 
     from app.home.devices import DeviceConfigError, load_devices
     from app.home.mqtt import MqttNotConfigured, broker

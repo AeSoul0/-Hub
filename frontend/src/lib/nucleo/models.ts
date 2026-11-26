@@ -381,6 +381,8 @@ const ISSUE_TEXT: Partial<Record<string, (p: IssueParams) => string>> = {
         "È scelta la voce di ElevenLabs, ma manca la chiave ELEVENLABS_API_KEY: le risposte le legge Piper.",
     voice_cloud_voice_missing: () =>
         "È scelta la voce di ElevenLabs, ma non è selezionata nessuna voce: le risposte le legge Piper.",
+    voice_spacexai_key_missing: () =>
+        "È scelta la voce di SpaceXAI, ma manca la chiave XAI_API_KEY: le risposte le legge Piper.",
     home_devices_invalid: (p) => `I dispositivi di casa sono spenti: ${p.error}`,
     home_broker_missing: (p) => `${p.devices} dispositivi di casa dichiarati, ma: ${p.error}`,
 };

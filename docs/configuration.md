@@ -17,6 +17,7 @@ app, never in a file. The backend reads them from its environment.
 | `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `GROQ_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` | Model providers |
 | `AEHUB_LOCAL_API_KEY` | Local OpenAI-compatible server, when it asks for a key |
 | `ELEVENLABS_API_KEY` | Optional cloud voice (ADR-024) |
+| `XAI_API_KEY` | Optional SpaceXAI (xAI) cloud voice (ADR-038) |
 | `AEHUB_MQTT_PASSWORD` | Home MQTT broker, when it needs one |
 | `AEHUB_MCP_TOKENS` | Bearer tokens of MCP servers that need a login, as `host=token,host=token` (host with its port, if any); each is sent only to its host (ADR-033) |
 
@@ -76,8 +77,9 @@ The model, price and limit variables (`OPENAI_MODEL`, `AEHUB_CHECKER_MODEL`, `AE
 | `AEHUB_VOICE` | `local` (faster-whisper + Piper on this machine) or `off`; also on the VOCE page, no restart | `local` |
 | `AEHUB_VOICE_IDLE_MINUTES` | Whisper and Piper leave memory after this long without use and load again with the next sentence; `0` keeps them (also on the VOCE page) | `15` |
 | `AEHUB_STT_MODEL` / `AEHUB_STT_LANGUAGE` / `AEHUB_TTS_VOICE` | Whisper model, spoken language (`auto` to detect), Piper voice; also editable on the VOCE page | `base` / `it` / `it_IT-paola-medium` |
-| `AEHUB_TTS_ENGINE` | `piper` (on this machine) or `elevenlabs` (the reply text goes to ElevenLabs, ADR-024); also editable on the VOCE page | `piper` |
+| `AEHUB_TTS_ENGINE` | `piper` (on this machine), `elevenlabs` (the reply text goes to ElevenLabs, ADR-024) or `spacexai` (it goes to SpaceXAI, 15 $ per million characters, ADR-038); also editable on the VOCE page | `piper` |
 | `AEHUB_ELEVENLABS_VOICE` / `AEHUB_ELEVENLABS_MODEL` | ElevenLabs voice ID and model | none / `eleven_flash_v2_5` |
+| `AEHUB_SPACEXAI_VOICE` / `AEHUB_SPACEXAI_LANGUAGE` | SpaceXAI voice (`eve` or `altair`) and the language it reads in, always a code (`it`, `en`, `fr`; never `auto`) | `eve` / `it` |
 | `AEHUB_VOICE_MODELS_DIR` | Where the speech models are downloaded on first use | `~/.cache/aehub/voice` |
 | `AEHUB_HOME_DEVICES` | JSON file of the home devices, outside the working folder (see Home devices); optional, devices can also be declared on the CASA page | none |
 | `AEHUB_MQTT_URL` / `AEHUB_MQTT_USERNAME` | Home MQTT broker (`mqtt://host:1883`, `mqtts://host:8883`) and user; also editable on the CASA page, without a restart | none |

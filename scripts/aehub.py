@@ -53,6 +53,7 @@ SECRETS: Dict[str, str] = {
     "AEHUB_MQTT_PASSWORD": "MQTT broker of the home devices (optional)",
     "AEHUB_LOCAL_API_KEY": "local OpenAI-compatible server (optional)",
     "ELEVENLABS_API_KEY": "ElevenLabs cloud voice (optional, ADR-024)",
+    "XAI_API_KEY": "SpaceXAI (xAI) cloud voice (optional, ADR-038)",
     "AEHUB_MCP_TOKENS": "MCP servers that need a login, as host=token,host=token (optional, ADR-033)",
 }
 
@@ -420,6 +421,12 @@ def setup(
         if value:
             store.set("ELEVENLABS_API_KEY", value)
             print("  saved ELEVENLABS_API_KEY in the keyring")
+
+    if not store.get("XAI_API_KEY"):
+        value = ask("  XAI_API_KEY for the optional SpaceXAI voice (hidden, Enter to skip): ", True)
+        if value:
+            store.set("XAI_API_KEY", value)
+            print("  saved XAI_API_KEY in the keyring")
 
     current = read_env(root_env).get("AEHUB_WORKSPACE_DIR", "./workspace")
     answer = ask(f"  Working folder for the agent's files [{current}]: ", False) or current

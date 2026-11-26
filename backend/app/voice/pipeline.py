@@ -77,8 +77,9 @@ async def speak(text: str) -> Tuple[str, str]:
 async def preview_voice(text: str) -> Tuple[str, str]:
     """
     The chosen voice saying `text`, for the Settings preview. Unlike speak()
-    errors are raised, and with the cloud voice chosen it is ElevenLabs
-    itself, never the Piper fallback: the preview shows what is wrong.
+    errors are raised, and with a cloud voice chosen it is the cloud
+    (ElevenLabs or SpaceXAI) itself, never the Piper fallback: the preview
+    shows what is wrong.
     """
     engine = text_to_speech()
     synthesize = getattr(engine, "synthesize_cloud", engine.synthesize)

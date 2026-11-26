@@ -81,6 +81,10 @@ def voice_language() -> Optional[str]:
         voice_id = config_value("AEHUB_ELEVENLABS_VOICE", "") or ""
         return _elevenlabs_languages.get(voice_id)
 
+    if engine == "spacexai":
+        # Always an explicit code (ADR-038): the language the voice reads in.
+        return (config_value("AEHUB_SPACEXAI_LANGUAGE", "it") or "it").strip().lower()
+
     voice = config_value("AEHUB_TTS_VOICE", "it_IT-paola-medium") or ""
     code = voice.split("_", 1)[0].lower()
     return code if len(code) in (2, 3) and code.isalpha() else None
@@ -97,6 +101,7 @@ def interface_state() -> Dict[str, Any]:
     engine = config_value("AEHUB_TTS_ENGINE", "piper") or "piper"
     name = (
         config_value("AEHUB_ELEVENLABS_VOICE", "") if engine == "elevenlabs"
+        else config_value("AEHUB_SPACEXAI_VOICE", "eve") if engine == "spacexai"
         else config_value("AEHUB_TTS_VOICE", "it_IT-paola-medium")
     ) or ""
 
