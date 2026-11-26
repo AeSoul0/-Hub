@@ -335,7 +335,10 @@ SPECS: Tuple[SettingSpec, ...] = (
         label="Embedder",
         kind="choice",
         default="sentence-transformers",
-        help="sentence-transformers: a local model, better recall; hash: no download, weaker recall.",
+        help=(
+            "sentence-transformers: a local MiniLM model run with ONNX Runtime (no torch), better recall; "
+            "hash: no download, weaker recall."
+        ),
         options=("sentence-transformers", "hash"),
     ),
     SettingSpec(
@@ -344,8 +347,11 @@ SPECS: Tuple[SettingSpec, ...] = (
         label="Embedding model",
         kind="text",
         default="all-MiniLM-L6-v2",
-        help="A sentence-transformers model with 384 dimensions, downloaded on first use.",
-        pattern=r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}(/[A-Za-z0-9._-]{1,96})?",
+        help=(
+            "all-MiniLM-L6-v2 (pinned and checked), or another model with 384 dimensions and an ONNX "
+            "export named with its commit: owner/name@<commit>. Downloaded on first use."
+        ),
+        pattern=r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}(/[A-Za-z0-9._-]{1,96})?(@[0-9a-f]{7,40})?",
     ),
     SettingSpec(
         name="AEHUB_DOCUMENTS_MAX_FILE_MB",
@@ -467,10 +473,13 @@ SPECS: Tuple[SettingSpec, ...] = (
     SettingSpec(
         name="AEHUB_VOICE_IDLE_MINUTES",
         group="voice",
-        label="Release the voice models after (minutes)",
+        label="Release the local models after (minutes)",
         kind="integer",
         default="15",
-        help="Whisper and Piper leave memory after this long without use and load again with the next sentence. 0 keeps them.",
+        help=(
+            "Whisper, Piper and the memory's embedding model leave memory after this long without use "
+            "and load again when needed. 0 keeps them."
+        ),
         minimum=0,
         maximum=1440,
     ),

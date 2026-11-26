@@ -61,7 +61,7 @@ const TEXT = catalog({
         voiceOff: "off",
         idle: "Release the models after (minutes)",
         idleHelp:
-            "Whisper and Piper leave memory after this long without use and load again with the first sentence (1–2 seconds more, only that time). 0 keeps them always loaded.",
+            "Whisper, Piper and the memory's embedding model leave memory after this long without use and load again when needed (1–2 seconds more, only that time). 0 keeps them always loaded.",
         recognition: "Speech recognition",
         model: "Model",
         language: "Language",
@@ -124,7 +124,7 @@ const TEXT = catalog({
         voiceOff: "spenta",
         idle: "Libera i modelli dopo (minuti)",
         idleHelp:
-            "Whisper e Piper escono dalla memoria dopo questo tempo senza usarli e si ricaricano alla prima frase (1–2 secondi in più solo quella volta). 0 li tiene sempre caricati.",
+            "Whisper, Piper e il modello della memoria escono dalla RAM dopo questo tempo senza usarli e si ricaricano quando servono (1–2 secondi in più solo quella volta). 0 li tiene sempre caricati.",
         recognition: "Riconoscimento vocale",
         model: "Modello",
         language: "Lingua",

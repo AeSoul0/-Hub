@@ -121,6 +121,12 @@ jobs:
         run: |
           bandit -r app -ll -q
 
+      # The memory's embedding model is pinned to one commit with the SHA-256
+      # of each file (O1, ADR-039): the hub must serve exactly those files.
+      - name: Check the Pinned Embedding Model
+        run: |
+          python scripts/check_embedding_pin.py
+
       # =========================================================================
       # BACKEND CODE QUALITY
       # =========================================================================
@@ -338,12 +344,12 @@ jobs:
             aehub-backend:ci \
             python -c "from app.skills.registry import skill_registry; skill_registry.load_from_package(); print(sorted(skill_registry.get_registered_skill_names()))"
 
-      # The container has no GPU, so backend/dockerfile installs the CPU build
-      # of torch. A change that brings back the CUDA libraries fails here.
-      - name: Check the Backend Image Ships CPU-Only Torch
+      # The embedder runs on ONNX Runtime (O1): no torch in the image, and no
+      # CUDA libraries. A change that brings either back fails here.
+      - name: Check the Backend Image Ships No Torch
         run: |
           docker image ls aehub-backend:ci --format 'Backend image size: {{.Size}}'
-          docker run --rm aehub-backend:ci python -c "import torch; print('torch', torch.__version__, 'cuda', torch.cuda.is_available()); assert torch.__version__.endswith('+cpu')"
+          docker run --rm aehub-backend:ci python -c "import importlib.util as u; assert u.find_spec('torch') is None, 'torch is in the image'; import onnxruntime, tokenizers; print('onnxruntime', onnxruntime.__version__)"
           if docker run --rm aehub-backend:ci pip list 2>/dev/null | grep -i nvidia; then
             echo "::error::the backend image ships NVIDIA packages"
             exit 1
@@ -352,6 +358,24 @@ jobs:
       - name: Build Frontend Image
         run: |
           docker build --file frontend/dockerfile --tag aehub-frontend:ci frontend
+
+      # The image runs the standalone server with node (O1): it must start
+      # and serve the Nucleo, and stay small.
+      - name: Start the Frontend Image
+        run: |
+          docker image ls aehub-frontend:ci --format 'Frontend image size: {{.Size}}'
+          docker run --detach --name aehub-frontend-ci --publish 127.0.0.1:3900:3000 aehub-frontend:ci
+          for attempt in $(seq 1 30); do
+            if curl --silent --fail --output /dev/null http://127.0.0.1:3900/; then
+              echo "The frontend answers on / after ${attempt} s"
+              docker stats --no-stream --format 'Frontend memory: {{.MemUsage}}' aehub-frontend-ci
+              docker rm --force aehub-frontend-ci
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs aehub-frontend-ci
+          exit 1
 
   # M14 (ADR-020): the Windows installer. The bundle is the runner's
   # PostgreSQL with pgvector built from its tag, this job's CPython with the

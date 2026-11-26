@@ -1,9 +1,9 @@
 # ==============================================================================
 # DESKTOP APP (roadmap M14, ADR-020)
 # ==============================================================================
-# What the bundled engine needs at runtime: requirements.txt without torch and
-# sentence-transformers (the desktop app uses AEHUB_EMBEDDER=hash until the
-# embedder is decided, ADR-020 point 9) and without test and lint tools.
+# What the bundled engine needs at runtime: the same packages as
+# requirements.txt (torch is gone since O1), without test and lint tools. The
+# desktop app still starts with AEHUB_EMBEDDER=hash (ADR-020 point 9).
 # Keep the shared lines in step with requirements.txt.
 
 fastapi>=0.157.0
@@ -21,6 +21,12 @@ httpx>=0.25.0
 
 faster-whisper>=1.2.0
 piper-tts>=1.8.0
+
+# Local embedder of the long-term memory (O1): ONNX Runtime, no torch.
+onnxruntime>=1.20
+tokenizers>=0.20
+huggingface-hub>=0.25
+numpy>=1.26
 
 paho-mqtt>=2.1.0
 

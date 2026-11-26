@@ -250,13 +250,17 @@ def memory_status() -> Dict[str, Any]:
 
     machine = psutil.virtual_memory()
 
+    from app.memory.embeddings import loaded_embedder
     from app.voice.engines import loaded_engines
+
+    embedder = loaded_embedder()
 
     return {
         "groups": groups,
         "total_bytes": sum(group["bytes"] for group in groups.values()),
         "machine": {"total_bytes": int(machine.total), "available_bytes": int(machine.available)},
-        "voice": loaded_engines(),
+        # The local models in memory: voice (F9) and the embedder (O1).
+        "voice": loaded_engines() + ([embedder] if embedder else []),
     }
 
 

@@ -20,8 +20,12 @@ pydantic-ai-slim[openai,groq,anthropic,google]==2.66.0
 openai>=3.50,<4
 httpx>=0.25.0
 
-# Local embedder of the long-term memory (app/memory/store.py).
-sentence-transformers>=6.2.0
+# Local embedder of the long-term memory (app/memory/embeddings.py, O1): the
+# MiniLM ONNX export on ONNX Runtime, no torch.
+onnxruntime>=1.20
+tokenizers>=0.20
+huggingface-hub>=0.25
+numpy>=1.26
 
 
 # ==============================================================================
@@ -67,13 +71,6 @@ pgvector>=0.2.4
 # ==============================================================================
 
 redis>=8.1.0
-
-
-# ==============================================================================
-# DATA
-# ==============================================================================
-
-torch>=2.14.1
 
 
 # ==============================================================================
