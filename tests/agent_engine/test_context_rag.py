@@ -687,3 +687,79 @@ async def test_memory_api_rejects_secrets_and_jailbreaks(agent_infrastructure):
         assert rejected.value.status_code == 400
 
     assert MemoryStore("workspace-m6", "user-m6").list() == []
+
+
+# ==============================================================================
+# N3: THE CONVERSATION — LAST TURNS IN EVERY RUN, OLD TURNS SUMMARIZED
+# ==============================================================================
+
+
+async def test_a_follow_up_sees_the_last_turns_of_its_session(
+    agent_infrastructure,
+    fake_model,
+    memory_on,
+):
+    """"e domani?" after "che tempo fa a Milano?": the last runs of the session are in L5."""
+    principal = _principal()
+    runtime = AgentRuntime()
+
+    await _run(
+        runtime,
+        fake_model.adapter([fake_model.text("A Milano oggi piove.")]),
+        fake_model.checker([fake_model.accept()]),
+        "Che tempo fa a Milano?",
+        "session-N3",
+        principal,
+    )
+
+    worker = fake_model.adapter([fake_model.text("Domani sole.")])
+    await _run(runtime, worker, fake_model.checker([fake_model.accept()]), "E domani?", "session-N3", principal)
+
+    recalled = "\n".join(_blocks(worker._client.responses.requests[0], "L5"))
+    # Nothing in "E domani?" matches the first turn by words: it is there as a recent turn.
+    assert "Che tempo fa a Milano?" in recalled and "A Milano oggi piove." in recalled
+
+    # Another session does not get it as a recent turn.
+    other = fake_model.adapter([fake_model.text("?")])
+    await _run(runtime, other, fake_model.checker([fake_model.accept()]), "E domani?", "session-other", principal)
+    assert "A Milano oggi piove." not in "\n".join(_blocks(other._client.responses.requests[0], "L5"))
+
+
+def test_a_long_conversation_keeps_its_last_runs_and_summarizes_the_oldest(agent_infrastructure, memory_on):
+    from app.memory import store as memory_store
+
+    store = MemoryStore(workspace_id="workspace-n3", principal_id="owner-n3")
+    total = memory_store.SUMMARY_AFTER + 1
+    for number in range(total):
+        store.add(
+            f"Task: domanda numero {number}\nResult: risposta numero {number}",
+            "episode",
+            # One run of the batch handled outside content.
+            trusted=number != 3,
+            source="runtime",
+            session_id="lunga",
+            run_id=f"run-{number}",
+        )
+    store.add("Task: altra sessione\nResult: ok", "episode", source="runtime", session_id="breve", run_id="other")
+
+    assert [hit.content for hit in store.recent_episodes("lunga")] == [
+        f"Task: domanda numero {number}\nResult: risposta numero {number}" for number in range(total - 3, total)
+    ]
+
+    assert store.condense_session("lunga") == memory_store.SUMMARY_BATCH
+    # Below the threshold again: nothing more to do, and the short session is untouched.
+    assert store.condense_session("lunga") == 0
+    assert store.condense_session("breve") == 0
+
+    episodes = store.list(kinds=["episode"], limit=200)
+    summaries = [hit for hit in episodes if hit.source == memory_store.SUMMARY_SOURCE]
+    kept = [hit for hit in episodes if hit.session_id == "lunga" and hit.source == "runtime"]
+    assert len(kept) == total - memory_store.SUMMARY_BATCH
+    summary = "\n".join(hit.content for hit in summaries)
+    assert f"Summary of {memory_store.SUMMARY_BATCH} earlier exchanges" in summary
+    assert "- domanda numero 0 -> risposta numero 0" in summary
+    assert f"domanda numero {memory_store.SUMMARY_BATCH - 1} ->" in summary
+    assert f"domanda numero {memory_store.SUMMARY_BATCH} ->" not in summary
+    # One untrusted run makes the summary untrusted, and it is not a recent turn.
+    assert summaries and all(hit.trusted is False for hit in summaries)
+    assert all(hit.source != memory_store.SUMMARY_SOURCE for hit in store.recent_episodes("lunga"))

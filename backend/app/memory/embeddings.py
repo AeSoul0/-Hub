@@ -103,11 +103,11 @@ PINNED_MODELS: Dict[str, Dict[str, Any]] = {
     },
     "paraphrase-multilingual-MiniLM-L12-v2": {
         "repository": "Xenova/paraphrase-multilingual-MiniLM-L12-v2",
-        "revision": "0000000000000000000000000000000000000000",
+        "revision": "2c4055b12046f11709e9df2c122e59ffbdc2f900",
         "onnx": "onnx/model_quantized.onnx",
         "files": {
-            "onnx/model_quantized.onnx": "0" * 64,
-            TOKENIZER_FILE: "0" * 64,
+            "onnx/model_quantized.onnx": "66fc00f5f29afcaff34092e1bdd20008ca3918265a82fb9695a551e510cc4ebc",
+            TOKENIZER_FILE: "b60b6b43406a48bf3638526314f3d232d97058bc93472ff2de930d43686fa441",
         },
     },
 }

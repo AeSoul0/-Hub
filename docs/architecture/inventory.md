@@ -35,6 +35,7 @@ sidecar dell'app desktop (PostgreSQL e API su `127.0.0.1`).
   - interfaccia (ADR-034): Aurora cambia la lingua delle pagine e l'avviso sulla lingua della voce;
   - indice delle skill.
 - `app/voice/`: voce locale (faster-whisper, Piper), ElevenLabs e SpaceXAI facoltativi; `wake.py` consegna i modelli della parola di attivazione (N2, ADR-041).
+- `app/memory/` e `app/documents/`: memoria a lungo termine e indice dei documenti; ultimi turni della sessione in ogni run, riassunto delle conversazioni lunghe, cartelle degli agenti indicizzate, modello multilingue fissato (N3, ADR-042).
 - `app/home/`: dispositivi di casa via MQTT.
 - `app/system/`: stato del sistema, log, eval, flight recorder e aggiornamenti per la pagina SISTEMA.
 - `app/desktop/`: chiavi nel keyring e avvio per l'app desktop.

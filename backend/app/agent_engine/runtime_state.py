@@ -91,9 +91,12 @@ class StateMixin:
         workspace_id: str,
         principal_id: str,
         query: str,
+        session_id: str = "",
     ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         """
-        Load trusted preferences (L2) and memories relevant to the goal (L5).
+        Load trusted preferences (L2) and memories relevant to the goal (L5):
+        first the last runs of the session (N3), then the ones found by the
+        goal.
 
         Memory improves a run but is not required for it: any failure is
         logged and the run continues without recall.
@@ -117,9 +120,11 @@ class StateMixin:
                     MemoryKind.RULE.value,
                 ],
             )
+            recent = store.recent_episodes(session_id)
+            seen = {hit.id for hit in recent}
             return (
                 [hit.to_dict() for hit in preferences],
-                [hit.to_dict() for hit in recalled],
+                [hit.to_dict() for hit in recent] + [hit.to_dict() for hit in recalled if hit.id not in seen],
             )
 
         try:
@@ -146,10 +151,11 @@ class StateMixin:
             return
 
         def store() -> None:
-            MemoryStore(
+            memory = MemoryStore(
                 workspace_id=workspace_id,
                 principal_id=principal_id,
-            ).add(
+            )
+            memory.add(
                 f"Task: {goal}\nResult: {result}",
                 MemoryKind.EPISODE,
                 trusted=trusted,
@@ -157,6 +163,8 @@ class StateMixin:
                 session_id=session_id,
                 run_id=run_id,
             )
+            # A long conversation: its oldest runs become one summary (N3).
+            memory.condense_session(session_id)
 
         try:
             await asyncio.to_thread(store)
