@@ -67,7 +67,7 @@ Guscio Tauri dell'app Windows (ADR-020): `src-tauri/` (Rust), `scripts/` (bundle
   - `demo.py`;
   - `check_headers.py`, che controlla l'intestazione `@file` / `@description` dei sorgenti.
   - `codespace.sh`, che installa e avvia ÆHub in GitHub Codespaces (`.devcontainer/devcontainer.json`): PostgreSQL con pgvector, il backend e le pagine servite dal backend su una sola porta.
-- `docs/`: ADR, architettura, copertura del frontend, design, sicurezza.
+- `docs/`: la guida d'uso (`guida.md`), installazione, uso dall'API, sviluppo, configurazione, ADR, architettura (`architecture/overview.md`, spostata dal README in N10), copertura del frontend, design, sicurezza.
 
 ## 2. Dipendenze
 
