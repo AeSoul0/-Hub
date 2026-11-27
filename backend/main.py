@@ -32,6 +32,7 @@ from app.api import (
     approvals,
     audit,
     auth,
+    conversations,
     desktop,
     documents,
     home as home_api,
@@ -466,6 +467,10 @@ app.include_router(
 
 app.include_router(
     documents.router
+)
+
+app.include_router(
+    conversations.router
 )
 
 app.include_router(

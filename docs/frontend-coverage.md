@@ -9,7 +9,7 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 - ⏸ vuol dire **sospesa**: riguarda solo l'app desktop (Tauri), sospesa dal 2026-11-24. Non conta né tra le coperte né tra le mancanti.
 
 **Ultimo aggiornamento:** N2, parola di attivazione (2026-11-26): una riga nuova, la 61.
-**Copertura:** 62 righe su 62, cioè **100%**, più 2 righe sospese (⏸). F10 ha confrontato la tabella con tutte le route e tutte le impostazioni del backend: l'[indice](#indice-ogni-route-e-ogni-impostazione) in fondo dice quale riga copre ciascuna, e un test in CI lo tiene allineato al codice.
+**Copertura:** 63 righe su 63, cioè **100%**, più 2 righe sospese (⏸). F10 ha confrontato la tabella con tutte le route e tutte le impostazioni del backend: l'[indice](#indice-ogni-route-e-ogni-impostazione) in fondo dice quale riga copre ciascuna, e un test in CI lo tiene allineato al codice.
 
 ## Conversazione e voce
 
@@ -24,6 +24,7 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 | 7 | Risposta a voce di una run chiesta a voce e ripresa dopo un'approvazione | Nucleo | ✓ | F3 |
 | 8 | Modelli vocali già scaricati, con il peso | Control Plane → VOCE | ✓ | F3 |
 | 9 | Voce accesa o spenta (`AEHUB_VOICE`) e quando si liberano i modelli (`AEHUB_VOICE_IDLE_MINUTES`) | Control Plane → VOCE, Accensione e memoria | ✓ | F9 |
+| 63 | Conversazioni passate: elenco, ricerca nei comandi e nelle risposte, ripresa (`GET /api/conversations`, `GET /api/conversations/{conversation_id}`; il campo `conversation` di `/ask` e `/listen`) | Nucleo → CRONOLOGIA (cerca, apri per continuare, Nuova conversazione) | ✓ | N6, ADR-045 |
 
 ## Motore e run
 
@@ -154,6 +155,8 @@ F10 (2026-11-24, aggiornato in P1): l'elenco viene dal codice (`tests/security/t
 | `GET /api/auth/verify` | 41 |
 | `GET /api/desktop` | 23 |
 | `PUT /api/desktop/secrets` | 23 |
+| `GET /api/conversations` | 63 |
+| `GET /api/conversations/{conversation_id}` | 63 |
 | `GET /api/documents` | 37 |
 | `GET /api/documents/passage` | 37 |
 | `GET /api/documents/search` | 37 |
