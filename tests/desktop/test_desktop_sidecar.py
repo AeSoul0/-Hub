@@ -210,6 +210,8 @@ def _sidecar_env(tmp_path: Path, model_url: str) -> Dict[str, str]:
             "AEHUB_EMBEDDER": "hash",
             # No speech model downloads in a test run.
             "AEHUB_VOICE": "off",
+            # The first run goes through the Critic too (a simple answer would skip it).
+            "AEHUB_CRITIC_SIMPLE": "check",
             "AEHUB_TELEMETRY_CONSOLE": "0",
             "PYTHONUNBUFFERED": "1",
         }
