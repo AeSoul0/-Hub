@@ -10,6 +10,9 @@ None and the command goes to the engine unchanged.
 
 A command whose tool needs an approval, or a tool not available here (no
 apps listed, ÆHub in a container, no home devices), is left to the engine.
+Volume, media keys, screen lock and screenshots act on this computer, so in
+a container they go to the engine too, which says it cannot (N4); timers
+and reminders work everywhere.
 """
 
 from __future__ import annotations
@@ -34,6 +37,17 @@ REPLIES: Dict[str, Dict[str, str]] = {
         "light_on": "{name}: luce accesa.",
         "light_off": "{name}: luce spenta.",
         "locked": "{name}: chiusa a chiave.",
+        "volume_up": "Alzo il volume.",
+        "volume_down": "Abbasso il volume.",
+        "mute": "Fatto: muto.",
+        "play_pause": "Fatto: play/pausa.",
+        "next": "Canzone successiva.",
+        "previous": "Canzone precedente.",
+        "screen_locked": "Blocco lo schermo.",
+        "screenshot": "Screenshot salvato nella cartella di lavoro.",
+        "timer": "Timer di {name} avviato.",
+        "reminder_in": "Te lo ricordo tra {name}.",
+        "reminder_at": "Te lo ricordo alle {name}.",
         "failed": "Non ci sono riuscita: {error}",
     },
     "en": {
@@ -42,6 +56,17 @@ REPLIES: Dict[str, Dict[str, str]] = {
         "light_on": "{name}: light on.",
         "light_off": "{name}: light off.",
         "locked": "{name}: locked.",
+        "volume_up": "Volume up.",
+        "volume_down": "Volume down.",
+        "mute": "Done: mute.",
+        "play_pause": "Done: play/pause.",
+        "next": "Next song.",
+        "previous": "Previous song.",
+        "screen_locked": "Locking the screen.",
+        "screenshot": "Screenshot saved in the working folder.",
+        "timer": "Timer of {name} started.",
+        "reminder_in": "I'll remind you in {name}.",
+        "reminder_at": "I'll remind you at {name}.",
         "failed": "I couldn't do it: {error}",
     },
 }

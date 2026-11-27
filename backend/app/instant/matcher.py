@@ -9,6 +9,9 @@ and its object is something the user declared:
     apri la cartella <folder> / open the <folder> folder
     accendi / spegni la luce <light> / turn on / off the <light>
     chiudi a chiave <door> / lock the <door>
+    alza / abbassa il volume, muto, pausa, canzone successiva... (N4)
+    blocca lo schermo, fai uno screenshot (N4)
+    timer di 5 minuti, ricordami tra 10 minuti di ..., ricordami alle 18 di ... (N4)
 
 After the verb, filler words ("la", "luce della", "the ... light") may be
 dropped from either end; what remains must be exactly the name or id of a
@@ -96,6 +99,103 @@ _FILLER = {
 }
 
 
+# The computer's controls (N4): fixed sentences -> (tool, arguments, reply).
+_SYSTEM: Dict[str, Tuple[str, str, Dict[str, object], str]] = {}
+for _language, _phrases, _tool, _arguments, _reply in [
+    ("it", ["alza il volume", "alza volume", "volume su", "piu volume", "aumenta il volume"], "media_control", {"action": "volume_up"}, "volume_up"),
+    ("it", ["abbassa il volume", "abbassa volume", "volume giu", "meno volume", "diminuisci il volume"], "media_control", {"action": "volume_down"}, "volume_down"),
+    ("it", ["muto", "silenzia", "togli l' audio", "togli audio", "metti muto", "rimetti l' audio"], "media_control", {"action": "mute"}, "mute"),
+    ("it", ["pausa", "metti in pausa", "metti pausa", "riprendi", "riprendi la musica", "fai ripartire la musica", "play"], "media_control", {"action": "play_pause"}, "play_pause"),
+    ("it", ["canzone successiva", "prossima canzone", "brano successivo", "prossimo brano", "salta canzone", "salta"], "media_control", {"action": "next"}, "next"),
+    ("it", ["canzone precedente", "brano precedente", "torna alla canzone prima"], "media_control", {"action": "previous"}, "previous"),
+    ("it", ["blocca lo schermo", "blocca schermo", "blocca il pc", "blocca il computer"], "lock_screen", {}, "screen_locked"),
+    ("it", ["fai uno screenshot", "screenshot", "cattura lo schermo", "fai una foto dello schermo"], "take_screenshot", {}, "screenshot"),
+    ("en", ["volume up", "turn up the volume", "turn the volume up", "louder"], "media_control", {"action": "volume_up"}, "volume_up"),
+    ("en", ["volume down", "turn down the volume", "turn the volume down", "quieter"], "media_control", {"action": "volume_down"}, "volume_down"),
+    ("en", ["mute", "unmute"], "media_control", {"action": "mute"}, "mute"),
+    ("en", ["pause", "pause the music", "resume", "resume the music"], "media_control", {"action": "play_pause"}, "play_pause"),
+    ("en", ["next song", "next track", "skip song", "skip"], "media_control", {"action": "next"}, "next"),
+    ("en", ["previous song", "previous track"], "media_control", {"action": "previous"}, "previous"),
+    ("en", ["lock the screen", "lock screen", "lock my computer", "lock the computer"], "lock_screen", {}, "screen_locked"),
+    ("en", ["take a screenshot", "screenshot"], "take_screenshot", {}, "screenshot"),
+]:
+    for _phrase in _phrases:
+        _SYSTEM.setdefault(_phrase, (_tool, _language, _arguments, _reply))
+
+_NUMBERS = {
+    "un": 1, "uno": 1, "una": 1, "due": 2, "tre": 3, "quattro": 4, "cinque": 5, "sei": 6, "sette": 7,
+    "otto": 8, "nove": 9, "dieci": 10, "quindici": 15, "venti": 20, "trenta": 30, "quaranta": 40,
+    "quarantacinque": 45, "cinquanta": 50, "sessanta": 60, "mezzo": 0.5, "mezza": 0.5, "mezz'": 0.5, "un'": 1,
+    "a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+    "eight": 8, "nine": 9, "ten": 10, "fifteen": 15, "twenty": 20, "thirty": 30, "forty": 40,
+    "forty-five": 45, "fifty": 50, "sixty": 60, "half": 0.5,
+}
+_UNITS = {
+    "secondo": 1 / 60, "secondi": 1 / 60, "second": 1 / 60, "seconds": 1 / 60,
+    "minuto": 1, "minuti": 1, "minute": 1, "minutes": 1, "min": 1,
+    "ora": 60, "ore": 60, "hour": 60, "hours": 60,
+}
+_AMOUNT = r"(\d+(?:[.,]\d+)?|" + "|".join(sorted(map(re.escape, _NUMBERS), key=len, reverse=True)) + r")"
+_UNIT = r"(" + "|".join(sorted(_UNITS, key=len, reverse=True)) + r")"
+_TIMER = re.compile(
+    r"^(?:(?:metti|imposta|fai partire|avvia|set|start)\s+)?(?:un\s+|a\s+)?timer\s+(?:di\s+|da\s+|for\s+)?"
+    + _AMOUNT + r"\s+" + _UNIT + r"$"
+)
+_REMIND_IN = re.compile(
+    r"^(?:ricordami|remind me)\s+(?:tra|fra|in)\s+" + _AMOUNT + r"\s+" + _UNIT + r"\s+(?:di\s+|che\s+|to\s+|that\s+|about\s+)?(.+)$"
+)
+_REMIND_AT = re.compile(
+    r"^(?:ricordami|remind me)\s+(?:alle|all'|at)\s*(\d{1,2})(?:[:. ](\d{2}))?\s+(?:di\s+|che\s+|to\s+|that\s+|about\s+)?(.+)$"
+)
+
+
+def _minutes(amount: str, unit: str) -> float:
+    value = float(amount.replace(",", ".")) if amount[0].isdigit() else _NUMBERS[amount]
+    return value * _UNITS[unit]
+
+
+def _system_command(sentence: str, original: str) -> Optional[InstantCommand]:
+    """The computer's controls, a timer or a reminder (N4), or None."""
+    found = _SYSTEM.get(sentence)
+    if found:
+        tool, language, arguments, reply = found
+        return InstantCommand(tool, dict(arguments), reply, "", language)
+
+    timer = _TIMER.match(sentence)
+    if timer:
+        minutes = _minutes(timer.group(1), timer.group(2))
+        if 0 < minutes <= 7 * 24 * 60:
+            language = "en" if re.search(r"\b(?:set|start|for|minutes?|seconds?|hours?)\b", sentence) else "it"
+            return InstantCommand("set_timer", {"minutes": minutes}, "timer", f"{timer.group(1)} {timer.group(2)}".replace("' ", "'"), language)
+
+    language = "en" if sentence.startswith("remind me") else "it"
+    remind = _REMIND_IN.match(sentence)
+    if remind:
+        minutes = _minutes(remind.group(1), remind.group(2))
+        what = _reminder_text(original, remind.group(3))
+        if 0 < minutes <= 7 * 24 * 60 and what:
+            return InstantCommand("set_reminder", {"text": what, "minutes": minutes}, "reminder_in", f"{remind.group(1)} {remind.group(2)}".replace("' ", "'"), language)
+    remind = _REMIND_AT.match(sentence)
+    if remind:
+        hour, minute = int(remind.group(1)), int(remind.group(2) or 0)
+        what = _reminder_text(original, remind.group(3))
+        if hour < 24 and minute < 60 and what:
+            at = f"{hour:02d}:{minute:02d}"
+            return InstantCommand("set_reminder", {"text": what, "at": at}, "reminder_at", at, language)
+    return None
+
+
+def _reminder_text(original: str, normalized_tail: str) -> str:
+    """What to remember, with its own spelling (accents, capitals) when it can be found."""
+    words = normalized_tail.split()
+    raw = original.strip().rstrip(".!?")
+    # The original's last len(words) words, when they match the normalized ones.
+    tail = raw.split()[-len(words):] if words else []
+    if [normalize(word) for word in tail] == [normalize(word) for word in words] and tail:
+        return " ".join(tail)
+    return normalized_tail
+
+
 def _strip(text: str) -> str:
     text = _LEAD.sub("", text, count=1)
     return _TAIL.sub("", text).strip()
@@ -142,7 +242,13 @@ def match(
     """
     sentence = _strip(normalize(text))
     words = sentence.split()
-    if not words or len(words) > MAX_WORDS:
+    if not words:
+        return None
+    # A reminder may be long ("ricordami tra 10 minuti di chiamare Marco e Luca").
+    system = _system_command(sentence, text)
+    if system is not None:
+        return system
+    if len(words) > MAX_WORDS:
         return None
     # "apri Spotify e poi...", "open X and Y": more than one thing to do.
     if any(word in {"e", "ed", "poi", "and", "then"} for word in words[1:]):

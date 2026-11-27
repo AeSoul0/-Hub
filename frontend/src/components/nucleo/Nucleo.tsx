@@ -56,7 +56,7 @@ import {
 import { initialRuns, liveCount, runsReducer, type LiveView } from "@/lib/nucleo/runs";
 import { resumedByVoice, speakInSentences, splitSentences, type SpokenPiece } from "@/lib/nucleo/voice";
 import { startWakeListener, type WakeListener, type WakeStatus } from "@/lib/nucleo/wakeListener";
-import { askNotifyPermissionOnce } from "@/lib/notify";
+import { askNotifyPermissionOnce, notifyNow } from "@/lib/notify";
 import { catalog, useInterface, useLanguage } from "@/lib/i18n";
 
 import ApprovalPrompt from "./ApprovalPrompt";
@@ -90,6 +90,7 @@ const TEXT = catalog({
         allowed: "allowed",
         commandFailed: "The command did not start:",
         stillWorking: "The connection was cut, but ÆHub is still working: the answer will appear here.",
+        reminder: "⏰ Reminder:",
         instant: "instant",
         draft: "draft · being checked",
         micUnavailable: "Microphone not available:",
@@ -144,6 +145,7 @@ const TEXT = catalog({
         allowed: "consentita",
         commandFailed: "Il comando non è partito:",
         stillWorking: "La connessione si è interrotta, ma ÆHub sta ancora lavorando: la risposta arriverà qui.",
+        reminder: "⏰ Promemoria:",
         instant: "istantaneo",
         draft: "bozza · in verifica",
         micUnavailable: "Microfono non disponibile:",
@@ -438,8 +440,16 @@ export default function Nucleo() {
             "answer.reset",
             "answer.final",
             "answer.failed",
+            "reminder.due",
         ],
         (event) => {
+            if (event.type === "reminder.due") {
+                const text = String(event.data.text ?? "");
+                say("system", `${TEXT[langRef.current].reminder} ${text}`);
+                notifyNow("ÆHub", text);
+                void chime();
+                return;
+            }
             const commandId = String(event.data.command_id ?? "");
             if (event.type === "answer.final" || event.type === "answer.failed") {
                 // Only for a command whose request no longer brings the answer.

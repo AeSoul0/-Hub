@@ -73,3 +73,15 @@ export function titleWithCount(title: string, count: number): string {
     const plain = title.replace(TITLE_COUNT, "");
     return count > 0 ? `(${count}) ${plain}` : plain;
 }
+
+/** A system notification now, when allowed and the page is not in front (a reminder, N4). */
+export function notifyNow(title: string, body: string): void {
+    if (notifyState() !== "granted" || (typeof document !== "undefined" && document.visibilityState === "visible")) {
+        return;
+    }
+    try {
+        new window.Notification(title, { body, tag: `aehub-${title}` });
+    } catch {
+        // Some browsers allow notifications only from a service worker: the line in the chat stays.
+    }
+}

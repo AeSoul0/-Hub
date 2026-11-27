@@ -29,6 +29,7 @@
    |---|---|---|
    | `list_folder` | LOW | cosa c'è in una cartella |
    | `find_files` | LOW | file per nome o schema (`*.pdf`), in una cartella o in tutte |
+   | `search_in_files` | LOW | righe che contengono un testo, nei file di testo e nei PDF (N4, ADR-043) |
    | `read_file` | LOW | un file di testo, i primi 200 KB; un file binario lo dice e non lo legge |
    | `write_file` | MEDIUM | un file nuovo; non sostituisce mai |
    | `make_folder` | LOW | una cartella nuova |
