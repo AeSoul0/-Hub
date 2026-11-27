@@ -35,6 +35,28 @@ export interface RunLimits {
     monthly_budget: number;
 }
 
+/** One step of a run's plan (N7). */
+export interface PlanStep {
+    text: string;
+    status: "pending" | "doing" | "done" | "failed" | "skipped";
+    note?: string;
+}
+
+/** The steps of a plan from an event or a view, without anything else. */
+export function toPlan(value: unknown): PlanStep[] | null {
+    if (!Array.isArray(value)) {
+        return null;
+    }
+    const statuses = ["pending", "doing", "done", "failed", "skipped"];
+    return value
+        .filter((step): step is Record<string, unknown> => Boolean(step) && typeof step === "object")
+        .map((step) => ({
+            text: String(step.text ?? ""),
+            status: (statuses.includes(String(step.status)) ? String(step.status) : "pending") as PlanStep["status"],
+            note: typeof step.note === "string" ? step.note : "",
+        }));
+}
+
 export interface LiveRunView {
     run_id: string;
     parent_run_id?: string | null;
@@ -46,6 +68,7 @@ export interface LiveRunView {
     started_at: string;
     cancelling: boolean;
     usage: RunUsage;
+    plan?: PlanStep[];
 }
 
 export interface LiveView {
@@ -78,6 +101,8 @@ export interface TrackedRun {
     startedAt: number;
     endedAt: number | null;
     steps: Step[];
+    /** The run's plan with the state of each step (N7); none without one. */
+    plan?: PlanStep[];
 }
 
 export interface RunsState {
@@ -208,6 +233,7 @@ function newRun(id: string, at: number, parentId: string | null = null): Tracked
         startedAt: at,
         endedAt: null,
         steps: [],
+        plan: [],
     };
 }
 
@@ -291,6 +317,7 @@ export function runsReducer(state: RunsState, action: RunsAction): RunsState {
                         ...run,
                         parentId: seen.parent_run_id ?? run.parentId,
                         task: seen.task ?? run.task,
+                        plan: seen.plan?.length ? seen.plan : (run.plan ?? []),
                         usage: seen.usage,
                         usageAt: now,
                         status: seen.cancelling ? "cancelling" : "running",
@@ -308,6 +335,7 @@ export function runsReducer(state: RunsState, action: RunsAction): RunsState {
                     runs.push({
                         ...newRun(seen.run_id, startedAt, seen.parent_run_id ?? null),
                         task: seen.task ?? null,
+                        plan: seen.plan ?? [],
                         usage: seen.usage,
                         usageAt: now,
                         status: seen.cancelling ? "cancelling" : "running",
@@ -339,6 +367,7 @@ export function runsReducer(state: RunsState, action: RunsAction): RunsState {
                 (run) => {
                     const status = statusAfter(event, run.status);
                     const ended = ENDED.has(status) && !ENDED.has(run.status);
+                    const plan = event.event_type === "plan.updated" ? toPlan(event.details?.steps) : null;
                     return withStep(
                         {
                             ...run,
@@ -347,6 +376,7 @@ export function runsReducer(state: RunsState, action: RunsAction): RunsState {
                             usage: usage ?? (event.event_type === "run.completed" && event.cost != null ? { ...run.usage, cost: event.cost } : run.usage),
                             usageAt: usage ? now : run.usageAt,
                             endedAt: ended ? at : run.endedAt,
+                            plan: plan ?? run.plan ?? [],
                         },
                         step(),
                     );

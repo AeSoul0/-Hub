@@ -51,6 +51,8 @@ class DelegationScope:
     max_subagents: int
     delegate: Optional[Delegator] = None
     is_subagent: bool = False
+    # The run's plan (N7): worker_context["plan"] itself, saved with the run.
+    plan: Optional[Dict[str, Any]] = None
 
     def remaining(self) -> float:
         """

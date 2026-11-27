@@ -9,7 +9,7 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 - ⏸ vuol dire **sospesa**: riguarda solo l'app desktop (Tauri), sospesa dal 2026-11-24. Non conta né tra le coperte né tra le mancanti.
 
 **Ultimo aggiornamento:** N2, parola di attivazione (2026-11-26): una riga nuova, la 61.
-**Copertura:** 64 righe su 64, cioè **100%**, più 2 righe sospese (⏸). F10 ha confrontato la tabella con tutte le route e tutte le impostazioni del backend: l'[indice](#indice-ogni-route-e-ogni-impostazione) in fondo dice quale riga copre ciascuna, e un test in CI lo tiene allineato al codice.
+**Copertura:** 65 righe su 65, cioè **100%**, più 2 righe sospese (⏸). F10 ha confrontato la tabella con tutte le route e tutte le impostazioni del backend: l'[indice](#indice-ogni-route-e-ogni-impostazione) in fondo dice quale riga copre ciascuna, e un test in CI lo tiene allineato al codice.
 
 ## Conversazione e voce
 
@@ -75,6 +75,7 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 | 59 | Approvazioni in una parola e notifiche: la domanda breve di una run in attesa, «sì»/«no» a voce o scritto, la notifica del sistema e il conteggio nel titolo | Nucleo (la domanda, la risposta segna "istantaneo · N ms"); notifica su ogni pagina; APPROVAZIONI: lo stato delle notifiche e il bottone per attivarle | ✓ | ADR-037 |
 | 60 | Risposte in streaming: la bozza mentre il modello scrive (`delivery=live`, `answer.delta`/`answer.reset`) e la voce frase per frase (`reply_chars` su `/api/voice/speak`) | Nucleo: «bozza · in verifica», poi la risposta accettata, letta pezzo per pezzo | ✓ | N1, ADR-040 |
 | 61 | Parola di attivazione: «Hey Jarvis», «Alexa», «Hey Mycroft» o un tuo modello «Aurora», riconosciuta nella pagina; i modelli da `GET /api/voice/wake/{model}` (scaricati una volta, SHA-256 controllato); sensibilità | VOCE: Parola di attivazione (parola, sensibilità, dove va il modello Aurora); Nucleo: indicatore di ascolto, suono, il comando finisce quando smetti di parlare | ✓ | N2, ADR-041 |
+| 65 | Piani in più passi per i compiti lunghi (skill `plan`: `plan_steps`, `plan_step`; evento `plan.updated`; il piano nello stato della run, in `GET /api/runs/live` e `GET /api/runs/{run_id}`) | Nucleo → RUN: il piano con lo stato di ogni passo; la timeline «piano: N di M passi fatti»; dettagli della run → Piano | ✓ | N7, ADR-047 |
 | 64 | Google Calendar e Gmail dell'account del proprietario (skill `google`: `calendar_list_events`, `calendar_create_event`, `gmail_search`, `gmail_read`, `gmail_send` con approvazione); collegamento OAuth (`GET /api/google`, `POST /api/google/connect`, `GET /api/google/callback`, `DELETE /api/google`) | STRUMENTI → Google (i passi per il client OAuth con l'indirizzo da registrare, Collega, account collegato, Scollega, il token da salvare una volta) | ✓ | N4, ADR-046 |
 | 62 | Cestino: quello che `delete_path` elimina va nel cestino di ÆHub e resta ripristinabile per `AEHUB_TRASH_DAYS` giorni (`GET /api/tools/trash`, ripristino, rimozione, svuotamento); «sì, elimina» a voce per eliminare o sovrascrivere | STRUMENTI → Cestino (elenco, Ripristina, Elimina per sempre, Svuota); Nucleo: la domanda chiede «sì, elimina» | ✓ | N5, ADR-044 |
 | 34 | Registro di audit, con la provenienza | Control Plane → SICUREZZA | ✓ | M11, F5 |

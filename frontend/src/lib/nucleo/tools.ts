@@ -38,6 +38,10 @@ export const SKILL_TEXT = catalog<Record<string, { title: string; description: s
             title: "Google",
             description: "Your Google Calendar and Gmail: events and mail are read, an event is created, an email is sent only after your yes.",
         },
+        plan: {
+            title: "Plan",
+            description: "For a long task the agent writes a plan in steps and marks each one; the Nucleo shows it, and a resumed run goes on from the step it reached.",
+        },
         documents: {
             title: "Documents",
             description: "Searches the documents of the working folder and cites the source.",
@@ -72,6 +76,10 @@ export const SKILL_TEXT = catalog<Record<string, { title: string; description: s
         google: {
             title: "Google",
             description: "Il tuo Google Calendar e Gmail: legge eventi e posta, crea un evento, manda una email solo dopo il tuo sì.",
+        },
+        plan: {
+            title: "Piano",
+            description: "Per un compito lungo l'agente scrive un piano a passi e segna ognuno; il Nucleo lo mostra, e una run ripresa continua dal passo a cui era.",
         },
         documents: {
             title: "Documenti",

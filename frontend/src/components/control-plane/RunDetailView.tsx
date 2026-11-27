@@ -8,7 +8,7 @@ import React from "react";
 
 import { catalog, useLanguage, useText } from "@/lib/i18n";
 import { roleName } from "@/lib/nucleo/engine";
-import { EMPTY_USAGE, localTime, meters, savedStatus, toUsage, usd, type RunLimits, type TrackedRun } from "@/lib/nucleo/runs";
+import { EMPTY_USAGE, localTime, meters, savedStatus, toPlan, toUsage, usd, type RunLimits, type TrackedRun } from "@/lib/nucleo/runs";
 import { runHref } from "@/lib/routes";
 
 import CitedText from "./CitedText";
@@ -75,6 +75,8 @@ export interface RunDetail {
     errors: string[];
     usage: Record<string, unknown>;
     untrusted_context: boolean;
+    /** The run's plan with the state of each step (N7). */
+    plan?: unknown;
     /** The tools the skill index picked for the run; null: all of them (F5). */
     exposed_tools?: string[] | null;
     pending_tool_call: ToolCall | null;
@@ -120,6 +122,8 @@ const TEXT = catalog({
         allTools: "all: the skill index did not narrow them",
         limits: "Limits of the run",
         task: "Task",
+        plan: "Plan",
+        stepStatus: { pending: "to do", doing: "in progress", done: "done", failed: "failed", skipped: "skipped" },
         subagents: "Subagents",
         subagentsOf: "Subagents of the run",
         subagent: "subagent",
@@ -165,6 +169,8 @@ const TEXT = catalog({
         allTools: "tutti: l'indice delle skill non li ha ristretti",
         limits: "Limiti della run",
         task: "Compito",
+        plan: "Piano",
+        stepStatus: { pending: "da fare", doing: "in corso", done: "fatto", failed: "fallito", skipped: "saltato" },
         subagents: "Sub-agenti",
         subagentsOf: "Sub-agenti della run",
         subagent: "sub-agente",
@@ -244,6 +250,7 @@ export default function RunDetailView({
     const status = savedStatus(run.status, lang);
     const role = chosenRole(run.task);
     const subagents = run.subagents ?? [];
+    const plan = toPlan(run.plan) ?? [];
     const tracked: TrackedRun = {
         id: run.run_id,
         parentId: run.parent_run_id,
@@ -309,6 +316,19 @@ export default function RunDetailView({
             <Section title={t.task}>
                 <pre className={styles.pre}>{text(run.task)}</pre>
             </Section>
+
+            {plan.length > 0 && (
+                <Section title={t.plan} count={plan.length}>
+                    <ol className={styles.card} aria-label={t.plan}>
+                        {plan.map((step, number) => (
+                            <li key={number} data-status={step.status}>
+                                {step.text} · <b>{t.stepStatus[step.status]}</b>
+                                {step.note ? ` — ${step.note}` : ""}
+                            </li>
+                        ))}
+                    </ol>
+                </Section>
+            )}
 
             {subagents.length > 0 && (
                 <Section title={t.subagents} count={subagents.length}>

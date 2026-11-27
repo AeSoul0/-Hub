@@ -109,6 +109,20 @@ DEFAULT_MAX_TOTAL_TOOL_CALLS = 20
 # How much of a Critic's instruction the timeline shows (F8).
 VERDICT_CHARS = 500
 
+# A run with a plan (N7) gets two more turns per step, up to this many in
+# all: a long task is bounded by its cost and time limits, not by 10 turns.
+PLAN_TOOLS = frozenset({"plan_steps", "plan_step"})
+PLAN_TURNS_PER_STEP = 2
+PLAN_MAX_TURNS = 30
+
+
+def _turn_limit(worker_context: Dict[str, Any], max_turns: int) -> int:
+    steps = len((worker_context.get("plan") or {}).get("steps") or [])
+    if not steps:
+        return max_turns
+    return max(max_turns, min(PLAN_MAX_TURNS, max_turns + PLAN_TURNS_PER_STEP * steps))
+
+
 # Tools that only read: a simple request answered with these (or none) does
 # not wait for the Critic.
 READ_ONLY_TOOLS = frozenset({"search_documents"})
@@ -643,7 +657,7 @@ class AgentRuntime(ToolsMixin, LimitsMixin, ResumeMixin, StateMixin, SubagentsMi
         loop.worker_completed = False
         loop.worker_result = None
 
-        while loop.turn < max_turns:
+        while loop.turn < _turn_limit(loop.worker_context, max_turns):
             loop.turn += 1
 
             loop.worker_context.update(
@@ -830,7 +844,10 @@ class AgentRuntime(ToolsMixin, LimitsMixin, ResumeMixin, StateMixin, SubagentsMi
 
                 break
 
-            if len(proposals) > max_tool_calls:
+            # The plan's own calls (N7) count for no limit: only the work does.
+            work = [proposal for proposal in proposals if proposal.tool_name not in PLAN_TOOLS]
+
+            if len(work) > max_tool_calls:
                 loop.agent_run.status = AgentRunStatus.FAILED
                 loop.agent_run.errors.append(
                     "Exceeded max tool calls per worker turn."
@@ -853,7 +870,7 @@ class AgentRuntime(ToolsMixin, LimitsMixin, ResumeMixin, StateMixin, SubagentsMi
                 )
             )
 
-            if tool_calls_used + len(proposals) > max_total_tool_calls:
+            if tool_calls_used + len(work) > max_total_tool_calls:
                 loop.agent_run.status = AgentRunStatus.FAILED
                 loop.agent_run.errors.append(
                     "Exceeded max tool calls per run."
@@ -870,7 +887,7 @@ class AgentRuntime(ToolsMixin, LimitsMixin, ResumeMixin, StateMixin, SubagentsMi
                 break
 
             loop.agent_run.usage["tool_calls"] = (
-                tool_calls_used + len(proposals)
+                tool_calls_used + len(work)
             )
 
             ended = await self._run_proposals(
@@ -981,6 +998,7 @@ class AgentRuntime(ToolsMixin, LimitsMixin, ResumeMixin, StateMixin, SubagentsMi
                                 principal,
                                 limits,
                                 capability_set,
+                                plan=loop.worker_context.setdefault("plan", {}),
                             ),
                         ),
                         cancellation_token,
@@ -1574,6 +1592,8 @@ class AgentRuntime(ToolsMixin, LimitsMixin, ResumeMixin, StateMixin, SubagentsMi
                 )
             ),
             "exposed_tools": worker_context.get("exposed_tools"),
+            # The plan and its steps already done survive a retry (N7).
+            "plan": worker_context.get("plan") or {},
         }
 
 

@@ -259,6 +259,8 @@ class StateMixin:
             "recalled": worker_context.get(
                 "recalled"
             ) or [],
+            # The plan and the steps done (N7): a resumed run goes on from there.
+            "plan": worker_context.get("plan") or {},
             "observations": observations,
         }
 

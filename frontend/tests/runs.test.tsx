@@ -202,6 +202,30 @@ describe("RunsPanel", () => {
         expect(older).toHaveAttribute("aria-expanded", "true");
     });
 
+    it("shows the plan of a long task with the state of each step (N7)", () => {
+        const steps = (...statuses: string[]) => ({
+            details: { steps: statuses.map((status, index) => ({ text: `Passo ${index + 1}`, status, note: index === 0 ? "3 file" : "" })) },
+        });
+        const state = apply(
+            on(event("run.started", {}, 0)),
+            on(event("plan.updated", steps("pending", "pending", "pending"), 1)),
+            on(event("plan.updated", steps("done", "doing", "pending"), 5)),
+        );
+        expect(state.runs[0].plan?.map((step) => step.status)).toEqual(["done", "doing", "pending"]);
+        // A live view without a plan keeps the one the events brought.
+        const later = runsReducer(state, { type: "live", view: view({ runs: [{ run_id: "run-1", session_id: "s", principal_id: "u", started_at: "2026-10-25T10:00:00", cancelling: false, usage: EMPTY_USAGE }] }), now: START });
+        expect(later.runs[0].plan).toHaveLength(3);
+
+        render(<RunsPanel state={{ ...state, limits: LIMITS }} onStop={vi.fn()} />);
+        const plan = screen.getByRole("list", { name: "Piano della run run-" });
+        expect(plan.querySelectorAll("li")).toHaveLength(3);
+        expect(screen.getByText("PIANO · 1/3")).toBeInTheDocument();
+        expect(screen.getByText(/· in corso/)).toBeInTheDocument();
+        expect(screen.getByText(/— 3 file/)).toBeInTheDocument();
+        // The timeline line (the reducer describes in English unless told).
+        expect(screen.getByText("plan: 1 of 3 steps done")).toBeInTheDocument();
+    });
+
     it("says where runs come from when there is none", () => {
         render(<RunsPanel state={initialRuns} onStop={vi.fn()} />);
         expect(screen.getByRole("link", { name: "Storico delle run" })).toHaveAttribute("href", "/control-plane/runs");
