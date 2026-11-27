@@ -30,6 +30,7 @@
   - "Alza il volume", "pausa", "blocca lo schermo", "fai uno screenshot", "timer di 5 minuti" and "ricordami alle 18 di chiamare Marco" run without the model.
   - A reminder rings in the Nucleo and, with the page in the background, as a notification.
   - The agents can also search inside your text files and PDFs, and read PDFs (ADR-043).
+- **Your Google Calendar and Gmail.** Connect your own Google account on STRUMENTI: the agents read your events and mail, create events, and send an email only after your yes. The token stays in the keyring or in a secret, never in a file (ADR-046).
 - **Deleting is undoable.**
   - What the agents delete goes to ÆHub's trash, out of their reach, and can be restored from STRUMENTI for 30 days.
   - By voice, deleting or overwriting needs "sì, elimina" / "sì, sovrascrivi", not a plain yes (ADR-044).

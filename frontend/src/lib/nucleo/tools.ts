@@ -34,6 +34,10 @@ export const SOURCE_TEXT = catalog<Record<SkillSource, string>>({
 export const SKILL_TEXT = catalog<Record<string, { title: string; description: string }>>({
     en: {
         browser_automation: { title: "Browser", description: "Opens a web page and reads its text." },
+        google: {
+            title: "Google",
+            description: "Your Google Calendar and Gmail: events and mail are read, an event is created, an email is sent only after your yes.",
+        },
         documents: {
             title: "Documents",
             description: "Searches the documents of the working folder and cites the source.",
@@ -65,6 +69,10 @@ export const SKILL_TEXT = catalog<Record<string, { title: string; description: s
     },
     it: {
         browser_automation: { title: "Browser", description: "Apre una pagina web e ne legge il testo." },
+        google: {
+            title: "Google",
+            description: "Il tuo Google Calendar e Gmail: legge eventi e posta, crea un evento, manda una email solo dopo il tuo sì.",
+        },
         documents: {
             title: "Documenti",
             description: "Cerca nei documenti della cartella di lavoro e cita la fonte.",

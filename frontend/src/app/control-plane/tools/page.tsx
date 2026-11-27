@@ -18,6 +18,7 @@ import Link from "next/link";
 import React, { useCallback, useEffect, useState } from "react";
 
 import styles from "@/components/control-plane/control.module.css";
+import GoogleCard from "@/components/control-plane/GoogleCard";
 import TrashCard from "@/components/control-plane/TrashCard";
 import { getJson, postJson } from "@/lib/api/client";
 import { useSettings, type SettingChanges } from "@/lib/api/settings";
@@ -756,6 +757,8 @@ export default function ToolsPage() {
                     </div>
                 </div>
             </section>
+
+            <GoogleCard />
 
             <TrashCard />
 

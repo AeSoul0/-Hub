@@ -20,6 +20,8 @@ app, never in a file. The backend reads them from its environment.
 | `XAI_API_KEY` | Optional SpaceXAI (xAI) cloud voice (ADR-038) |
 | `AEHUB_MQTT_PASSWORD` | Home MQTT broker, when it needs one |
 | `AEHUB_MCP_TOKENS` | Bearer tokens of MCP servers that need a login, as `host=token,host=token` (host with its port, if any); each is sent only to its host (ADR-033) |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | The owner's own Google OAuth client ("Web application"), for Calendar and Gmail (ADR-046) |
+| `GOOGLE_REFRESH_TOKEN` | The connected Google account. STRUMENTI → Google writes it to the keyring in the desktop app; elsewhere it shows it once, to save here (a codespace secret, or `scripts/aehub.py setup`) |
 
 ## Infrastructure
 
@@ -41,6 +43,7 @@ The model, price and limit variables (`OPENAI_MODEL`, `AEHUB_CHECKER_MODEL`, `AE
 | `AEHUB_MODEL_ROLES` | Models per role (spec 4.1) as JSON: `{"architect": ["openrouter:<model>", "openai:<model>"], "critic": ["local:<model>"], ...}`. Roles: `architect`, `research`, `critic`, `fast_worker`, `triage`. The first entry is the primary model, the others are fallbacks. Providers: `openai`, `openrouter`, `local`, `groq`, `anthropic`, `google` (ADR-032). | every role uses `OPENAI_MODEL` on `openai` |
 | `AEHUB_CHECKER_MODEL` | Critic model when `AEHUB_MODEL_ROLES` does not set `critic`. The Critic must differ from every Implementer model, otherwise agent runs are refused. | none |
 | `AEHUB_CRITIC_SIMPLE` | `skip`: a simple request (triage or fast-worker role) answered with no tool call, or only read-only ones (`search_documents`), on trusted context, is not sent to the Critic (the timeline shows `checker.skipped`). `check`: the Critic checks these too | `skip` |
+| `AEHUB_GOOGLE_REDIRECT_URI` | Where Google sends the browser back after Connect, when it is not this API's own `…/api/google/callback` (behind a proxy); register the same address at Google (ADR-046) | the API's own address |
 | `AEHUB_TRASH_DAYS` | Days ÆHub's trash keeps what `delete_path` removed; it is restorable from STRUMENTI meanwhile (ADR-044) | `30` |
 | `AEHUB_CONFIRM_DELETIONS` | `on`: by voice or typed, deleting or overwriting needs "sì, elimina" / "sì, sovrascrivi", a plain yes is asked again; `off`: a plain yes is enough (ADR-044) | `on` |
 | `OPENAI_API_KEY` / `OPENROUTER_API_KEY` / `GROQ_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` | Keys of the providers (keyring); a provider shows up in the role editor once it has its key | none |
