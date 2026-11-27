@@ -31,6 +31,7 @@
   - A reminder rings in the Nucleo and, with the page in the background, as a notification.
   - The agents can also search inside your text files and PDFs, and read PDFs (ADR-043).
 - **Your Google Calendar and Gmail.** Connect your own Google account on STRUMENTI: the agents read your events and mail, create events, and send an email only after your yes. The token stays in the keyring or in a secret, never in a file (ADR-046).
+- **Long tasks in steps.** For a task with several things to do, the agent first writes a plan and marks each step as it works; the Nucleo shows the plan with the state of every step. The plan is saved with the run: after an approval, a retry or a restart the run goes on from the step it reached (ADR-047).
 - **Deleting is undoable.**
   - What the agents delete goes to ÆHub's trash, out of their reach, and can be restored from STRUMENTI for 30 days.
   - By voice, deleting or overwriting needs "sì, elimina" / "sì, sovrascrivi", not a plain yes (ADR-044).

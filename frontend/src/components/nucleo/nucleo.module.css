@@ -129,6 +129,20 @@
 .historyTitle { font-size: 13px; line-height: 1.4; color: var(--ink); overflow-wrap: anywhere; }
 .historyMatch { font-size: 12px; color: var(--dim); overflow-wrap: anywhere; }
 
+/* the plan of a long task (N7) */
+.plan { display: grid; gap: 6px; }
+.planHead { font-family: var(--font-code); font-size: 10px; letter-spacing: 0.14em; color: var(--dim); }
+.plan ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.plan li { display: flex; gap: 8px; align-items: baseline; font-size: 13px; line-height: 1.4; color: var(--dim); overflow-wrap: anywhere; }
+.planMark { flex: none; width: 8px; height: 8px; border-radius: 3px; border: 1px solid var(--hint); transform: translateY(-1px); }
+.plan li[data-status="doing"] { color: var(--ink); }
+.plan li[data-status="doing"] .planMark { border-color: var(--ice); background: color-mix(in srgb, var(--ice) 40%, transparent); box-shadow: 0 0 6px var(--ice); }
+.plan li[data-status="done"] .planMark { border-color: var(--ok); background: var(--ok); }
+.plan li[data-status="failed"] .planMark { border-color: var(--danger); background: var(--danger); }
+.plan li[data-status="skipped"] { text-decoration: line-through; color: var(--hint); }
+.planNote { color: var(--hint); }
+.srOnly { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
 /* runs of the session */
 .run {
     display: grid; gap: 9px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 18px;

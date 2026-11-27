@@ -45,6 +45,10 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_TOP_K = 6
 
+# Tools every run sees besides the selected ones: the plan of a long task
+# (N7) is not named by the task's words.
+ALWAYS_TOOLS = ("plan_steps", "plan_step")
+
 # Words that say nothing about which tool is needed.
 _STOPWORDS = frozenset(
     """
@@ -79,7 +83,8 @@ def _documents(registry: Any) -> List[Tuple[str, str]]:
     disabled = disabled_tools()
 
     for name in registry.get_registered_tool_names():
-        if name in disabled:
+        # Shown to every run anyway: they take no place of a selected tool.
+        if name in disabled or name in ALWAYS_TOOLS:
             continue
         metadata = registry.get_tool_metadata(name)
         if metadata is None:
@@ -225,10 +230,16 @@ def select_tools(registry: Any, task: str) -> Optional[List[str]]:
         logger.warning("Skill index unavailable, exposing every tool: %s", exc)
         return None
 
-    return sorted(selected) or None
+    if not selected:
+        return None
+    present = set(registry.get_registered_tool_names())
+    blocked = disabled_tools()
+    always = {name for name in ALWAYS_TOOLS if name in present and name not in blocked}
+    return sorted(set(selected) | always)
 
 
 __all__ = [
+    "ALWAYS_TOOLS",
     "DEFAULT_TOP_K",
     "SkillIndex",
     "index_path",

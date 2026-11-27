@@ -51,5 +51,12 @@ Il sistema ÆHub/A.U.R.O.R.A. opera in un modello **LAN-first**. Tuttavia, i con
 | **T12** | Il token dell'account Google rubato dal disco o dal database. | Accesso alla posta (Critical) | Il refresh token non va mai in un file né nel database: nel portachiavi del sistema (app desktop) o in un secret dell'ambiente; altrimenti resta in memoria e la pagina lo mostra una volta sola. Il token di accesso vive in memoria. Scollegare lo revoca presso Google. |
 | **T13** | Un sito avvia o completa il collegamento con un account dell'attaccante. | Posta dell'utente verso un altro account (High) | Solo il proprietario avvia il collegamento (POST con controllo dell'origine). Lo stato è casuale, vale 10 minuti e una sola volta; il codice è legato al verificatore PKCE (S256) che resta nel backend. Collegare e scollegare finiscono nel registro di audit. |
 
+### Aggiornamento N7 (2026-11-27, ADR-047)
+
+| ID | Minaccia | Impatto | Mitigazione |
+|---|---|---|---|
+| **T14** | Un contenuto esterno letto dall'agente finisce nel piano, che il modello rilegge a ogni turno come se fosse suo. | Iniezione persistente nella run (Medium) | Dopo un contenuto non affidabile il blocco del piano è marcato non affidabile come il resto. Il piano non dà permessi: gli strumenti sono quelli scelti dal compito, e ogni azione HIGH chiede l'approvazione. Gli strumenti del piano scrivono solo il piano della run che li chiama. |
+| **T15** | I passi del piano usati per far durare una run all'infinito. | Spesa (Medium) | Un piano dà al massimo 30 turni; costo, tempo e chiamate fallite restano limitati da `RunLimits` e dal budget, e lo stop ferma la run come sempre. |
+
 ## 4. Policy "Fail Closed"
 In caso di fallimento del database, mancata decodifica del token, token scaduto, o policy engine non raggiungibile, la `HTTPException(401)` o `403` viene generata di default. Non esiste un "fallback privileged".

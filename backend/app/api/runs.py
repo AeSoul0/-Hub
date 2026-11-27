@@ -184,6 +184,16 @@ def _snapshot(row: Any) -> Optional[Dict[str, Any]]:
     return snapshot if isinstance(snapshot, dict) else None
 
 
+def _plan_of(snapshot: Dict[str, Any]) -> List[Dict[str, str]]:
+    """The steps of the run's plan (N7), as saved with the run."""
+    plan = ((snapshot.get("current_state") or {}).get("worker_context") or {}).get("plan") or {}
+    return [
+        {"text": str(step.get("text", "")), "status": str(step.get("status", "pending")), "note": str(step.get("note", ""))}
+        for step in plan.get("steps") or []
+        if isinstance(step, dict)
+    ]
+
+
 def _task_of(snapshot: Dict[str, Any]) -> Optional[str]:
     state = snapshot.get("current_state") or {}
     task = (state.get("worker_context") or {}).get("task")
@@ -248,6 +258,7 @@ def live_view(principal: Principal) -> Dict[str, Any]:
                 "role": snapshot.get("role"),
                 "status": snapshot.get("status"),
                 "task": _task_of(snapshot),
+                "plan": _plan_of(snapshot),
                 "started_at": live.started_at.isoformat(),
                 "cancelling": bool(getattr(live.token, "is_cancelled", False)),
                 "usage": live_usage(live.run_id, snapshot.get("usage") or {}),
@@ -591,6 +602,7 @@ def run_detail(run_id: str, workspace_id: str) -> Dict[str, Any] | None:
             "created_at": row.created_at.isoformat() if row.created_at else None,
             "updated_at": row.updated_at.isoformat() if row.updated_at else None,
             "task": context.get("task"),
+            "plan": _plan_of(snapshot),
             "attempts": snapshot.get("task_attempts", 0),
             "turn": state.get("turn"),
             "result": result,

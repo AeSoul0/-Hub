@@ -128,6 +128,7 @@ const TEXT = catalog({
         toolFailed: "failed",
         subagent: "subagent",
         budget: "monthly budget almost used up",
+        plan: (done: number, total: number) => `plan: ${done} of ${total} steps done`,
     },
     it: {
         attempt: (attempt: number, max?: number) =>
@@ -141,6 +142,7 @@ const TEXT = catalog({
         toolFailed: "fallito",
         subagent: "sub-agente",
         budget: "budget del mese quasi esaurito",
+        plan: (done: number, total: number) => `piano: ${done} di ${total} passi fatti`,
     },
 });
 
@@ -207,6 +209,11 @@ export function describe(event: EngineEvent, lang: Lang = "en"): Omit<LogLine, "
         case "budget.warning":
             detail = t.budget;
             break;
+        case "plan.updated": {
+            const steps = Array.isArray(event.details?.steps) ? (event.details.steps as { status?: string }[]) : [];
+            detail = t.plan(steps.filter((step) => step.status === "done" || step.status === "skipped").length, steps.length);
+            break;
+        }
         default:
             detail = [`run ${short(event.run_id)}`, reason].filter(Boolean).join(" · ");
     }

@@ -458,6 +458,7 @@ class ToolsMixin:
         principal: Principal,
         limits: RunLimits,
         capabilities: Optional[SubagentCapabilitySet],
+        plan: Optional[Dict[str, Any]] = None,
     ) -> DelegationScope:
         """
         What delegate_task needs of the run calling it (F8).
@@ -472,6 +473,7 @@ class ToolsMixin:
             max_subagents=limits.max_subagents,
             delegate=self.delegator,
             is_subagent=capabilities is not None,
+            plan=plan,
         )
 
     @staticmethod

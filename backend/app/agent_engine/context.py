@@ -434,6 +434,20 @@ class ContextManager:
 
         blocks: List[Dict[str, Any]] = []
 
+        # L1: the run's plan and the state of each step (N7). Written by the
+        # model itself; after untrusted content it is untrusted too.
+        plan = worker_context.get("plan") or {}
+        if plan.get("steps"):
+            from app.skills.plan_skill import render
+
+            block = {
+                "level": "L1",
+                "title": "Your plan for this task (go on from the first step not done)",
+                "content": truncate_to_tokens(render(plan), max(200, l1_cap // 2)),
+                "trusted": not worker_context.get("untrusted_context"),
+            }
+            blocks.append(block)
+
         # L2: trusted preferences and rules.
         preferences = [
             str(item.get("content", ""))
@@ -573,7 +587,7 @@ class ContextManager:
             blocks.append(block)
             report.tokens["L3"] = estimate_tokens(render_block(block))
 
-        order = {"L2": 0, "L5": 1, "L3": 2}
+        order = {"L1": 0, "L2": 1, "L5": 2, "L3": 3}
         model_context["context_blocks"] = sorted(
             blocks,
             key=lambda block: order[block["level"]],

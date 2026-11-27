@@ -1,7 +1,8 @@
 /**
  * @file frontend/src/components/nucleo/RunsPanel.tsx
  * @description The runs of this session in the Nucleo (F2): each one with
- * its totals against the per-run limits, a stop button and its timeline.
+ * its totals against the per-run limits, a stop button and its timeline;
+ * a long task also shows its plan, with the state of each step (N7).
  */
 "use client";
 
@@ -25,6 +26,9 @@ const TEXT = catalog({
         timeline: (id: string) => `Timeline of run ${id}`,
         noEvents: "No event recorded.",
         waiting: "Waiting for the first event…",
+        plan: (id: string) => `Plan of run ${id}`,
+        planDone: (done: number, total: number) => `PLAN · ${done}/${total}`,
+        stepStatus: { pending: "to do", doing: "in progress", done: "done", failed: "failed", skipped: "skipped" },
     },
     it: {
         empty: "Le run partono dai tuoi comandi: qui vedi costo, tempo e limiti mentre lavorano.",
@@ -36,6 +40,9 @@ const TEXT = catalog({
         timeline: (id: string) => `Timeline della run ${id}`,
         noEvents: "Nessun evento registrato.",
         waiting: "In attesa del primo evento…",
+        plan: (id: string) => `Piano della run ${id}`,
+        planDone: (done: number, total: number) => `PIANO · ${done}/${total}`,
+        stepStatus: { pending: "da fare", doing: "in corso", done: "fatto", failed: "fallito", skipped: "saltato" },
     },
 });
 
@@ -97,6 +104,29 @@ export default function RunsPanel({
                             <span className={styles.runStatus}>{STATUS_LABELS[lang][run.status]}</span>
                         </div>
                         {run.task && <p className={styles.runTask}>{run.task}</p>}
+
+                        {(run.plan ?? []).length > 0 && (
+                            <div className={styles.plan}>
+                                <span className={styles.planHead}>
+                                    {t.planDone(
+                                        (run.plan ?? []).filter((step) => step.status === "done" || step.status === "skipped").length,
+                                        (run.plan ?? []).length,
+                                    )}
+                                </span>
+                                <ol aria-label={t.plan(short(run.id))}>
+                                    {(run.plan ?? []).map((step, number) => (
+                                        <li key={number} data-status={step.status}>
+                                            <span className={styles.planMark} aria-hidden="true" />
+                                            <span>
+                                                {step.text}
+                                                <span className={styles.srOnly}> · {t.stepStatus[step.status]}</span>
+                                                {step.note && <span className={styles.planNote}> — {step.note}</span>}
+                                            </span>
+                                        </li>
+                                    ))}
+                                </ol>
+                            </div>
+                        )}
 
                         <ul className={styles.meters} aria-label={t.limits(short(run.id))}>
                             {meters(run, state.limits, now, lang).map((item) => (
