@@ -3,8 +3,12 @@
 @description Index and search the user's documents in the working folder (roadmap M13).
 
 - Sources: text, Markdown and PDF files under the working folder (the first
-  root of AEHUB_ALLOWED_DIRS, ./workspace by default). Hidden files and
-  folders are skipped, and so is any symlink that leads outside the folder.
+  root of AEHUB_ALLOWED_DIRS, ./workspace by default) and under the folders
+  chosen for the agents (AEHUB_AGENT_FOLDERS, F11; N3). A file of the
+  working folder is named by its path inside it, as before; a file of an
+  agent folder by its full path, so a citation says where it is. Hidden
+  files and folders are skipped, and so is any symlink that leads outside
+  its folder; a file reachable from two folders is indexed once.
 - Storage: chunks go to memory_chunks with kind "document", trusted=False and
   a dedicated principal, so they share the hybrid retrieval of the long-term
   memory but are never recalled automatically and never become preferences.
@@ -30,7 +34,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from app.agent_engine.guardrails import allowed_directories
+from app.agent_engine.guardrails import agent_folders, allowed_directories
 from app.core import db as core_db
 from app.core.runtime_config import config_value
 from app.domain.models.documents import DocumentFile
@@ -82,6 +86,20 @@ def documents_root() -> Path:
     The working folder: the first root that file tools may touch.
     """
     return allowed_directories()[0]
+
+
+def document_folders() -> List[Path]:
+    """
+    The folders indexed besides the working folder: those chosen for the
+    agents (F11), without the ones inside the working folder (already there).
+    """
+    working = documents_root()
+    folders: List[Path] = []
+    for folder in agent_folders():
+        if folder == working or folder.is_relative_to(working) or folder in folders:
+            continue
+        folders.append(folder)
+    return folders
 
 
 # ==============================================================================
@@ -291,6 +309,7 @@ class SyncReport:
 
     root: str = ""
     root_exists: bool = True
+    folders: List[str] = field(default_factory=list)
     added: List[str] = field(default_factory=list)
     updated: List[str] = field(default_factory=list)
     removed: List[str] = field(default_factory=list)
@@ -303,6 +322,7 @@ class SyncReport:
         return {
             "root": self.root,
             "root_exists": self.root_exists,
+            "folders": self.folders,
             "added": self.added,
             "updated": self.updated,
             "removed": self.removed,
@@ -324,12 +344,19 @@ class DocumentIndex:
         root: Optional[Path] = None,
         embedder: Optional[Embedder] = None,
         session_factory: Optional[Callable[[], Any]] = None,
+        folders: Optional[List[Path]] = None,
     ) -> None:
         if not workspace_id:
             raise ValueError("workspace_id is required.")
 
         self.workspace_id = workspace_id
         self.root = Path(root) if root is not None else documents_root()
+        # The agents' folders: by default those of the settings, none when
+        # the caller names its own root (tests).
+        if folders is not None:
+            self.folders = [Path(folder) for folder in folders]
+        else:
+            self.folders = document_folders() if root is None else []
         self._session_factory = session_factory
         self._store = MemoryStore(
             workspace_id=workspace_id,
@@ -344,9 +371,30 @@ class DocumentIndex:
     # ------------------------------------------------------------------ sync
 
     def _walk(self, report: SyncReport) -> List[Tuple[str, Path]]:
-        root = self.root.resolve()
         found: List[Tuple[str, Path]] = []
+        seen: set = set()
+        roots = [(self.root, False)] + [(folder, True) for folder in self.folders]
 
+        for folder, absolute in roots:
+            if not folder.is_dir():
+                continue
+            if not self._walk_root(folder.resolve(), absolute, found, seen, report):
+                break
+
+        return found
+
+    def _walk_root(
+        self,
+        root: Path,
+        absolute: bool,
+        found: List[Tuple[str, Path]],
+        seen: set,
+        report: SyncReport,
+    ) -> bool:
+        """
+        The files of one folder, named inside it (the working folder) or by
+        their full path (an agent folder). False when the file limit is hit.
+        """
         for directory, dirnames, filenames in os.walk(root):
             dirnames[:] = sorted(
                 name for name in dirnames if not name.startswith(".") and name not in SKIPPED_DIRS
@@ -364,16 +412,18 @@ class DocumentIndex:
                     continue
 
                 # A symlink may point anywhere on the host.
-                if not resolved.is_relative_to(root) or not resolved.is_file():
+                if not resolved.is_relative_to(root) or not resolved.is_file() or resolved in seen:
                     continue
 
                 if len(found) >= MAX_FILES:
                     report.truncated = True
-                    return found
+                    return False
 
-                found.append((path.relative_to(root).as_posix(), path))
+                seen.add(resolved)
+                name = path.as_posix() if absolute else path.relative_to(root).as_posix()
+                found.append((name, path))
 
-        return found
+        return True
 
     def _drop_chunks(self, db: Any, path: str) -> None:
         db.query(MemoryChunk).filter(
@@ -468,11 +518,12 @@ class DocumentIndex:
         left over when it runs out are counted as pending; the next sync picks
         them up. Every file is committed on its own.
         """
-        report = SyncReport(root=str(self.root))
+        report = SyncReport(root=str(self.root), folders=[str(folder) for folder in self.folders])
 
         if not self.root.is_dir():
             report.root_exists = False
-            return report
+            if not any(folder.is_dir() for folder in self.folders):
+                return report
 
         deadline = time.monotonic() + budget_seconds if budget_seconds is not None else None
 
@@ -628,6 +679,7 @@ __all__ = [
     "SyncReport",
     "chunk_lines",
     "citation",
+    "document_folders",
     "documents_root",
     "extract_chunks",
     "find_citations",

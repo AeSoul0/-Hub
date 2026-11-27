@@ -253,6 +253,10 @@ describe("Memoria", () => {
 const DOCUMENTS: DocumentsView = {
     root: "C:/Users/me/Documents/ÆHub",
     root_exists: true,
+    folders: [
+        { path: "C:/Users/me/Ricette", exists: true },
+        { path: "D:/Archivio", exists: false },
+    ],
     files: [
         { path: "notes/garden.md", size: 2048, chunks: 3, error: null, indexed_at: "2026-10-26T18:00:00" },
         { path: "scan.pdf", size: 9_000_000, chunks: 0, error: "File larger than 5 MB.", indexed_at: "2026-10-26T18:00:00" },
@@ -286,6 +290,10 @@ describe("Documenti", () => {
         render(<DocumentsPage />);
 
         expect(await screen.findByText("2 file · 3 pezzi")).toBeInTheDocument();
+        // The agents' folders are indexed too (N3), each with its state.
+        const folders = screen.getByRole("list", { name: "Cartelle degli agenti" });
+        expect(within(folders).getByText(/C:\/Users\/me\/Ricette/)).toBeInTheDocument();
+        expect(within(folders).getByText("non esiste")).toBeInTheDocument();
         expect(screen.getByText("1 non leggibili")).toBeInTheDocument();
         expect(screen.getByText("File larger than 5 MB.")).toBeInTheDocument();
 

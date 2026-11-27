@@ -348,7 +348,8 @@ SPECS: Tuple[SettingSpec, ...] = (
         kind="text",
         default="all-MiniLM-L6-v2",
         help=(
-            "all-MiniLM-L6-v2 (pinned and checked), or another model with 384 dimensions and an ONNX "
+            "all-MiniLM-L6-v2 (English) or paraphrase-multilingual-MiniLM-L12-v2 (50+ languages, better "
+            "for Italian), both pinned and checked; or another model with 384 dimensions and an ONNX "
             "export named with its commit: owner/name@<commit>. Downloaded on first use."
         ),
         pattern=r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}(/[A-Za-z0-9._-]{1,96})?(@[0-9a-f]{7,40})?",

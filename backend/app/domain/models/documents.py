@@ -29,7 +29,8 @@ class DocumentFile(Base):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     workspace_id = Column(String, nullable=False, index=True)
-    # POSIX path relative to the working folder; also the citation name.
+    # POSIX path relative to the working folder, or the full path of a file
+    # in an agent folder (N3); also the citation name.
     path = Column(String(1024), nullable=False)
     sha256 = Column(String(64), nullable=False)
     size = Column(Integer, nullable=False)

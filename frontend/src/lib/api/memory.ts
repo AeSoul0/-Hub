@@ -58,6 +58,8 @@ export interface DocumentFileInfo {
 export interface DocumentsView {
     root: string;
     root_exists: boolean;
+    /** The agents' folders indexed too (N3). */
+    folders?: { path: string; exists: boolean }[];
     files: DocumentFileInfo[];
     max_file_mb: number;
     suffixes: string[];
@@ -68,6 +70,7 @@ export interface DocumentsView {
 export interface SyncReport {
     root: string;
     root_exists: boolean;
+    folders?: string[];
     added: string[];
     updated: string[];
     removed: string[];

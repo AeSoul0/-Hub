@@ -56,6 +56,8 @@ async def list_documents(
     return {
         "root": str(index.root),
         "root_exists": index.root.is_dir(),
+        # The agents' folders indexed too (N3), with whether each exists.
+        "folders": [{"path": str(folder), "exists": folder.is_dir()} for folder in index.folders],
         "files": files,
         "max_file_mb": round(max_file_bytes() / (1024 * 1024), 2),
         "suffixes": sorted(SUPPORTED_SUFFIXES),

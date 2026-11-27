@@ -36,10 +36,17 @@ def main() -> int:
     failures = []
     for name, source in PINNED_MODELS.items():
         repository, revision = source["repository"], source["revision"]
-        info = HfApi().model_info(repository, revision=revision, files_metadata=True)
+        try:
+            info = HfApi().model_info(repository, revision=revision, files_metadata=True)
+        except Exception as exc:  # noqa: BLE001 - an unknown commit: show what main is
+            print(f"{name}: {repository}@{revision[:12]} not found ({exc.__class__.__name__})")
+            info = HfApi().model_info(repository, files_metadata=True)
+            failures.append(f"{name}: commit {revision} not found")
         if info.sha != revision:
+            # To pin a new model: the commit and the hashes to write.
+            print(f"{name}: {repository} main is {info.sha}")
             failures.append(f"{name}: {repository} resolves {revision} to {info.sha}")
-            continue
+            revision = info.sha
         listed = {
             sibling.rfilename: sibling.lfs.sha256
             for sibling in info.siblings or []

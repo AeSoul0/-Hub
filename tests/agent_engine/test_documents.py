@@ -9,6 +9,7 @@ output, the API, and the eval gate's citation check.
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from typing import List
@@ -218,6 +219,40 @@ def test_changed_files_past_the_budget_wait_for_the_next_sync(folder, index):
     assert late.pending == 2 and index.files() == []
 
     assert sorted(index.sync().added) == ["a.md", "b.md"]
+
+
+def test_the_agents_folders_are_indexed_too_with_their_full_path(folder, tmp_path, db_session_factory, monkeypatch):
+    """N3: the folders chosen for the agents (F11) are searched with the working folder."""
+    agents = tmp_path / "Documenti"
+    write(agents, "ricette/pasta.md", "La carbonara vuole guanciale e pecorino.")
+    write(agents, ".nascosto.md", "hidden")
+    inside = folder / "sub"
+    write(inside, "dentro.md", "Already in the working folder.")
+    write(folder, "todo.txt", "Buy seeds.")
+    monkeypatch.setenv("AEHUB_AGENT_FOLDERS", json.dumps([str(agents), str(inside)]))
+
+    index = DocumentIndex(WORKSPACE_ID, embedder=HashingEmbedder(), session_factory=db_session_factory)
+    # A folder inside the working folder is not indexed twice.
+    assert index.folders == [agents.resolve()]
+
+    report = index.sync()
+    pasta = (agents / "ricette/pasta.md").as_posix()
+    assert sorted(report.added) == sorted([pasta, "sub/dentro.md", "todo.txt"])
+    assert report.folders == [str(agents.resolve())]
+    assert index.search("carbonara guanciale")[0].citation == f"[doc: {pasta}#L1-1]"
+    assert missing_citations(f"Vedi [doc: {pasta}#L1-1].", WORKSPACE_ID, db_session_factory) == []
+
+    # A removed agent folder: its files leave the index.
+    monkeypatch.setenv("AEHUB_AGENT_FOLDERS", "[]")
+    again = DocumentIndex(WORKSPACE_ID, embedder=HashingEmbedder(), session_factory=db_session_factory)
+    assert again.sync().removed == [pasta]
+
+    # With no working folder, the agents' folders are still indexed.
+    monkeypatch.setenv("AEHUB_AGENT_FOLDERS", json.dumps([str(agents)]))
+    monkeypatch.setenv("AEHUB_ALLOWED_DIRS", str(tmp_path / "missing"))
+    alone = DocumentIndex(WORKSPACE_ID, embedder=HashingEmbedder(), session_factory=db_session_factory).sync()
+    assert alone.root_exists is False
+    assert alone.added == [pasta]
 
 
 def test_symlinks_leading_outside_the_folder_are_skipped(folder, index, tmp_path):

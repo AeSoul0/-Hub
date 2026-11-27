@@ -58,6 +58,8 @@ const TEXT = catalog({
         similarity: "Minimum similarity",
         help: "When on, every run recalls the useful memories and saves what it learns. The higher the similarity, the fewer memories recalled by meaning (the same words always count).",
         model: "Model (384 dimensions)",
+        modelHelp:
+            "all-MiniLM-L6-v2: English, light (~90 MB). paraphrase-multilingual-MiniLM-L12-v2: 50+ languages, much better for Italian (~120 MB). Both are pinned and checked. After a change, recompute the vectors.",
         save: "Save",
         cancel: "Cancel",
         stale: (count: number) =>
@@ -104,6 +106,8 @@ const TEXT = catalog({
         similarity: "Somiglianza minima",
         help: "Accesa, ogni run richiama i ricordi utili e salva quello che impara. Più alta la somiglianza, meno ricordi richiamati per significato (le parole uguali valgono sempre).",
         model: "Modello (384 dimensioni)",
+        modelHelp:
+            "all-MiniLM-L6-v2: inglese, leggero (~90 MB). paraphrase-multilingual-MiniLM-L12-v2: oltre 50 lingue, molto meglio per l'italiano (~120 MB). Entrambi fissati e controllati. Dopo un cambio, ricalcola i vettori.",
         save: "Salva",
         cancel: "Annulla",
         stale: (count: number) =>
@@ -371,11 +375,17 @@ export default function MemoryPage() {
                             <input
                                 value={form.model}
                                 spellCheck={false}
+                                list="embedding-models"
                                 aria-invalid={!modelValid}
                                 onChange={(event) => setForm({ ...form, model: event.target.value })}
                             />
+                            <datalist id="embedding-models">
+                                <option value="all-MiniLM-L6-v2" />
+                                <option value="paraphrase-multilingual-MiniLM-L12-v2" />
+                            </datalist>
                         </label>
                     )}
+                    {form.embedder === "sentence-transformers" && <p className={styles.help}>{t.modelHelp}</p>}
 
                     <div className={styles.row}>
                         <button
