@@ -184,10 +184,12 @@ async def browse_and_extract(url: str) -> str:
 
 
 def browser_available() -> bool:
-    """False in a Docker image built without the browser (AEHUB_BROWSER=0)."""
-    if os.getenv("AEHUB_IN_CONTAINER") != "1":
-        return True
-    return (os.getenv("AEHUB_BROWSER") or "1").strip() == "1"
+    """False in a Docker image built without the browser (AEHUB_BROWSER=0), or without Playwright."""
+    import importlib.util
+
+    if os.getenv("AEHUB_IN_CONTAINER") == "1" and (os.getenv("AEHUB_BROWSER") or "1").strip() != "1":
+        return False
+    return importlib.util.find_spec("playwright") is not None
 
 
 class BrowserSkill(BaseSkill):

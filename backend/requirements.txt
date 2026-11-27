@@ -48,8 +48,8 @@ paho-mqtt>=2.1.0
 # ==============================================================================
 
 duckduckgo-search>=3.9.3
-# Must match the tag of the backend image (backend/dockerfile).
-playwright==1.65.2
+# Playwright (the browser skill) is in requirements-browser.txt: the Docker
+# image installs it only with AEHUB_BROWSER=1 (N8, ADR-039).
 beautifulsoup4>=4.12.2
 mcp>=2.3.0
 

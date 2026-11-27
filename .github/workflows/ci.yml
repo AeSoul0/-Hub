@@ -83,7 +83,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip "setuptools>=83"
           pip install ruff pytest httpx pip-audit bandit
-          pip install -r requirements.txt -r requirements-dev.txt
+          pip install -r requirements.txt -r requirements-browser.txt -r requirements-dev.txt
 
       # M14 exit test: the desktop sidecar runs its own cluster, so it needs
       # server binaries with pgvector, not the service container.

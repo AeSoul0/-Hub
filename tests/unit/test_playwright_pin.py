@@ -24,7 +24,9 @@ def _pin(requirements: str) -> str:
 
 
 def test_docker_and_the_desktop_app_pin_the_same_playwright():
-    assert _pin("requirements.txt") == _pin("requirements-desktop.txt")
+    assert _pin("requirements-browser.txt") == _pin("requirements-desktop.txt")
+    # Not in the base requirements: an image without the browser leaves it out.
+    assert "playwright" not in (BACKEND / "requirements.txt").read_text(encoding="utf-8").lower().split("# playwright")[0]
 
 
 def test_the_image_installs_the_browser_of_its_pin_only_when_asked():
@@ -32,4 +34,5 @@ def test_the_image_installs_the_browser_of_its_pin_only_when_asked():
     assert re.search(r"^FROM python:3\.12-slim", dockerfile, re.MULTILINE)
     assert "mcr.microsoft.com/playwright" not in dockerfile
     assert "ARG AEHUB_BROWSER=0" in dockerfile
+    assert "pip install -r requirements-browser.txt" in dockerfile
     assert "playwright install --with-deps --only-shell chromium" in dockerfile

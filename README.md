@@ -341,7 +341,7 @@ Windows PowerShell:
 Install packages (`requirements-dev.txt` adds pytest and Ruff, for the tests):
 
 ```bash
-pip install -r requirements.txt -r requirements-dev.txt
+pip install -r requirements.txt -r requirements-browser.txt -r requirements-dev.txt
 ```
 
 Start the API:
