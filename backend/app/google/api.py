@@ -59,7 +59,7 @@ def _when(item: Dict[str, Any]) -> str:
     value = item.get("dateTime") or item.get("date") or ""
     try:
         if "T" in value:
-            return f"{datetime.fromisoformat(value.replace('Z', '+00:00')).astimezone():%Y-%m-%d %H:%M}"
+            return f"{datetime.fromisoformat(value).astimezone():%Y-%m-%d %H:%M}"
         return f"{date.fromisoformat(value):%Y-%m-%d} (all day)"
     except ValueError:
         return value
