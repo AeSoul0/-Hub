@@ -14,6 +14,12 @@ Nucleo shows, through the same path as the button
 "Ok, procedo.") and the run goes on; its result arrives as when the button
 is clicked. Anything longer, or a yes or no with nothing pending, goes to the
 engine as before.
+
+Deleting and overwriting (N5): a plain "sì" is not enough for delete_path
+and replace_file. The question asks for "sì, elimina" (or "sì,
+sovrascrivi"), and only those words, or the same in English, allow it; a
+plain yes gets the question again, a no still cancels. Off with
+AEHUB_CONFIRM_DELETIONS=off. The buttons of the Nucleo are unchanged.
 """
 
 from __future__ import annotations
@@ -104,6 +110,46 @@ _ACTIONS: Dict[str, Dict[str, str]] = {
     },
 }
 _QUESTION = {"it": "Posso {action}? Sì o no.", "en": "May I {action}? Yes or no."}
+
+# Deleting and overwriting need their own words (N5).
+_STRONG: Dict[str, Dict[str, set]] = {
+    "delete_path": {
+        "it": {"si elimina", "elimina", "si eliminalo", "eliminalo", "si cancella", "cancella", "si cancellalo", "cancellalo"},
+        "en": {"yes delete", "delete", "delete it", "yes delete it"},
+    },
+    "replace_file": {
+        "it": {"si sovrascrivi", "sovrascrivi", "si sovrascrivilo", "sovrascrivilo"},
+        "en": {"yes overwrite", "overwrite", "overwrite it", "yes overwrite it"},
+    },
+}
+_CONFIRM_WORDS = {
+    "delete_path": {"it": "sì, elimina", "en": "yes, delete"},
+    "replace_file": {"it": "sì, sovrascrivi", "en": "yes, overwrite"},
+}
+_QUESTION_STRONG = {
+    "it": "Posso {action}? Per confermare di' «{words}», altrimenti no.",
+    "en": "May I {action}? To confirm say \"{words}\", otherwise no.",
+}
+_ASK_STRONG = {
+    "it": "Per questo serve «{words}». Lo confermi?",
+    "en": "This one needs \"{words}\". Do you confirm?",
+}
+
+
+def strict_deletions() -> bool:
+    from app.core.runtime_config import config_value
+
+    return (config_value("AEHUB_CONFIRM_DELETIONS") or "on").strip().lower() != "off"
+
+
+def _strong_tool(text: str) -> Optional[Tuple[str, str]]:
+    """(tool, language) when the text is the confirmation of a deletion or an overwrite."""
+    words = _strip(text).replace(",", "")
+    for tool, table in _STRONG.items():
+        for language, answers in table.items():
+            if words in answers:
+                return tool, language
+    return None
 _WAITING = {"it": "Serve il tuo ok per continuare. Sì o no?", "en": "I need your okay to go on. Yes or no?"}
 _GENERIC = {"it": "usare {tool}", "en": "use {tool}"}
 _GENERIC_ON = {"it": "usare {tool} su {name}", "en": "use {tool} on {name}"}
@@ -169,6 +215,8 @@ def approval_question(tool: str, arguments: Optional[Dict[str, Any]], language: 
     else:
         spoken = tool.replace("_", " ")
         action = (_GENERIC_ON if name else _GENERIC)[language].format(tool=spoken, name=name)
+    if tool in _CONFIRM_WORDS and strict_deletions():
+        return _QUESTION_STRONG[language].format(action=action, words=_CONFIRM_WORDS[tool][language])
     return _QUESTION[language].format(action=action)
 
 
@@ -203,16 +251,33 @@ async def try_decision(text: str, principal: Any, default_language: str = "it") 
     from app.api.approvals import record_decision
 
     started = time.perf_counter()
+    strong = _strong_tool(text)
     recognized = recognize_decision(text, default_language)
-    if recognized is None:
+    if recognized is None and strong is None:
         return None
     pending = await ApprovalManager.list_pending(principal.workspace_id)
     if not pending:
         return None
 
-    decision, language = recognized
-    replies = REPLIES[language]
     oldest = pending[0]
+    tool = str(oldest.get("tool") or "")
+    if strong is not None and strong[0] == tool:
+        decision, language = "allow", strong[1]
+    elif recognized is None:
+        return None  # "elimina" while something else waits: the engine reads it
+    else:
+        decision, language = recognized
+    replies = REPLIES[language]
+
+    # A plain yes does not delete or overwrite: ask for the words again (N5).
+    if decision == "allow" and tool in _CONFIRM_WORDS and strict_deletions() and (strong is None or strong[0] != tool):
+        return {
+            "text": _ASK_STRONG[language].format(words=_CONFIRM_WORDS[tool][language]),
+            "decision": None,
+            "approval_id": oldest["id"],
+            "tool": tool,
+            "ms": round((time.perf_counter() - started) * 1000),
+        }
     try:
         approval = await record_decision(oldest["id"], decision, principal)
     except ApprovalClosedError:

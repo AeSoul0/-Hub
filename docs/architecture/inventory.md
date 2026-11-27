@@ -37,6 +37,7 @@ sidecar dell'app desktop (PostgreSQL e API su `127.0.0.1`).
 - `app/voice/`: voce locale (faster-whisper, Piper), ElevenLabs e SpaceXAI facoltativi; `wake.py` consegna i modelli della parola di attivazione (N2, ADR-041).
 - `app/memory/` e `app/documents/`: memoria a lungo termine e indice dei documenti; ultimi turni della sessione in ogni run, riassunto delle conversazioni lunghe, cartelle degli agenti indicizzate, modello multilingue fissato (N3, ADR-042).
 - `app/skills/system_skill.py` e `app/instant/reminders.py`: volume, tasti multimediali, blocco dello schermo, screenshot, timer e promemoria; `files_skill.search_in_files` cerca dentro i file e i PDF (N4, ADR-043).
+- `app/files/trash.py`: il cestino di ÆHub per `delete_path`, con ripristino e scadenza; pagina STRUMENTI → Cestino (`components/control-plane/TrashCard.tsx`) (N5, ADR-044).
 - `app/home/`: dispositivi di casa via MQTT.
 - `app/system/`: stato del sistema, log, eval, flight recorder e aggiornamenti per la pagina SISTEMA.
 - `app/desktop/`: chiavi nel keyring e avvio per l'app desktop.

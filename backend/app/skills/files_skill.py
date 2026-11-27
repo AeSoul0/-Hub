@@ -10,7 +10,7 @@
     make_folder     LOW     a new folder
     move_path       MEDIUM  move or rename; never replaces
     replace_file    HIGH    overwrite an existing file: needs approval
-    delete_path     HIGH    delete a file or an empty folder: needs approval
+    delete_path     HIGH    move a file or folder to ÆHub's trash: needs approval (N5)
 
 Every path argument is checked twice: by the Tool Gateway before the call
 (filesystem tools, ToolGuardrail.validate_resource_access) and here again.
@@ -288,18 +288,19 @@ def _move(source_path: str, destination_path: str) -> str:
 
 
 def _delete(path: str) -> str:
+    from app.files.trash import TrashError, keep_days, move_to_trash
+
     target = _checked(path)
     if target in allowed_directories():
         return f"{target} is one of the allowed folders: it cannot be deleted."
-    if target.is_dir():
-        if any(target.iterdir()):
-            return f"{target} is not empty: delete its files first."
-        target.rmdir()
-        return f"Deleted the empty folder {target}."
     if not target.exists():
         return f"{target} does not exist."
-    target.unlink()
-    return f"Deleted {target}."
+    what = "the folder " if target.is_dir() else ""
+    try:
+        move_to_trash(target)
+    except TrashError as exc:
+        return str(exc)
+    return f"Moved {what}{target} to ÆHub's trash: the owner can restore it from STRUMENTI for {keep_days()} days."
 
 
 # The tools: file work runs off the event loop.
@@ -363,7 +364,7 @@ async def move_path(source_path: str, destination_path: str) -> str:
 
 async def delete_path(path: str) -> str:
     """
-    Delete a file or an empty folder. Runs only after the owner approves.
+    Delete a file or a folder: it goes to ÆHub's trash, restorable for 30 days. Runs only after the owner approves.
     """
     return await asyncio.to_thread(_delete, path)
 
@@ -418,7 +419,7 @@ class FilesSkill(BaseSkill):
             "make_folder": meta("make_folder", "Create a folder in an allowed folder.", RiskLevel.LOW, {"path": path}, ["path"], modifies_files=True),
             "move_path": meta("move_path", "Move or rename a file or folder. Fails if the destination exists.", RiskLevel.MEDIUM, {"source_path": path, "destination_path": path}, ["source_path", "destination_path"], modifies_files=True),
             "replace_file": meta("replace_file", "Overwrite an existing text file. Needs the owner's approval.", RiskLevel.HIGH, {"path": path, "content": content}, ["path", "content"], modifies_files=True, requires_approval=True),
-            "delete_path": meta("delete_path", "Delete a file or an empty folder. Needs the owner's approval.", RiskLevel.HIGH, {"path": path}, ["path"], modifies_files=True, requires_approval=True),
+            "delete_path": meta("delete_path", "Delete a file or a folder: it goes to ÆHub's trash, which the owner can restore from. Needs the owner's approval.", RiskLevel.HIGH, {"path": path}, ["path"], modifies_files=True, requires_approval=True),
         }
 
 

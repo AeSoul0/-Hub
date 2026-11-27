@@ -83,6 +83,11 @@ MANAGEMENT = {
     ("GET", "/api/interface"),
     # ADR-033: connect again to the allowed MCP servers (owner only).
     ("POST", "/api/tools/mcp/refresh"),
+    # N5: ÆHub's trash (owner only for every change).
+    ("GET", "/api/tools/trash"),
+    ("POST", "/api/tools/trash/{item_id}/restore"),
+    ("DELETE", "/api/tools/trash/{item_id}"),
+    ("DELETE", "/api/tools/trash"),
     ("GET", "/api/skills"),
     ("GET", "/api/skills/{skill_id}"),
     ("POST", "/api/skills/import"),

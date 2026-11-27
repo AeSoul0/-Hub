@@ -11,6 +11,10 @@ GET /api/tools   every registered skill with its tools: risk, approval,
                  sandbox.
 POST /api/tools/mcp/refresh   connect again to the MCP servers and list
                  their tools (ADR-033). Owner only.
+GET    /api/tools/trash              what delete_path moved to ÆHub's trash (N5)
+POST   /api/tools/trash/{id}/restore put an item back where it was
+DELETE /api/tools/trash/{id}         remove one item for good
+DELETE /api/tools/trash              empty the trash. Trash changes: owner only.
 
 Changes go through PUT /api/settings (AEHUB_DISABLED_TOOLS,
 AEHUB_TOOL_SELECTION, AEHUB_TOOL_TOP_K, AEHUB_MCP_ALLOWED_SERVERS,
@@ -166,3 +170,72 @@ async def refresh_mcp(
         raise HTTPException(status_code=403, detail="Only the owner can reconnect the MCP servers.")
 
     return {"servers": await refresh_mcp_servers()}
+
+
+# ==============================================================================
+# TRASH (N5)
+# ==============================================================================
+
+
+def _owner(principal: Principal, action: str) -> None:
+    if principal.role != RoleEnum.ADMIN:
+        raise HTTPException(status_code=403, detail=f"Only the owner can {action}.")
+
+
+@router.get("/trash")
+async def list_trash(
+    principal: Principal = Depends(resolve_principal),
+) -> Dict[str, Any]:
+    import asyncio
+
+    from app.files import trash
+
+    _owner(principal, "see the trash")
+    items = await asyncio.to_thread(trash.list_items)
+    return {"days": trash.keep_days(), "items": [item.to_dict() for item in items]}
+
+
+@router.post("/trash/{item_id}/restore")
+async def restore_trash_item(
+    item_id: str,
+    principal: Principal = Depends(resolve_principal),
+) -> Dict[str, Any]:
+    import asyncio
+
+    from app.files import trash
+
+    _owner(principal, "restore from the trash")
+    try:
+        path = await asyncio.to_thread(trash.restore, item_id)
+    except trash.TrashError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"restored": path}
+
+
+@router.delete("/trash/{item_id}")
+async def remove_trash_item(
+    item_id: str,
+    principal: Principal = Depends(resolve_principal),
+) -> Dict[str, Any]:
+    import asyncio
+
+    from app.files import trash
+
+    _owner(principal, "empty the trash")
+    try:
+        await asyncio.to_thread(trash.remove, item_id)
+    except trash.TrashError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"removed": item_id}
+
+
+@router.delete("/trash")
+async def empty_trash(
+    principal: Principal = Depends(resolve_principal),
+) -> Dict[str, Any]:
+    import asyncio
+
+    from app.files import trash
+
+    _owner(principal, "empty the trash")
+    return {"removed": await asyncio.to_thread(trash.empty)}

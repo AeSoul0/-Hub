@@ -146,8 +146,14 @@ def test_a_shared_word_follows_the_interface_language():
 
 
 def test_the_question_is_short_and_names_the_file():
-    assert approval_question("delete_path", {"path": "C:\\Users\\me\\Documenti\\vecchio.txt"}, "it") == "Posso eliminare vecchio.txt? Sì o no."
-    assert approval_question("replace_file", {"path": "/home/me/piano.md", "content": "x"}, "en") == "May I overwrite piano.md? Yes or no."
+    # N5: deleting and overwriting ask for their own words.
+    assert approval_question("delete_path", {"path": "C:\\Users\\me\\Documenti\\vecchio.txt"}, "it") == (
+        "Posso eliminare vecchio.txt? Per confermare di' «sì, elimina», altrimenti no."
+    )
+    assert approval_question("replace_file", {"path": "/home/me/piano.md", "content": "x"}, "en") == (
+        'May I overwrite piano.md? To confirm say "yes, overwrite", otherwise no.'
+    )
+    assert approval_question("write_file", {"path": "/home/me/nuovo.md", "content": "x"}, "it") == "Posso scrivere nuovo.md? Sì o no."
     assert approval_question("execute_shell_script", {"command": "ls"}, "it") == "Posso eseguire un comando nella sandbox? Sì o no."
     assert approval_question("mcp_tool_x", {}, "it") == "Posso usare mcp tool x? Sì o no."
     assert approval_question("mcp_tool_x", {"query": "meteo"}, "en") == "May I use mcp tool x on meteo? Yes or no."
@@ -161,7 +167,7 @@ def test_the_question_is_short_and_names_the_file():
 async def test_a_waiting_run_asks_one_short_question(engine):
     reply = await park(engine())
 
-    assert reply["transcription"] == "Posso eliminare vecchio.txt? Sì o no."
+    assert reply["transcription"] == "Posso eliminare vecchio.txt? Per confermare di' «sì, elimina», altrimenti no."
     assert reply["awaiting_approval"] is True
     assert engine.skill.calls == []
 
@@ -171,7 +177,14 @@ async def test_a_spoken_yes_decides_and_the_run_goes_on(engine, agent_infrastruc
     [pending] = await ApprovalManager.list_pending(OWNER.workspace_id)
 
     with patch.object(approvals_api, "_schedule_resume") as schedule:
-        reply = await ask("Aurora, sì")
+        # N5: a plain yes does not delete: the words are asked again.
+        again = await ask("Aurora, sì")
+        assert again["transcription"] == "Per questo serve «sì, elimina». Lo confermi?"
+        assert again["decision"] is None
+        assert len(await ApprovalManager.list_pending(OWNER.workspace_id)) == 1
+        # Something else that is not an answer goes to the engine.
+        assert await try_decision("sovrascrivi", OWNER, "it") is None
+        reply = await ask("Aurora, sì, elimina")
 
     assert reply["transcription"] in REPLIES["it"]["allow"]
     assert reply["decision"] == "allow" and reply["instant"]["tool"] == "approval"
@@ -199,10 +212,18 @@ async def test_the_oldest_is_decided_and_the_others_are_counted(engine):
     first, second = await ApprovalManager.list_pending(OWNER.workspace_id)
 
     with patch.object(approvals_api, "_schedule_resume"):
-        reply = await ask("vai")
+        reply = await ask("elimina")
 
     assert reply["transcription"].endswith("Ne resta un'altra.")
     assert [item["id"] for item in await ApprovalManager.list_pending(OWNER.workspace_id)] == [second["id"]]
+
+
+async def test_a_plain_yes_deletes_when_the_owner_turned_the_words_off(engine, monkeypatch):
+    monkeypatch.setenv("AEHUB_CONFIRM_DELETIONS", "off")
+    reply = await park(engine())
+    assert reply["transcription"] == "Posso eliminare vecchio.txt? Sì o no."
+    with patch.object(approvals_api, "_schedule_resume"):
+        assert (await ask("sì"))["decision"] == "allow"
 
 
 async def test_a_yes_with_nothing_pending_goes_on_as_before(agent_infrastructure):

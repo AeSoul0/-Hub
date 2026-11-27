@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import SecurityPage from "@/app/control-plane/security/page";
 import SkillsPage from "@/app/control-plane/skills/page";
 import ToolsPage from "@/app/control-plane/tools/page";
+import TrashCard from "@/components/control-plane/TrashCard";
 import {
     disabledValue,
     riskValue,
@@ -589,5 +590,42 @@ describe("Sicurezza", () => {
         expect(await screen.findByText("rotta")).toBeInTheDocument();
         expect(screen.getByText(/Rotta al record 7: hash mismatch/)).toBeInTheDocument();
         expect(screen.getByText("Nessuna voce nell'audit.")).toBeInTheDocument();
+    });
+});
+
+describe("the trash (N5)", () => {
+    beforeEach(() => chooseLanguage("it"));
+
+    it("lists what was deleted, restores an item and empties the rest after a second click", async () => {
+        let items = [
+            { id: "a1", original: "C:/Users/me/Documenti/vecchio.txt", deleted_at: "2026-11-27T10:00:00+00:00", kind: "file", size: 2048 },
+            { id: "b2", original: "C:/Users/me/Documenti/Foto", deleted_at: "2026-11-26T10:00:00+00:00", kind: "folder", size: 3_000_000 },
+        ];
+        const fetchMock = stubFetch({
+            "GET /api/tools/trash": () => ({ status: 200, body: { days: 30, items } }),
+            "POST /api/tools/trash/a1/restore": () => {
+                items = items.filter((item) => item.id !== "a1");
+                return { status: 200, body: { restored: "C:/Users/me/Documenti/vecchio.txt" } };
+            },
+            "DELETE /api/tools/trash": () => {
+                const removed = items.length;
+                items = [];
+                return { status: 200, body: { removed } };
+            },
+        });
+
+        render(<TrashCard />);
+        const trash = await screen.findByRole("list", { name: "Cestino" });
+        expect(within(trash).getByText("C:/Users/me/Documenti/Foto (cartella)")).toBeInTheDocument();
+        expect(screen.getByText(/resta 30 giorni/)).toBeInTheDocument();
+
+        fireEvent.click(within(trash).getAllByRole("button", { name: "Ripristina" })[0]);
+        expect(await screen.findByText("Ripristinato: C:/Users/me/Documenti/vecchio.txt")).toBeInTheDocument();
+
+        fireEvent.click(await screen.findByRole("button", { name: "Svuota il cestino" }));
+        fireEvent.click(screen.getByRole("button", { name: "Clicca ancora per svuotarlo" }));
+        expect(await screen.findByText("1 elementi eliminati per sempre.")).toBeInTheDocument();
+        expect(await screen.findByText("Il cestino è vuoto.")).toBeInTheDocument();
+        expect(fetchMock.mock.calls.filter(([, init]) => init?.method === "DELETE")).toHaveLength(1);
     });
 });
