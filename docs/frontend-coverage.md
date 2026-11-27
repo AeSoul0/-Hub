@@ -9,7 +9,7 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 - ⏸ vuol dire **sospesa**: riguarda solo l'app desktop (Tauri), sospesa dal 2026-11-24. Non conta né tra le coperte né tra le mancanti.
 
 **Ultimo aggiornamento:** N2, parola di attivazione (2026-11-26): una riga nuova, la 61.
-**Copertura:** 61 righe su 61, cioè **100%**, più 2 righe sospese (⏸). F10 ha confrontato la tabella con tutte le route e tutte le impostazioni del backend: l'[indice](#indice-ogni-route-e-ogni-impostazione) in fondo dice quale riga copre ciascuna, e un test in CI lo tiene allineato al codice.
+**Copertura:** 62 righe su 62, cioè **100%**, più 2 righe sospese (⏸). F10 ha confrontato la tabella con tutte le route e tutte le impostazioni del backend: l'[indice](#indice-ogni-route-e-ogni-impostazione) in fondo dice quale riga copre ciascuna, e un test in CI lo tiene allineato al codice.
 
 ## Conversazione e voce
 
@@ -74,6 +74,7 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 | 59 | Approvazioni in una parola e notifiche: la domanda breve di una run in attesa, «sì»/«no» a voce o scritto, la notifica del sistema e il conteggio nel titolo | Nucleo (la domanda, la risposta segna "istantaneo · N ms"); notifica su ogni pagina; APPROVAZIONI: lo stato delle notifiche e il bottone per attivarle | ✓ | ADR-037 |
 | 60 | Risposte in streaming: la bozza mentre il modello scrive (`delivery=live`, `answer.delta`/`answer.reset`) e la voce frase per frase (`reply_chars` su `/api/voice/speak`) | Nucleo: «bozza · in verifica», poi la risposta accettata, letta pezzo per pezzo | ✓ | N1, ADR-040 |
 | 61 | Parola di attivazione: «Hey Jarvis», «Alexa», «Hey Mycroft» o un tuo modello «Aurora», riconosciuta nella pagina; i modelli da `GET /api/voice/wake/{model}` (scaricati una volta, SHA-256 controllato); sensibilità | VOCE: Parola di attivazione (parola, sensibilità, dove va il modello Aurora); Nucleo: indicatore di ascolto, suono, il comando finisce quando smetti di parlare | ✓ | N2, ADR-041 |
+| 62 | Cestino: quello che `delete_path` elimina va nel cestino di ÆHub e resta ripristinabile per `AEHUB_TRASH_DAYS` giorni (`GET /api/tools/trash`, ripristino, rimozione, svuotamento); «sì, elimina» a voce per eliminare o sovrascrivere | STRUMENTI → Cestino (elenco, Ripristina, Elimina per sempre, Svuota); Nucleo: la domanda chiede «sì, elimina» | ✓ | N5, ADR-044 |
 | 34 | Registro di audit, con la provenienza | Control Plane → SICUREZZA | ✓ | M11, F5 |
 
 ## Memoria e documenti
@@ -200,6 +201,10 @@ F10 (2026-11-24, aggiornato in P1): l'elenco viene dal codice (`tests/security/t
 | `POST /api/system/updates/check` | 43 |
 | `GET /api/tools` | 28, 29, 31–33, 52, 53 |
 | `POST /api/tools/mcp/refresh` | 52 |
+| `GET /api/tools/trash` | 62 |
+| `DELETE /api/tools/trash` | 62 |
+| `DELETE /api/tools/trash/{item_id}` | 62 |
+| `POST /api/tools/trash/{item_id}/restore` | 62 |
 | `GET /api/voice` | 4, 5, 8, 9 |
 | `GET /api/voice/elevenlabs/voices` | 5 |
 | `POST /api/voice/speak` | 6 |
@@ -301,6 +306,8 @@ F10 (2026-11-24, aggiornato in P1): l'elenco viene dal codice (`tests/security/t
 | `XAI_API_KEY` | chiave della voce SpaceXAI, nel keyring | 5 |
 | `AEHUB_LOCAL_API_KEY` | chiave del server locale, nel keyring | 24 |
 | `AEHUB_CRITIC_SIMPLE` | `check` fa controllare dal Critic anche le richieste semplici senza strumenti che scrivono (di default `skip`: si salta; nel timeline `checker.skipped`) | 20 |
+| `AEHUB_CONFIRM_DELETIONS` | `off` toglie il «sì, elimina» a voce o scritto per eliminare e sovrascrivere (di default acceso) | 62 |
+| `AEHUB_TRASH_DAYS` | giorni in cui il cestino tiene quello che è stato eliminato (30 di default) | 62 |
 | `AEHUB_LOCAL_TIMEOUT_SECONDS` | attesa massima di una risposta del server locale (600 nel Codespace con Ollama, dallo script) | 24 |
 | `AEHUB_ANSWER_TIMEOUT_SECONDS` | attesa massima della risposta a un comando nel Nucleo (900 nel Codespace con Ollama, dallo script) | 24 |
 | `AEHUB_MQTT_PASSWORD` | password del broker, nel keyring | 40 |

@@ -166,10 +166,55 @@ def test_replace_and_delete(folders):
     assert run(files_skill.replace_file(str(file), "nuovo")).startswith("Replaced")
     assert file.read_text(encoding="utf-8") == "nuovo"
 
-    assert "not empty" in run(files_skill.delete_path(str(folders.mine / "Progetti")))
-    assert run(files_skill.delete_path(str(file))).startswith("Deleted")
-    assert run(files_skill.delete_path(str(folders.mine / "Progetti"))).startswith("Deleted the empty folder")
+    # N5: deleting moves to ÆHub's trash, where no file tool can reach.
+    assert run(files_skill.delete_path(str(file))).startswith(f"Moved {file} to ÆHub's trash")
+    assert not file.exists()
+    assert run(files_skill.delete_path(str(folders.mine / "Progetti"))).startswith("Moved the folder")
     assert "cannot be deleted" in run(files_skill.delete_path(str(folders.mine)))
+    assert ".aehub-trash" not in run(files_skill.list_folder(str(folders.mine)))
+    with pytest.raises(GuardrailException):
+        validate_path(str(folders.mine / ".aehub-trash"))
+
+
+def test_the_trash_restores_and_forgets(folders, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    from app.files import trash
+
+    note = folders.work / "nota.txt"
+    note.write_text("da tenere", encoding="utf-8")
+    run(files_skill.delete_path(str(note)))
+    [item] = trash.list_items()
+    assert (item.original, item.kind, item.size) == (str(note), "file", len("da tenere"))
+
+    # Never over something that is there now.
+    note.write_text("nuova", encoding="utf-8")
+    with pytest.raises(trash.TrashError):
+        trash.restore(item.id)
+    note.unlink()
+    assert trash.restore(item.id) == str(note)
+    assert note.read_text(encoding="utf-8") == "da tenere" and trash.list_items() == []
+
+    # An item.json edited to point elsewhere is not followed.
+    run(files_skill.delete_path(str(note)))
+    [moved] = trash.list_items()
+    meta = moved.folder / "item.json"
+    data = json.loads(meta.read_text(encoding="utf-8"))
+    meta.write_text(json.dumps({**data, "original": str(folders.root / "outside.txt")}), encoding="utf-8")
+    with pytest.raises(trash.TrashError):
+        trash.restore(moved.id)
+    trash.empty()
+    note.write_text("da tenere", encoding="utf-8")
+
+    # Old items go for good; one can also be removed, or all.
+    run(files_skill.delete_path(str(note)))
+    assert trash.purge(now=datetime.now(timezone.utc) + timedelta(days=trash.keep_days() + 1)) == 1
+    (folders.work / "a.txt").write_text("a", encoding="utf-8")
+    (folders.work / "b.txt").write_text("b", encoding="utf-8")
+    run(files_skill.delete_path(str(folders.work / "a.txt")))
+    run(files_skill.delete_path(str(folders.work / "b.txt")))
+    trash.remove(trash.list_items()[0].id)
+    assert len(trash.list_items()) == 1 and trash.empty() == 1 and trash.list_items() == []
 
 
 def test_the_tools_check_paths_themselves(folders):

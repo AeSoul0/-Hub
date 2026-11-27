@@ -27,5 +27,15 @@ Il sistema ÆHub/A.U.R.O.R.A. opera in un modello **LAN-first**. Tuttavia, i con
 | **T03** | Cross-Tenant Data Leak (Workspace Contamination). | Esfiltrazione dati sensibili (High) | Le chiavi primarie delle Sessioni legano l'utente a un `workspace_id`. Tutte le query DB filtreranno in base al `workspace_id` associato al token. |
 | **T04** | LLM Confused Deputy via Prompt Injection. | Esecuzione arbitraria (Critical) | L'LLM non esegue mai i Tool direttamente. Genera una sintassi dichiarativa; l'executor verifica con il Policy Engine prima di eseguire il side-effect. |
 
+### Aggiornamento N5 (2026-11-27, ADR-044)
+
+| ID | Minaccia | Impatto | Mitigazione |
+|---|---|---|---|
+| **T05** | Un file o una pagina (contenuto esterno) chiede all'agente di eliminare o sovrascrivere file. | Perdita di dati (High) | `delete_path` e `replace_file` sono HIGH e attendono sempre l'approvazione. `delete_path` sposta nel cestino nascosto `.aehub-trash`, fuori dalla portata degli strumenti. A voce o scritto serve «sì, elimina» / «sì, sovrascrivi», non un «sì» qualsiasi (ADR-044). |
+| **T06** | Un «sì» detto per altro decide un'approvazione in attesa. | Azione non voluta (Medium) | Per eliminare e sovrascrivere servono parole proprie; la parola che conferma un'eliminazione non decide altri strumenti in attesa (ADR-044). |
+| **T07** | Il Critic saltato per le risposte semplici lascia passare un'azione. | Azione non controllata (Medium) | Il salto vale solo per i ruoli triage e fast worker, senza strumenti o solo con `search_documents`, su contesto affidabile; tutto il resto passa dal Critic. `AEHUB_CRITIC_SIMPLE=check` lo rimette ovunque. |
+| **T08** | Comandi del computer (volume, blocco, screenshot) usati per eseguire altro. | Esecuzione arbitraria (Critical) | Comandi fissi per sistema, liste di argomenti, mai una shell; l'azione è un enum; nessuno strumento del computer in un container (ADR-043). |
+| **T09** | Indirizzi e chiavi del Codespace: un altro sito che chiama l'API. | Accesso non autorizzato (High) | Porta privata di GitHub (solo il proprietario), `AEHUB_ALLOWED_HOSTS` e `AEHUB_ALLOWED_ORIGINS` con il solo host del Codespace, `https://localhost:<porta>` aggiunto per la riscrittura di GitHub; chiavi come segreti Codespaces (variabili d'ambiente), mai su file. |
+
 ## 4. Policy "Fail Closed"
 In caso di fallimento del database, mancata decodifica del token, token scaduto, o policy engine non raggiungibile, la `HTTPException(401)` o `403` viene generata di default. Non esiste un "fallback privileged".
