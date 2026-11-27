@@ -33,8 +33,10 @@
 - **Deleting is undoable.**
   - What the agents delete goes to ÆHub's trash, out of their reach, and can be restored from STRUMENTI for 30 days.
   - By voice, deleting or overwriting needs "sì, elimina" / "sì, sovrascrivi", not a plain yes (ADR-044).
+- **Past conversations.** The Nucleo's HISTORY tab lists your conversations, searches their commands and answers, and opens one to go on with it: the agents remember that conversation, not the others; "New conversation" starts from nothing (ADR-045).
 - **Approvals that reach you.** A run that waits for you asks one short question ("May I delete old.txt? Yes or no."); a plain "yes" or "no", spoken or typed, decides it and Aurora answers in a word. A system notification and the tab title tell you when a request waits and ÆHub is not in front (ADR-037).
 - **Instant commands.** "Open Spotify", "open the downloads folder", "accendi la luce della cucina": simple commands run at once through the Tool Gateway, without the model, in milliseconds. The apps are the ones you list in Settings → Apps; anything else goes to the engine (ADR-035).
+- **Accessible.** Every control works with the keyboard and has a name for screen readers, the text colors meet WCAG AA contrast, and an automatic check (axe-core) runs in CI (ADR-045).
 - **An interface for everything.** The Nucleo (home) and the Control Plane cover every route and setting of the backend (`docs/frontend-coverage.md`). They are in English by default, or in Italian (Settings → Language, or ask Aurora); the voice keeps the language of the voice you choose, and a notice says when the two differ (ADR-034).
 
 It is not a multi-user service: there is one owner, and every port listens on `127.0.0.1`.
@@ -267,7 +269,7 @@ python scripts/aehub.py setup    # or: make setup
 python scripts/aehub.py up       # or: make up
 ```
 
-Then open http://localhost:3000/control-plane, sign in with the key printed by `python scripts/aehub.py login-key`, and follow the first-run setup: models (Worker and a different Critic), prices, budget, and a final check. Everything it sets can be changed later in **Settings** without a restart.
+Then open http://localhost:3000/control-plane, sign in with the key printed by `python scripts/aehub.py login-key`, and follow the first-run setup, three steps: the model (key, Worker and a different Critic), the folders, the voice with a final check. Prices, budget and the models of each role start from their defaults. Everything can be changed later in **Settings** without a restart.
 
 The launcher (`scripts/aehub.py`, Python standard library only) keeps every secret in the **OS keyring** — Windows Credential Manager, macOS Keychain or the Linux Secret Service — never in a file:
 
@@ -366,7 +368,7 @@ The desktop app needs no Docker: one installer holds the engine, its own Postgre
 
 - **Install:** run the `AEHub_*-setup.exe` from the GitHub Release of a version tag, or from the `aehub-windows-installer` artifact of the CI (`desktop-windows` job). It installs for the current user, without administrator rights. Without an Authenticode certificate in the CI secrets it is not code-signed, so Windows SmartScreen asks for confirmation.
 - **Updates:** on start the app looks for a newer release, signed with the updater's key, and installs it only if you say yes. Releases are published by the CI when `TAURI_SIGNING_PRIVATE_KEY` is among its secrets.
-- **First start:** the app creates its database in `%LOCALAPPDATA%\AEHub` and its working folder in `Documents\AEHub`, then opens the Control Plane already logged in. Add a provider key on the setup page: it goes to the Windows Credential Manager, never to a file. Then pick models, prices and budget as with Docker.
+- **First start:** the app creates its database in `%LOCALAPPDATA%\AEHub` and its working folder in `Documents\AEHub`, then opens the Control Plane already logged in. Add a provider key on the setup page: it goes to the Windows Credential Manager, never to a file. Then pick the models, the folders and the voice as with Docker.
 - **How it runs:** the window starts `backend/desktop.py`, which runs Postgres and the API on `127.0.0.1` on ports chosen at every start, with live events in-process instead of Redis. The window logs in with a one-time token. Closing the window stops everything.
 - **Memory:** the desktop app uses the `hash` embedder, which needs no model download and has weaker recall, until the local embedder is decided (ADR-020).
 

@@ -209,6 +209,17 @@ def command_id_of(raw: str) -> str:
     return raw if _COMMAND_ID.fullmatch(raw or "") else ""
 
 
+# N6: a conversation of the Nucleo is a session of its own, "<principal>~<id>";
+# without an id the command goes on in the principal's own session, as before.
+CONVERSATION_SEPARATOR = "~"
+
+
+def conversation_session(principal_id: str, conversation: str) -> str:
+    """The session of a conversation the page started, or the principal's own."""
+    conversation = command_id_of(conversation)
+    return f"{principal_id}{CONVERSATION_SEPARATOR}{conversation}" if conversation else principal_id
+
+
 async def _voice(text: str) -> tuple[str, str]:
     """The reply spoken here, or nothing when the Nucleo speaks it sentence by sentence."""
     if _live.get():
@@ -609,6 +620,7 @@ async def process_orchestration_voice(
     ui_context: str = Form(default=""),
     delivery: str = Form(default="full"),
     command_id: str = Form(default=""),
+    conversation: str = Form(default=""),
     x_session_id: str = Header(
         default="default-session"
     ),
@@ -668,7 +680,7 @@ async def process_orchestration_voice(
             transcript,
             AESOUL_SYSTEM_PROMPT,
             ui_context,
-            principal.id,
+            conversation_session(principal.id, conversation),
             principal,
             input_channel="voice",
             delivery=delivery if delivery in DELIVERIES else "full",
@@ -699,6 +711,7 @@ async def process_orchestration_text(
     role: str = Form(default=""),
     delivery: str = Form(default="full"),
     command_id: str = Form(default=""),
+    conversation: str = Form(default=""),
     image: UploadFile = File(default=None),
     x_session_id: str = Header(
         default="default-session"
@@ -763,7 +776,7 @@ async def process_orchestration_text(
             text,
             AESOUL_SYSTEM_PROMPT,
             ui_context,
-            principal.id,
+            conversation_session(principal.id, conversation),
             principal,
             role=role or None,
             delivery=delivery if delivery in DELIVERIES else "full",

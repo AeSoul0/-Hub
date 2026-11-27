@@ -9,7 +9,10 @@
     --void: #030714;
     --deep: #07102a;
     --ink: #dce6ff;
-    --dim: #7385aa;
+    /* Text colors meet WCAG AA (4.5:1) on every background of the palette (N6);
+       --faint is for lines and decorations only, never for text. */
+    --dim: #8696ba;
+    --hint: #7385aa;
     --faint: #2c3a5e;
     --line: #101a36;
     --ice: #8fb8ff;

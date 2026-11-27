@@ -253,6 +253,79 @@ describe("Nucleo", () => {
         expect((ask?.[1]?.body as FormData).get("text")).toBe("Accendi la luce");
     });
 
+    it("lists past conversations, goes on in one and starts a new one (N6)", async () => {
+        installEventSource();
+        const fetch = stubFetch({
+            "GET /api/approvals": () => ({ status: 200, body: [] }),
+            "GET /api/runs/stats": () => ({ status: 200, body: { budget: { month_spent: null, monthly_budget: 2 } } }),
+            "GET /api/runs/live": () => ({ status: 200, body: liveView() }),
+            "GET /api/conversations": () => ({
+                status: 200,
+                body: {
+                    total: 2,
+                    conversations: [
+                        { id: "trip", title: "Organizza il viaggio", turns: 2, started_at: null, updated_at: null, match: null },
+                        { id: "", title: "Che ore sono?", turns: 1, started_at: null, updated_at: null, match: null },
+                    ],
+                },
+            }),
+            "GET /api/conversations/trip": () => ({
+                status: 200,
+                body: {
+                    id: "trip",
+                    total: 2,
+                    turns: [
+                        { run_id: "r1", task: "Organizza il viaggio", answer: "Ecco il piano.", status: "completed", channel: "voice", created_at: null },
+                        { run_id: "r2", task: "Aggiungi un museo", answer: "Comando fermato.", status: "cancelled", channel: "text", created_at: null },
+                    ],
+                },
+            }),
+            "GET /api/conversations/_": () => ({
+                status: 200,
+                body: { id: "", total: 1, turns: [{ run_id: "r0", task: "Che ore sono?", answer: "Le 9.", status: "completed", channel: "text", created_at: null }] },
+            }),
+            "POST /api/orchestrator/ask": () => ({ status: 200, body: { transcription: "Fatto.", audio_base64: "" } }),
+        });
+
+        render(<Nucleo />);
+        fireEvent.click(screen.getByRole("button", { name: /CRONOLOGIA/ }));
+        fireEvent.click(await screen.findByRole("button", { name: /Organizza il viaggio/ }));
+
+        // Its turns are back in the conversation, and the next command goes on in it.
+        expect(await screen.findByText("Ecco il piano.")).toBeInTheDocument();
+        expect(screen.getByText("Comando fermato.")).toBeInTheDocument();
+        fireEvent.change(screen.getByRole("textbox", { name: "Comando" }), { target: { value: "E il ritorno?" } });
+        fireEvent.click(screen.getByRole("button", { name: "INVIA" }));
+        expect(await screen.findByText("Fatto.")).toBeInTheDocument();
+        const asks = () => fetch.mock.calls.filter(([url]) => String(url).endsWith("/api/orchestrator/ask"));
+        expect((asks()[0][1]?.body as FormData).get("conversation")).toBe("trip");
+        expect(window.localStorage.getItem("aehub.nucleo.conversation")).toBe("trip");
+
+        // The principal's own session is the conversation "" (its path is /_).
+        fireEvent.click(screen.getByRole("button", { name: /CRONOLOGIA/ }));
+        fireEvent.click(await screen.findByRole("button", { name: /Che ore sono\?/ }));
+        expect(await screen.findByText("Le 9.")).toBeInTheDocument();
+        expect(window.localStorage.getItem("aehub.nucleo.conversation")).toBe("_");
+
+        // A new one starts empty, with an id of its own.
+        fireEvent.click(screen.getByRole("button", { name: /CRONOLOGIA/ }));
+        fireEvent.click(await screen.findByRole("button", { name: "Nuova conversazione" }));
+        expect(screen.queryByText("Le 9.")).not.toBeInTheDocument();
+        fireEvent.change(screen.getByRole("textbox", { name: "Comando" }), { target: { value: "Ciao" } });
+        fireEvent.click(screen.getByRole("button", { name: "INVIA" }));
+        await waitFor(() => expect(asks()).toHaveLength(2));
+        const fresh = (asks()[1][1]?.body as FormData).get("conversation");
+        expect(fresh).toMatch(/^[A-Za-z0-9-]{1,64}$/);
+        expect(fresh).not.toBe("trip");
+
+        // The search goes to the backend, with what was typed.
+        fireEvent.click(screen.getByRole("button", { name: /CRONOLOGIA/ }));
+        fireEvent.change(screen.getByRole("searchbox", { name: "Cerca nelle conversazioni" }), { target: { value: "museo" } });
+        await waitFor(() =>
+            expect(fetch.mock.calls.some(([url]) => new URL(String(url)).searchParams.get("q") === "museo")).toBe(true),
+        );
+    });
+
     it("speaks the answer of a voice run resumed after an approval", async () => {
         const Source = installEventSource();
         const fetch = stubFetch({

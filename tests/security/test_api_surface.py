@@ -64,6 +64,9 @@ MANAGEMENT = {
     ("POST", "/api/documents/upload"),
     ("GET", "/api/documents/search"),
     ("GET", "/api/documents/passage"),
+    # N6: the Nucleo's past conversations (the caller's own runs), read only.
+    ("GET", "/api/conversations"),
+    ("GET", "/api/conversations/{conversation_id}"),
     # M14: the desktop app's launch token and provider keys into the keyring.
     ("GET", "/desktop/launch/{token}"),
     ("GET", "/api/desktop"),

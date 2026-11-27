@@ -46,11 +46,13 @@ import {
 } from "@/lib/nucleo/engine";
 import { IMPLEMENTER_ROLES } from "@/lib/nucleo/models";
 import {
+    currentConversation,
     keepLine,
     keepNucleo,
     liveCommands,
     newCommandId,
     recallNucleo,
+    rememberConversation,
     type ChatLine,
 } from "@/lib/nucleo/keep";
 import { initialRuns, liveCount, runsReducer, type LiveView } from "@/lib/nucleo/runs";
@@ -60,6 +62,7 @@ import { askNotifyPermissionOnce, notifyNow } from "@/lib/notify";
 import { catalog, useInterface, useLanguage } from "@/lib/i18n";
 
 import ApprovalPrompt from "./ApprovalPrompt";
+import HistoryPanel, { conversationPath, type ConversationTurn } from "./HistoryPanel";
 import Orb from "./Orb";
 import RunsPanel from "./RunsPanel";
 import SidePane from "./SidePane";
@@ -114,6 +117,10 @@ const TEXT = catalog({
         stopAll: "STOP EVERYTHING",
         month: "month",
         conversationTitle: "Conversation",
+        conversationView: "Conversation view",
+        chatTab: "CONVERSATION",
+        historyTab: "HISTORY",
+        openFailed: "The conversation did not open:",
         emptyChat: "Your commands and the answers appear here.",
         me: "You",
         system: "System",
@@ -169,6 +176,10 @@ const TEXT = catalog({
         stopAll: "FERMA TUTTO",
         month: "mese",
         conversationTitle: "Conversazione",
+        conversationView: "Vista della conversazione",
+        chatTab: "CONVERSAZIONE",
+        historyTab: "CRONOLOGIA",
+        openFailed: "La conversazione non si è aperta:",
         emptyChat: "Qui compaiono i tuoi comandi e le risposte.",
         me: "Tu",
         system: "Sistema",
@@ -263,6 +274,9 @@ export default function Nucleo() {
     const [spark, setSpark] = useState({ count: 0, amber: false });
     const [runs, runsDispatch] = useReducer(runsReducer, initialRuns, (initial) => recallNucleo()?.runs ?? initial);
     const [rightTab, setRightTab] = useState<"events" | "runs">(() => recallNucleo()?.tab ?? "events");
+    // N6: the conversation the next command goes on in, and the tab on the left.
+    const [conversation, setConversation] = useState(currentConversation);
+    const [leftTab, setLeftTab] = useState<"chat" | "history">(() => recallNucleo()?.leftTab ?? "chat");
     const [confirmStop, setConfirmStop] = useState(false);
     const liveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     // The wake word (N2): only with the voice on and a word chosen.
@@ -285,8 +299,8 @@ export default function Nucleo() {
 
     // What is on screen is kept for when you come back from another page.
     useEffect(() => {
-        keepNucleo({ nucleo: state, chat, runs, tab: rightTab });
-    }, [state, chat, runs, rightTab]);
+        keepNucleo({ nucleo: state, chat, runs, tab: rightTab, leftTab });
+    }, [state, chat, runs, rightTab, leftTab]);
 
     useEffect(() => {
         mounted.current = true;
@@ -624,6 +638,8 @@ export default function Nucleo() {
         form.append("text", command);
         form.append("delivery", "live");
         form.append("command_id", id);
+        form.append("conversation", conversation);
+        rememberConversation(conversation);
         if (role) {
             form.append("role", role);
         }
@@ -676,6 +692,8 @@ export default function Nucleo() {
             form.append("file", audio, "voice.webm");
             form.append("delivery", "live");
             form.append("command_id", id);
+            form.append("conversation", conversation);
+            rememberConversation(conversation);
             const response = await fetchApi("/api/orchestrator/listen", { method: "POST", body: form });
             if (cutByProxy(id, response)) {
                 return;
@@ -692,6 +710,37 @@ export default function Nucleo() {
         } catch (error) {
             failed(id, `${t.voiceFailed} ${errorOf(error)}`);
         }
+    };
+
+    /** Go on in a past conversation: its turns come back on screen (N6). */
+    const openConversation = async (id: string) => {
+        try {
+            const view = await getJson<{ turns: ConversationTurn[] }>(conversationPath(id));
+            const lines: ChatLine[] = [];
+            for (const turn of view.turns) {
+                lines.push({ id: lines.length + 1, who: "me", text: turn.task, channel: turn.channel });
+                if (turn.answer) {
+                    lines.push({ id: lines.length + 1, who: turn.status === "completed" ? "aehub" : "system", text: turn.answer });
+                }
+            }
+            const kept = lines.slice(-CHAT_LIMIT);
+            chatId.current = lines.length;
+            setChat(kept);
+            setConversation(id);
+            rememberConversation(id);
+            setLeftTab("chat");
+        } catch (error) {
+            say("system", `${t.openFailed} ${errorOf(error)}`);
+            setLeftTab("chat");
+        }
+    };
+
+    const newConversation = () => {
+        const id = newCommandId();
+        setChat([]);
+        setConversation(id);
+        rememberConversation(id);
+        setLeftTab("chat");
     };
 
     const decide = async (id: string, decision: Decision) => {
@@ -897,7 +946,32 @@ export default function Nucleo() {
                 </div>
             </header>
 
-            <SidePane id="nucleo-chat" side="left" title={t.conversationTitle} count={chat.length} hidden={!showChat} ceiling={top}>
+            <SidePane
+                id="nucleo-chat"
+                side="left"
+                title={t.conversationTitle}
+                count={chat.length}
+                hidden={!showChat}
+                ceiling={top}
+                header={
+                    <div className={`${styles.paneTitle} ${styles.tabs}`} role="group" aria-label={t.conversationView}>
+                        <button type="button" aria-pressed={leftTab === "chat"} onClick={() => setLeftTab("chat")}>
+                            {t.chatTab} <span>{chat.length || ""}</span>
+                        </button>
+                        <button type="button" aria-pressed={leftTab === "history"} onClick={() => setLeftTab("history")}>
+                            {t.historyTab}
+                        </button>
+                    </div>
+                }
+            >
+                {leftTab === "history" ? (
+                    <HistoryPanel
+                        current={conversation}
+                        busy={sending}
+                        onOpen={(id) => void openConversation(id)}
+                        onNew={newConversation}
+                    />
+                ) : (
                 <ol className={styles.stream} ref={chatList}>
                     {chat.length === 0 && draftLength === 0 ? (
                         <li className={styles.empty}>{t.emptyChat}</li>
@@ -922,6 +996,7 @@ export default function Nucleo() {
                             </li>
                         ))}
                 </ol>
+                )}
             </SidePane>
 
             <main className={styles.core}>

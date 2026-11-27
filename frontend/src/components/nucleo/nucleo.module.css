@@ -53,27 +53,27 @@
 .grip:hover::after, .grip:focus-visible::after, .dragging::after { background: var(--ice); box-shadow: 0 0 8px var(--ice); }
 .grip:focus-visible { outline: none; }
 .paneTitle { font-family: var(--font-display); font-weight: 500; font-size: 11px; letter-spacing: 0.28em; color: var(--dim); margin: 0 0 12px; display: flex; justify-content: space-between; }
-.paneTitle span { font-family: var(--font-code); letter-spacing: 0; color: var(--faint); }
+.paneTitle span { font-family: var(--font-code); letter-spacing: 0; color: var(--hint); }
 .stream {
     list-style: none; margin: 0; padding: 0 4px 0 0; overflow-y: auto; flex: 1; min-height: 0;
     display: flex; flex-direction: column; gap: 10px; scrollbar-width: thin; scrollbar-color: var(--faint) transparent;
     -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22%); mask-image: linear-gradient(to bottom, transparent 0, #000 22%);
 }
 .stream > :first-child { margin-top: auto; }
-.empty { font-family: var(--font-code); font-size: 11px; color: var(--faint); }
+.empty { font-family: var(--font-code); font-size: 11px; color: var(--hint); }
 
 .msg { display: grid; gap: 3px; }
 .who { font-family: var(--font-code); font-size: 10px; letter-spacing: 0.14em; color: var(--dim); text-transform: uppercase; }
 .msg p { margin: 0; font-size: 14px; line-height: 1.5; color: var(--ink); text-wrap: pretty; overflow-wrap: anywhere; }
-.me .who { color: var(--faint); }
+.me .who { color: var(--hint); }
 .me p { color: #b3c1e2; }
 .system p { color: var(--danger); font-size: 13px; }
 /* The answer while the model writes it (N1): lighter, until the Critic accepts it. */
 .draft p { color: var(--dim); }
-.draft .who { color: var(--faint); }
+.draft .who { color: var(--hint); }
 
 .ev { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px; font-family: var(--font-code); font-size: 12px; line-height: 1.45; }
-.ev time { color: var(--faint); font-variant-numeric: tabular-nums; font-size: 11px; padding-top: 1px; }
+.ev time { color: var(--hint); font-variant-numeric: tabular-nums; font-size: 11px; padding-top: 1px; }
 .evBody { min-width: 0; overflow-wrap: anywhere; }
 .evName { color: var(--ink); }
 .evName::before { content: ""; display: inline-block; width: 5px; height: 5px; margin-right: 8px; vertical-align: 2px; background: var(--k, var(--dim)); border-radius: 1px; }
@@ -97,12 +97,37 @@
 /* tabs of the engine pane */
 .tabs { justify-content: flex-start; gap: 16px; }
 .tabs button {
-    background: none; border: 0; padding: 0 0 4px; cursor: pointer; color: var(--faint);
+    background: none; border: 0; padding: 0 0 4px; cursor: pointer; color: var(--hint);
     font: inherit; letter-spacing: inherit; border-bottom: 1px solid transparent;
 }
 .tabs button:hover { color: var(--dim); }
 .tabs button[aria-pressed="true"] { color: var(--ink); border-bottom-color: var(--ice); }
-.tabs button span { font-family: var(--font-code); letter-spacing: 0; color: var(--faint); margin-left: 4px; }
+.tabs button span { font-family: var(--font-code); letter-spacing: 0; color: var(--hint); margin-left: 4px; }
+
+/* past conversations (N6) */
+.history { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; }
+.historyBar { display: flex; gap: 8px; align-items: center; }
+.historyBar input {
+    flex: 1; min-width: 0; background: rgba(7, 16, 42, 0.55); border: 1px solid var(--line); border-radius: 12px;
+    padding: 7px 10px; font-size: 13px; color: var(--ink);
+}
+.historyBar input::placeholder { color: var(--hint); }
+.historyBar input:focus-visible { outline: none; border-color: var(--ice); }
+.historyBar button, .historyItem {
+    background: transparent; border: 1px solid var(--line); border-radius: 12px; color: var(--dim); cursor: pointer;
+}
+.historyBar button { flex: none; padding: 7px 10px; font-family: var(--font-code); font-size: 10px; letter-spacing: 0.12em; }
+.historyBar button:disabled, .historyItem:disabled { opacity: 0.45; cursor: default; }
+.historyBar button:focus-visible, .historyItem:focus-visible { outline: 1px solid var(--ice); outline-offset: 2px; }
+.historyList {
+    list-style: none; margin: 0; padding: 0 4px 0 0; overflow-y: auto; flex: 1; min-height: 0;
+    display: flex; flex-direction: column; gap: 8px; scrollbar-width: thin; scrollbar-color: var(--faint) transparent;
+}
+.historyItem { display: grid; gap: 4px; width: 100%; text-align: left; padding: 10px 12px; border-radius: 16px; background: rgba(7, 16, 42, 0.4); }
+.historyItem:hover:not(:disabled) { border-color: var(--dim); }
+.historyItem[aria-current="true"] { border-color: var(--ice); }
+.historyTitle { font-size: 13px; line-height: 1.4; color: var(--ink); overflow-wrap: anywhere; }
+.historyMatch { font-size: 12px; color: var(--dim); overflow-wrap: anywhere; }
 
 /* runs of the session */
 .run {
@@ -135,7 +160,7 @@
     display: grid; gap: 6px; font-family: var(--font-code); font-size: 11.5px; line-height: 1.4;
 }
 .timeline li { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; column-gap: 8px; }
-.timeline time { color: var(--faint); font-variant-numeric: tabular-nums; }
+.timeline time { color: var(--hint); font-variant-numeric: tabular-nums; }
 .timeline .evDetail { grid-column: 2 / -1; padding-left: 13px; }
 .timeline li[data-k="model"], .timeline li[data-k="tool"], .timeline li[data-k="subagent"] { --k: var(--ice); }
 .timeline li[data-k="approval"] { --k: var(--amber); }
@@ -189,7 +214,7 @@
 .mic svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.5; }
 .ask { flex: 1; min-width: 0; display: flex; border-bottom: 1px solid var(--faint); }
 .ask input { flex: 1; min-width: 0; background: transparent; border: 0; padding: 10px 2px; font-size: 14px; color: var(--ink); outline: none; }
-.ask input::placeholder { color: var(--faint); }
+.ask input::placeholder { color: var(--hint); }
 /* The worker role of the next commands (F8). */
 .role { flex: none; max-width: 112px; background: transparent; border: 0; border-right: 1px solid var(--faint); margin-right: 8px; padding: 10px 6px 10px 0; color: var(--dim); font-family: var(--font-code); font-size: 11px; letter-spacing: 0.06em; cursor: pointer; outline: none; }
 .role:focus-visible { color: var(--ink); }
@@ -197,7 +222,7 @@
 .ask:focus-within { border-color: var(--ice); }
 .ask button { background: transparent; border: 0; color: var(--dim); font-family: var(--font-code); font-size: 11px; letter-spacing: 0.14em; cursor: pointer; padding-inline: 6px; }
 .ask button:disabled { opacity: 0.4; cursor: default; }
-.hint { font-family: var(--font-code); font-size: 10px; color: var(--faint); letter-spacing: 0.1em; }
+.hint { font-family: var(--font-code); font-size: 10px; color: var(--hint); letter-spacing: 0.1em; }
 /* The wake word (N2): whether the page listens for it. */
 .wake { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-code); font-size: 10px; letter-spacing: 0.1em; color: var(--dim); }
 .wakeDot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); flex: none; }

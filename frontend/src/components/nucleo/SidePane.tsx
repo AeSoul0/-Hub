@@ -13,8 +13,8 @@ import styles from "./nucleo.module.css";
 import { catalog, useText } from "@/lib/i18n";
 
 const TEXT = catalog({
-    en: { height: (title: string) => `Height: ${title}` },
-    it: { height: (title: string) => `Altezza: ${title}` },
+    en: { height: (title: string) => `Height: ${title}`, standard: "standard height" },
+    it: { height: (title: string) => `Altezza: ${title}`, standard: "altezza standard" },
 });
 
 export const MIN_HEIGHT = 140;
@@ -57,8 +57,11 @@ export default function SidePane({
     children: React.ReactNode;
 }) {
     const pane = useRef<HTMLElement>(null);
-    const heightLabel = useText(TEXT).height;
+    const text = useText(TEXT);
+    const heightLabel = text.height;
     const [height, setHeight] = useState<number | null>(null);
+    // The height on screen, for screen readers (the grip is a separator with a value).
+    const [shown, setShown] = useState(MIN_HEIGHT);
     const [dragging, setDragging] = useState(false);
 
     const maxHeight = () => ceilingFor(pane.current, ceiling.current);
@@ -75,6 +78,16 @@ export default function SidePane({
         window.addEventListener("resize", keep);
         return () => window.removeEventListener("resize", keep);
     }, [height, ceiling]);
+
+    useEffect(() => {
+        const node = pane.current;
+        if (!node || typeof ResizeObserver === "undefined") {
+            return;
+        }
+        const watch = new ResizeObserver(() => setShown(Math.round(node.getBoundingClientRect().height) || MIN_HEIGHT));
+        watch.observe(node);
+        return () => watch.disconnect();
+    }, []);
 
     const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
         const box = pane.current?.getBoundingClientRect();
@@ -122,6 +135,9 @@ export default function SidePane({
                 role="separator"
                 aria-orientation="horizontal"
                 aria-label={heightLabel(title.toLowerCase())}
+                aria-valuemin={MIN_HEIGHT}
+                aria-valuenow={Math.max(MIN_HEIGHT, height ?? shown)}
+                aria-valuetext={height === null ? text.standard : `${height} px`}
                 tabIndex={0}
                 className={`${styles.grip} ${dragging ? styles.dragging : ""}`}
                 onPointerDown={onPointerDown}
