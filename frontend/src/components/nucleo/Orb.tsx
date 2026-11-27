@@ -142,7 +142,11 @@ export default function Orb({ mode, moons, level, spark }: OrbProps) {
 
         const syncMoons = (moonList: Moon[]) => {
             for (const moon of moonList) {
-                if (!sats.some((sat) => sat.id === moon.id && !sat.dying)) {
+                const known = sats.find((sat) => sat.id === moon.id && !sat.dying);
+                if (known) {
+                    // A command's moon gets its text once the run is listed.
+                    known.label = moon.label;
+                } else {
                     const previous = sats[sats.length - 1];
                     sats.push({
                         id: moon.id,
