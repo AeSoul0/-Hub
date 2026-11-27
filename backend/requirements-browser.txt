@@ -1,0 +1,8 @@
+# ==============================================================================
+# THE BROWSER SKILL (N8, ADR-039)
+# Installed with requirements.txt everywhere except a Docker image built
+# without the browser (AEHUB_BROWSER=0, the default): there the 170 MB of the
+# package and the Chromium it installs are left out. The same exact pin as
+# requirements-desktop.txt (tests/unit/test_playwright_pin.py).
+# ==============================================================================
+playwright==1.65.2

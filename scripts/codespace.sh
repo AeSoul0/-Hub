@@ -65,7 +65,7 @@ install() {
     fi
     say "Installing the backend's Python packages (a few minutes)…"
     "$VENV/bin/pip" install -q --upgrade pip
-    "$VENV/bin/pip" install -q -r "$ROOT/backend/requirements.txt"
+    "$VENV/bin/pip" install -q -r "$ROOT/backend/requirements.txt" -r "$ROOT/backend/requirements-browser.txt"
     build_pages
     say "Installed. Start with: bash scripts/codespace.sh start"
 }

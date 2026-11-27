@@ -331,3 +331,4 @@ F10 (2026-11-24, aggiornato in P1): l'elenco viene dal codice (`tests/security/t
 | `ANTHROPIC_API_KEY` | chiave del provider anthropic, nel keyring (P1) | 23 |
 | `GEMINI_API_KEY` | chiave del provider google (Gemini), nel keyring (P1) | 23 |
 | `AEHUB_IN_CONTAINER` | `1` nell'immagine Docker del backend: le app e le cartelle del PC non si aprono da lì (ADR-035) | 57 |
+| `AEHUB_BROWSER` | scelto quando si costruisce l'immagine Docker del backend: `1` con Chromium per la skill browser, `0` (predefinito) senza, e la skill non offre il suo strumento (ADR-039) | 57 |

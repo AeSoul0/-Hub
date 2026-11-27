@@ -77,7 +77,7 @@ Guscio Tauri dell'app Windows (ADR-020): `src-tauri/` (Rust), `scripts/` (bundle
 - **Persistenza**: SQLAlchemy, Alembic, psycopg (psycopg2 per il PostgreSQL del desktop), pgvector (PostgreSQL 16+ con l'estensione `vector`).
 - **Event bus e cache**: Redis (in processo nell'app desktop).
 - **Memoria e documenti**: il modello MiniLM di sentence-transformers su ONNX Runtime, senza torch (ADR-039), pypdf.
-- **Web e strumenti**: duckduckgo-search, Playwright, BeautifulSoup, mcp.
+- **Web e strumenti**: duckduckgo-search, BeautifulSoup, mcp; Playwright in `requirements-browser.txt`, nell'immagine Docker solo con `AEHUB_BROWSER=1` (ADR-039).
 - **Voce**: faster-whisper, Piper.
 - **Casa**: paho-mqtt.
 - **Osservabilità**: OpenTelemetry, prometheus-client.

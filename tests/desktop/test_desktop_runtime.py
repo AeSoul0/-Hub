@@ -404,7 +404,9 @@ def _requirements(name: str) -> Dict[str, str]:
 
 
 def test_desktop_requirements_follow_the_backend_ones():
-    backend = _requirements("requirements.txt")
+    # Docker leaves Playwright out unless built with the browser (N8), the
+    # desktop app always has it: the backend's set is both files.
+    backend = {**_requirements("requirements.txt"), **_requirements("requirements-browser.txt")}
     desktop = _requirements("requirements-desktop.txt")
     # The same packages since O1 (no torch anywhere). Test tools live in
     # requirements-dev.txt.

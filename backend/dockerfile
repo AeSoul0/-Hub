@@ -1,39 +1,51 @@
 # ==============================================================================
-# BACKEND CORE IMAGE (PLAYWRIGHT BASE)
-# Utilizing the official Microsoft Playwright image to guarantee headless Chromium stability.
-# Ubuntu 24.04 (noble) ships Python 3.12. The tag must match the `playwright`
-# pin in requirements.txt, so the package finds the browsers bundled here.
+# BACKEND CORE IMAGE (N8, ADR-039): Python 3.12 slim.
+# The image used to start from Microsoft's Playwright image, with Chromium,
+# Firefox and WebKit and their system libraries. Now Chromium is installed
+# only when the browser skill is wanted: build with AEHUB_BROWSER=1
+# (`AEHUB_BROWSER=1 docker compose build backend`). Without it the skill
+# offers no tool and the rest of ÆHub (web search, files, voice, memory,
+# home) works as before.
 # ==============================================================================
-FROM mcr.microsoft.com/playwright/python:v1.65.2-noble
+FROM python:3.12-slim-bookworm
+
+# 1: install Chromium (headless shell) and its system libraries for the
+# browser skill; 0: no browser.
+ARG AEHUB_BROWSER=0
 
 # PREVENT PYTHON FROM BUFFERING STDOUT/STDERR (Real-time logs)
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
+ENV PIP_NO_CACHE_DIR=1
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 # Apps and folders of the user's computer cannot be opened from here (ADR-035).
 ENV AEHUB_IN_CONTAINER=1
+# Whether this image has the browser: the browser skill reads it.
+ENV AEHUB_BROWSER=${AEHUB_BROWSER}
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
 
-# WORKDIR ASSIGNMENT: Establish the execution path within the container
 WORKDIR /app
 
-# SYSTEM DEPENDENCIES: venv support and curl for the healthcheck. No compiler:
-# every package in requirements.txt ships a manylinux wheel for Python 3.12,
-# and the ~84 MB of build tools made the build hang on a slow apt mirror.
-# Running cleanups immediately to reduce the final image layer size
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends python3-venv curl && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-# VIRTUAL ENVIRONMENT: the system Python is externally managed (PEP 668), so
-# the backend packages live in their own environment
-RUN python3 -m venv /opt/venv
+# VIRTUAL ENVIRONMENT: the backend packages in their own environment. No
+# compiler: every package in requirements.txt ships a manylinux wheel for
+# Python 3.12.
+RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# DEPENDENCY INJECTION: Copy requirements first to leverage Docker's aggressive layer caching
+# DEPENDENCY INJECTION: Copy requirements first to leverage Docker's layer caching
 COPY requirements.txt .
+RUN pip install -r requirements.txt
 
-# PACKAGE INSTALLATION: Install Python modules required by the orchestration nodes
-RUN pip install --no-cache-dir -r requirements.txt
+# THE BROWSER, only when asked: the Playwright package, the headless shell of
+# Chromium (no full browser, no Firefox or WebKit) and the libraries it needs.
+COPY requirements-browser.txt .
+# Playwright's own Node needs libatomic, which the slim image lacks.
+RUN if [ "$AEHUB_BROWSER" = "1" ]; then \
+        apt-get update && apt-get install -y --no-install-recommends libatomic1 && \
+        pip install -r requirements-browser.txt && \
+        playwright install --with-deps --only-shell chromium && \
+        apt-get clean && rm -rf /var/lib/apt/lists/*; \
+    fi
 
 # SOURCE CODE SYNCHRONIZATION: Copy the entire backend source tree into the container
 COPY . .
@@ -41,6 +53,7 @@ COPY . .
 # PORT EXPOSURE: Expose the standard FastAPI listener port
 EXPOSE 3002
 
-# EXECUTION ENTRYPOINT: Boot the Uvicorn ASGI server bridging the FastAPI application
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s CMD curl -f http://localhost:3002/health || exit 1
+# The healthcheck with Python itself: the slim image has no curl.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:3002/health', timeout=4)" || exit 1
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "3002"]

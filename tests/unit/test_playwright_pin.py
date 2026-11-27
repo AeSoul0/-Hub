@@ -1,25 +1,19 @@
 """
 @file tests/unit/test_playwright_pin.py
-@description The backend image and the `playwright` package move together.
+@description The backend image installs the browser of its own `playwright` pin.
 
-The image `mcr.microsoft.com/playwright/python:vX.Y.Z-noble` ships the
-browsers of exactly one Playwright release; a different `playwright==` pin
-would look for browsers that are not there and break the browser tool at
-runtime. Dependabot updates the image and the pins in separate pull requests
-(Docker and pip), so this test makes a lone half fail in CI.
+Since N8 (ADR-039) the image starts from Python slim and, with
+AEHUB_BROWSER=1, runs `playwright install --only-shell chromium`: the
+package installs the browser of its own release, so image and pin cannot
+drift apart. What is left to keep together: the same exact pin for the
+Docker backend and the desktop app, and no return to a Playwright base image
+whose browsers would belong to another release.
 """
 
 import re
 from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parents[2] / "backend"
-
-
-def _image_version() -> str:
-    dockerfile = (BACKEND / "dockerfile").read_text(encoding="utf-8")
-    found = re.search(r"^FROM mcr\.microsoft\.com/playwright/python:v([\d.]+)-", dockerfile, re.MULTILINE)
-    assert found, "the backend image is no longer the Playwright one: update this test"
-    return found.group(1)
 
 
 def _pin(requirements: str) -> str:
@@ -29,11 +23,16 @@ def _pin(requirements: str) -> str:
     return found.group(1)
 
 
-def test_the_playwright_pins_match_the_image():
-    image = _image_version()
+def test_docker_and_the_desktop_app_pin_the_same_playwright():
+    assert _pin("requirements-browser.txt") == _pin("requirements-desktop.txt")
+    # Not in the base requirements: an image without the browser leaves it out.
+    assert "playwright" not in (BACKEND / "requirements.txt").read_text(encoding="utf-8").lower().split("# playwright")[0]
 
-    for requirements in ("requirements.txt", "requirements-desktop.txt"):
-        assert _pin(requirements) == image, (
-            f"backend/{requirements} pins playwright {_pin(requirements)} but the image is {image}: "
-            "update both together"
-        )
+
+def test_the_image_installs_the_browser_of_its_pin_only_when_asked():
+    dockerfile = (BACKEND / "dockerfile").read_text(encoding="utf-8")
+    assert re.search(r"^FROM python:3\.12-slim", dockerfile, re.MULTILINE)
+    assert "mcr.microsoft.com/playwright" not in dockerfile
+    assert "ARG AEHUB_BROWSER=0" in dockerfile
+    assert "pip install -r requirements-browser.txt" in dockerfile
+    assert "playwright install --with-deps --only-shell chromium" in dockerfile
