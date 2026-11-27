@@ -28,7 +28,9 @@ export type ControlEventType =
     | "answer.reset"
     // The end of a live command, for a request a proxy cut before it ended.
     | "answer.final"
-    | "answer.failed";
+    | "answer.failed"
+    // A timer or a reminder is due (N4).
+    | "reminder.due";
 
 export interface ControlEvent {
     type: string;

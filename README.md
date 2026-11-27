@@ -26,6 +26,10 @@
   - **Long conversations:** their oldest turns become one summary.
   - **Documents:** search with cited sources covers the working folder and the folders you give the agents.
   - **Italian:** a multilingual embedding model, better for Italian, can be chosen on MEMORIA (ADR-042).
+- **Everyday commands at once.**
+  - "Alza il volume", "pausa", "blocca lo schermo", "fai uno screenshot", "timer di 5 minuti" and "ricordami alle 18 di chiamare Marco" run without the model.
+  - A reminder rings in the Nucleo and, with the page in the background, as a notification.
+  - The agents can also search inside your text files and PDFs, and read PDFs (ADR-043).
 - **Approvals that reach you.** A run that waits for you asks one short question ("May I delete old.txt? Yes or no."); a plain "yes" or "no", spoken or typed, decides it and Aurora answers in a word. A system notification and the tab title tell you when a request waits and ÆHub is not in front (ADR-037).
 - **Instant commands.** "Open Spotify", "open the downloads folder", "accendi la luce della cucina": simple commands run at once through the Tool Gateway, without the model, in milliseconds. The apps are the ones you list in Settings → Apps; anything else goes to the engine (ADR-035).
 - **An interface for everything.** The Nucleo (home) and the Control Plane cover every route and setting of the backend (`docs/frontend-coverage.md`). They are in English by default, or in Italian (Settings → Language, or ask Aurora); the voice keeps the language of the voice you choose, and a notice says when the two differ (ADR-034).

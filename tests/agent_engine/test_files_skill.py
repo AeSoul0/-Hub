@@ -117,7 +117,32 @@ def test_list_find_and_read(folders):
     assert "id_ed25519" not in run(files_skill.find_files("*"))
 
     assert run(files_skill.read_file(str(folders.mine / "Progetti" / "piano.md"))) == "# Piano\nPrima riga."
-    assert "binary" in run(files_skill.read_file(str(folders.mine / "report.pdf")))
+    # A broken PDF is reported, not raised.
+    assert "PDF that could not be read" in run(files_skill.read_file(str(folders.mine / "report.pdf")))
+
+
+def test_search_inside_text_files_and_pdfs(folders):
+    """N4: the lines that contain a text, in text files and PDF pages, with where they are."""
+    from tests.agent_engine.test_documents import _pdf
+
+    (folders.mine / "Progetti" / "spese.csv").write_text("data,voce\n2026-11-01,Affitto di novembre\n", encoding="utf-8")
+    (folders.mine / "bolletta.pdf").write_bytes(_pdf("Importo bolletta luce: 82 euro"))
+    (folders.mine / ".env").write_text("affitto segreto", encoding="utf-8")
+    (folders.work / "nota.txt").write_text("Ricordarsi l'affitto.", encoding="utf-8")
+    (folders.root / "outside.txt").write_text("affitto fuori", encoding="utf-8")
+
+    found = run(files_skill.search_in_files("affitto"))
+    assert f"{folders.mine / 'Progetti' / 'spese.csv'}:L2: 2026-11-01,Affitto di novembre" in found
+    assert f"{folders.work / 'nota.txt'}:L1:" in found
+    assert "segreto" not in found and "fuori" not in found
+
+    # Every word on one line, in any order; a PDF by page.
+    assert f"{folders.mine / 'bolletta.pdf'}:p1: Importo bolletta luce: 82 euro" in run(files_skill.search_in_files("luce bolletta"))
+    assert run(files_skill.search_in_files("bolletta", str(folders.work))).startswith("No file contains")
+    assert "Importo bolletta luce" in run(files_skill.read_file(str(folders.mine / "bolletta.pdf")))
+
+    (folders.mine / "foto.jpg").write_bytes(b"\xff\xd8\xff\x00jpeg")
+    assert "JPEG image" in run(files_skill.read_file(str(folders.mine / "foto.jpg")))
 
 
 def test_write_make_and_move_never_replace(folders):
@@ -161,6 +186,7 @@ def test_risks_and_flags():
     assert {name: meta.risk_level.value for name, meta in tools.items()} == {
         "list_folder": "low",
         "find_files": "low",
+        "search_in_files": "low",
         "read_file": "low",
         "write_file": "medium",
         "make_folder": "low",
@@ -171,6 +197,7 @@ def test_risks_and_flags():
     assert all(meta.filesystem_access for meta in tools.values())
     assert tools["replace_file"].requires_approval and tools["delete_path"].requires_approval
     assert tools["read_file"].untrusted_output and tools["list_folder"].untrusted_output
+    assert tools["search_in_files"].untrusted_output
 
 
 # ==============================================================================

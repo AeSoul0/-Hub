@@ -270,6 +270,35 @@ describe("the draft in the Nucleo", () => {
         expect(screen.queryByText(/CANCELLED/)).not.toBeInTheDocument();
     });
 
+    it("shows a reminder when it is due", async () => {
+        installEventSource();
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async (input: RequestInfo | URL) => {
+                const url = new URL(String(input));
+                const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
+                if (url.pathname === "/api/runs/live") {
+                    return json({ halted: false, halt_reason: null, limits: LIMITS, runs: [] });
+                }
+                if (url.pathname === "/api/runs/stats") {
+                    return json({ budget: { month_spent: 0, monthly_budget: 2 } });
+                }
+                return json([]);
+            })
+        );
+        render(<Nucleo />);
+        const stream = FakeEventSource.instances.at(-1) as FakeEventSource;
+        act(() => stream.open());
+        act(() =>
+            stream.emit("reminder.due", {
+                id: "r1",
+                text: "chiamare Marco",
+                due: "2026-11-27T18:30",
+            })
+        );
+        expect(await screen.findByText("⏰ Promemoria: chiamare Marco")).toBeInTheDocument();
+    });
+
     it("sends more commands while others run, each answer to its own, and keeps it all across pages", async () => {
         installEventSource();
         const answers = new Map<string, (body: unknown) => void>();
