@@ -34,6 +34,7 @@ from app.api import (
     auth,
     conversations,
     desktop,
+    google as google_api,
     documents,
     home as home_api,
     interface as interface_api,
@@ -471,6 +472,10 @@ app.include_router(
 
 app.include_router(
     conversations.router
+)
+
+app.include_router(
+    google_api.router
 )
 
 app.include_router(

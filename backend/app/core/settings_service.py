@@ -56,6 +56,9 @@ SECRETS = (
     ("ELEVENLABS_API_KEY", "ElevenLabs API key", "the cloud voice (optional)"),
     ("XAI_API_KEY", "SpaceXAI (xAI) API key", "the SpaceXAI cloud voice (optional, ADR-038)"),
     ("AEHUB_MCP_TOKENS", "MCP server tokens", "MCP servers that need a login, as host=token (optional, ADR-033)"),
+    ("GOOGLE_CLIENT_ID", "Google OAuth client id", "Google Calendar and Gmail (optional, ADR-046)"),
+    ("GOOGLE_CLIENT_SECRET", "Google OAuth client secret", "Google Calendar and Gmail (optional, ADR-046)"),
+    ("GOOGLE_REFRESH_TOKEN", "Google account token", "the connected Google account; STRUMENTI → Google writes it (optional, ADR-046)"),
 )
 
 SETUP_HINT = "Add it with: python scripts/aehub.py setup, then restart with: python scripts/aehub.py up."

@@ -55,6 +55,9 @@ SECRETS: Dict[str, str] = {
     "ELEVENLABS_API_KEY": "ElevenLabs cloud voice (optional, ADR-024)",
     "XAI_API_KEY": "SpaceXAI (xAI) cloud voice (optional, ADR-038)",
     "AEHUB_MCP_TOKENS": "MCP servers that need a login, as host=token,host=token (optional, ADR-033)",
+    "GOOGLE_CLIENT_ID": "Google OAuth client for Calendar and Gmail (optional, ADR-046)",
+    "GOOGLE_CLIENT_SECRET": "Google OAuth client secret (optional, ADR-046)",
+    "GOOGLE_REFRESH_TOKEN": "connected Google account, as STRUMENTI → Google shows it once (optional, ADR-046)",
 }
 
 # Keys the stack no longer reads: their lines are removed from the env file,

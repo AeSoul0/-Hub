@@ -67,6 +67,12 @@ MANAGEMENT = {
     # N6: the Nucleo's past conversations (the caller's own runs), read only.
     ("GET", "/api/conversations"),
     ("GET", "/api/conversations/{conversation_id}"),
+    # N4 (ADR-046): the owner's Google account. Connecting runs no tool: the
+    # agents reach Calendar and Gmail through the google skill and the Gateway.
+    ("GET", "/api/google"),
+    ("POST", "/api/google/connect"),
+    ("GET", "/api/google/callback"),
+    ("DELETE", "/api/google"),
     # M14: the desktop app's launch token and provider keys into the keyring.
     ("GET", "/desktop/launch/{token}"),
     ("GET", "/api/desktop"),

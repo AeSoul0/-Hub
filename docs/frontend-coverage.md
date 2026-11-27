@@ -9,7 +9,7 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 - ⏸ vuol dire **sospesa**: riguarda solo l'app desktop (Tauri), sospesa dal 2026-11-24. Non conta né tra le coperte né tra le mancanti.
 
 **Ultimo aggiornamento:** N2, parola di attivazione (2026-11-26): una riga nuova, la 61.
-**Copertura:** 63 righe su 63, cioè **100%**, più 2 righe sospese (⏸). F10 ha confrontato la tabella con tutte le route e tutte le impostazioni del backend: l'[indice](#indice-ogni-route-e-ogni-impostazione) in fondo dice quale riga copre ciascuna, e un test in CI lo tiene allineato al codice.
+**Copertura:** 64 righe su 64, cioè **100%**, più 2 righe sospese (⏸). F10 ha confrontato la tabella con tutte le route e tutte le impostazioni del backend: l'[indice](#indice-ogni-route-e-ogni-impostazione) in fondo dice quale riga copre ciascuna, e un test in CI lo tiene allineato al codice.
 
 ## Conversazione e voce
 
@@ -75,6 +75,7 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 | 59 | Approvazioni in una parola e notifiche: la domanda breve di una run in attesa, «sì»/«no» a voce o scritto, la notifica del sistema e il conteggio nel titolo | Nucleo (la domanda, la risposta segna "istantaneo · N ms"); notifica su ogni pagina; APPROVAZIONI: lo stato delle notifiche e il bottone per attivarle | ✓ | ADR-037 |
 | 60 | Risposte in streaming: la bozza mentre il modello scrive (`delivery=live`, `answer.delta`/`answer.reset`) e la voce frase per frase (`reply_chars` su `/api/voice/speak`) | Nucleo: «bozza · in verifica», poi la risposta accettata, letta pezzo per pezzo | ✓ | N1, ADR-040 |
 | 61 | Parola di attivazione: «Hey Jarvis», «Alexa», «Hey Mycroft» o un tuo modello «Aurora», riconosciuta nella pagina; i modelli da `GET /api/voice/wake/{model}` (scaricati una volta, SHA-256 controllato); sensibilità | VOCE: Parola di attivazione (parola, sensibilità, dove va il modello Aurora); Nucleo: indicatore di ascolto, suono, il comando finisce quando smetti di parlare | ✓ | N2, ADR-041 |
+| 64 | Google Calendar e Gmail dell'account del proprietario (skill `google`: `calendar_list_events`, `calendar_create_event`, `gmail_search`, `gmail_read`, `gmail_send` con approvazione); collegamento OAuth (`GET /api/google`, `POST /api/google/connect`, `GET /api/google/callback`, `DELETE /api/google`) | STRUMENTI → Google (i passi per il client OAuth con l'indirizzo da registrare, Collega, account collegato, Scollega, il token da salvare una volta) | ✓ | N4, ADR-046 |
 | 62 | Cestino: quello che `delete_path` elimina va nel cestino di ÆHub e resta ripristinabile per `AEHUB_TRASH_DAYS` giorni (`GET /api/tools/trash`, ripristino, rimozione, svuotamento); «sì, elimina» a voce per eliminare o sovrascrivere | STRUMENTI → Cestino (elenco, Ripristina, Elimina per sempre, Svuota); Nucleo: la domanda chiede «sì, elimina» | ✓ | N5, ADR-044 |
 | 34 | Registro di audit, con la provenienza | Control Plane → SICUREZZA | ✓ | M11, F5 |
 
@@ -158,6 +159,10 @@ F10 (2026-11-24, aggiornato in P1): l'elenco viene dal codice (`tests/security/t
 | `GET /api/conversations` | 63 |
 | `GET /api/conversations/{conversation_id}` | 63 |
 | `GET /api/documents` | 37 |
+| `GET /api/google` | 64 |
+| `DELETE /api/google` | 64 |
+| `GET /api/google/callback` | 64 |
+| `POST /api/google/connect` | 64 |
 | `GET /api/documents/passage` | 37 |
 | `GET /api/documents/search` | 37 |
 | `POST /api/documents/sync` | 37 |
@@ -315,6 +320,9 @@ F10 (2026-11-24, aggiornato in P1): l'elenco viene dal codice (`tests/security/t
 | `AEHUB_ANSWER_TIMEOUT_SECONDS` | attesa massima della risposta a un comando nel Nucleo (900 nel Codespace con Ollama, dallo script) | 24 |
 | `AEHUB_MQTT_PASSWORD` | password del broker, nel keyring | 40 |
 | `AEHUB_MCP_TOKENS` | token dei server MCP con login (`host=token`), nel keyring | 52 |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | client OAuth di Google creato dal proprietario, nel keyring o come secret del Codespace | 64 |
+| `GOOGLE_REFRESH_TOKEN` | l'account Google collegato: nel keyring dall'app desktop, altrimenti mostrato una volta su STRUMENTI da salvare come secret | 64 |
+| `AEHUB_GOOGLE_REDIRECT_URI` | indirizzo di ritorno da Google, quando non è quello dell'API stessa (dietro un proxy) | 64 |
 | `AEHUB_APP_VERSION` | versione passata dall'app desktop, mostrata in STATO | 43 |
 | `AEHUB_LAUNCHER` | segnale interno del launcher del desktop | S1 (sospesa) |
 | `AEHUB_DESKTOP_DB_PASSWORD` | password del PostgreSQL incorporato, nel keyring, mai mostrata | S1 (sospesa) |

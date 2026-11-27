@@ -43,5 +43,13 @@ Il sistema ÆHub/A.U.R.O.R.A. opera in un modello **LAN-first**. Tuttavia, i con
 |---|---|---|---|
 | **T10** | Un client manda l'id di una conversazione per leggere o continuare quella di un altro. | Divulgazione (Medium) | La sessione è sempre `<principal autenticato>~<id>`: l'id da solo non porta fuori dalle sessioni del chiamante. L'elenco e i turni leggono solo le run del principal e dello spazio di lavoro del chiamante, mai quelle dei subagenti. Un id che non è lettere, cifre e trattini (al massimo 64) torna alla sessione del principal. |
 
+### Aggiornamento N4, Google (2026-11-27, ADR-046)
+
+| ID | Minaccia | Impatto | Mitigazione |
+|---|---|---|---|
+| **T11** | Una email o un evento scritto da altri chiede all'agente di mandare posta, inoltrare dati o creare eventi. | Divulgazione, azione non voluta (High) | `gmail_search`, `gmail_read` e `calendar_list_events` sono `untrusted_output`: il testo è dato, mai istruzioni, e dopo averlo letto ogni azione HIGH chiede l'approvazione. `gmail_send` è HIGH e aspetta sempre il sì del proprietario, con destinatari controllati (al massimo 10, niente intestazioni nascoste nell'indirizzo). |
+| **T12** | Il token dell'account Google rubato dal disco o dal database. | Accesso alla posta (Critical) | Il refresh token non va mai in un file né nel database: nel portachiavi del sistema (app desktop) o in un secret dell'ambiente; altrimenti resta in memoria e la pagina lo mostra una volta sola. Il token di accesso vive in memoria. Scollegare lo revoca presso Google. |
+| **T13** | Un sito avvia o completa il collegamento con un account dell'attaccante. | Posta dell'utente verso un altro account (High) | Solo il proprietario avvia il collegamento (POST con controllo dell'origine). Lo stato è casuale, vale 10 minuti e una sola volta; il codice è legato al verificatore PKCE (S256) che resta nel backend. Collegare e scollegare finiscono nel registro di audit. |
+
 ## 4. Policy "Fail Closed"
 In caso di fallimento del database, mancata decodifica del token, token scaduto, o policy engine non raggiungibile, la `HTTPException(401)` o `403` viene generata di default. Non esiste un "fallback privileged".

@@ -4,11 +4,12 @@
  */
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import React from "react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import SecurityPage from "@/app/control-plane/security/page";
 import SkillsPage from "@/app/control-plane/skills/page";
 import ToolsPage from "@/app/control-plane/tools/page";
+import GoogleCard, { type GoogleStatus } from "@/components/control-plane/GoogleCard";
 import TrashCard from "@/components/control-plane/TrashCard";
 import {
     disabledValue,
@@ -627,5 +628,63 @@ describe("the trash (N5)", () => {
         expect(await screen.findByText("1 elementi eliminati per sempre.")).toBeInTheDocument();
         expect(await screen.findByText("Il cestino è vuoto.")).toBeInTheDocument();
         expect(fetchMock.mock.calls.filter(([, init]) => init?.method === "DELETE")).toHaveLength(1);
+    });
+});
+
+describe("Google on STRUMENTI (N4)", () => {
+    beforeEach(() => chooseLanguage("it"));
+
+    function google(overrides: Partial<GoogleStatus> = {}): GoogleStatus {
+        return {
+            client_configured: true,
+            connected: false,
+            account: null,
+            token_source: null,
+            problem: null,
+            redirect_uri: "https://curly.app.github.dev/api/google/callback",
+            scopes: [],
+            token_to_save: null,
+            ...overrides,
+        };
+    }
+
+    it("explains the client to create, with the redirect address", async () => {
+        stubFetch({ "GET /api/google": () => ({ status: 200, body: google({ client_configured: false }) }) });
+        render(<GoogleCard />);
+        expect(await screen.findByText("https://curly.app.github.dev/api/google/callback")).toBeInTheDocument();
+        expect(screen.getByText(/GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET/)).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "Collega Google" })).not.toBeInTheDocument();
+    });
+
+    it("connects through Google's page, shows the token once, then disconnects", async () => {
+        let status = google();
+        const assign = vi.fn();
+        vi.stubGlobal("location", { ...window.location, assign, origin: "http://localhost:3000", search: "", href: "http://localhost:3000/control-plane/tools" });
+        const fetchMock = stubFetch({
+            "GET /api/google": () => ({ status: 200, body: status }),
+            "POST /api/google/connect": () => ({ status: 200, body: { url: "https://accounts.google.com/o/oauth2/v2/auth?x=1" } }),
+            "DELETE /api/google": () => {
+                status = google();
+                return { status: 200, body: { disconnected: true, remove_secret: "GOOGLE_REFRESH_TOKEN" } };
+            },
+        });
+
+        const { unmount } = render(<GoogleCard />);
+        fireEvent.click(await screen.findByRole("button", { name: "Collega Google" }));
+        await waitFor(() => expect(assign).toHaveBeenCalledWith("https://accounts.google.com/o/oauth2/v2/auth?x=1"));
+        const connect = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/api/google/connect"));
+        expect(JSON.parse(String(connect?.[1]?.body))).toEqual({ origin: "http://localhost:3000" });
+        unmount();
+
+        status = google({ connected: true, account: "me@gmail.com", token_source: "memory", token_to_save: "rt-1" });
+        render(<GoogleCard />);
+        expect(await screen.findByText(/Collegato: me@gmail.com/)).toBeInTheDocument();
+        expect(screen.getByRole("textbox", { name: "GOOGLE_REFRESH_TOKEN" })).toHaveValue("rt-1");
+
+        fireEvent.click(screen.getByRole("button", { name: "Scollega" }));
+        fireEvent.click(screen.getByRole("button", { name: "Clicca ancora per scollegare" }));
+        expect(await screen.findByText(/Togli anche il secret GOOGLE_REFRESH_TOKEN/)).toBeInTheDocument();
+        expect(screen.queryByRole("textbox", { name: "GOOGLE_REFRESH_TOKEN" })).not.toBeInTheDocument();
+        vi.unstubAllGlobals();
     });
 });

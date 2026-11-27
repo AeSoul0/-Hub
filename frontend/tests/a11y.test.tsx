@@ -18,6 +18,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import SetupPage from "@/app/control-plane/setup/page";
 import { LoginForm } from "@/components/control-plane/AuthGate";
+import GoogleCard from "@/components/control-plane/GoogleCard";
 import TrashCard from "@/components/control-plane/TrashCard";
 import Nucleo from "@/components/nucleo/Nucleo";
 import type { SettingField, SettingsView } from "@/lib/api/settings";
@@ -159,8 +160,21 @@ describe.each<Lang>(["it", "en"])("accessibility (%s)", (lang) => {
         }
     });
 
-    it("the trash with an item, and the login", async () => {
+    it("Google, the trash with an item, and the login", async () => {
         stubFetch({
+            "GET /api/google": () => ({
+                status: 200,
+                body: {
+                    client_configured: false,
+                    connected: false,
+                    account: null,
+                    token_source: null,
+                    problem: null,
+                    redirect_uri: "http://localhost:8000/api/google/callback",
+                    scopes: [],
+                    token_to_save: null,
+                },
+            }),
             "GET /api/tools/trash": () => ({
                 status: 200,
                 body: {
@@ -179,11 +193,13 @@ describe.each<Lang>(["it", "en"])("accessibility (%s)", (lang) => {
         });
         const { container } = render(
             <>
+                <GoogleCard />
                 <TrashCard />
                 <LoginForm onSignedIn={() => undefined} />
             </>
         );
         await screen.findByText("/w/a.txt");
+        await screen.findByText("http://localhost:8000/api/google/callback");
         expect(await violations(container)).toEqual([]);
     });
 });
