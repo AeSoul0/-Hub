@@ -342,9 +342,23 @@ def _listen_client(captured: List[Dict[str, Any]], admin: Principal) -> TestClie
     from app.agents import orchestrator
 
     async def fake_response(
-        intent, system_prompt, ui_context, session_id, principal=None, input_channel="text", delivery="full"
+        intent,
+        system_prompt,
+        ui_context,
+        session_id,
+        principal=None,
+        input_channel="text",
+        delivery="full",
+        command_id="",  # noqa: ARG001 - the page's command id, not checked here
     ):
-        captured.append({"intent": intent, "channel": input_channel, "principal": principal, "delivery": delivery})
+        captured.append(
+            {
+                "intent": intent,
+                "channel": input_channel,
+                "principal": principal,
+                "delivery": delivery,
+            }
+        )
         return {"transcription": "Luce accesa.", "audio_base64": "", "audio_mime": ""}
 
     app = FastAPI()

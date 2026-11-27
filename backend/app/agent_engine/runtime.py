@@ -66,6 +66,7 @@ from app.agent_engine.guardrails import InputGuardrail, OutputGuardrail
 from app.agent_engine.models import (
     AgentRun,
     AgentRunStatus,
+    CheckerDecision,
     CheckerDecisionEnum,
     Observation,
     ToolProposal,
@@ -107,6 +108,31 @@ DEFAULT_MAX_TOOL_CALLS = 5
 DEFAULT_MAX_TOTAL_TOOL_CALLS = 20
 # How much of a Critic's instruction the timeline shows (F8).
 VERDICT_CHARS = 500
+
+# Tools that only read: a simple request answered with these (or none) does
+# not wait for the Critic.
+READ_ONLY_TOOLS = frozenset({"search_documents"})
+# The roles of simple requests: short plain ones (triage) and quick jobs.
+SIMPLE_ROLES = frozenset({Role.TRIAGE.value, Role.FAST_WORKER.value})
+
+
+def _simple_answer(worker_context: Dict[str, Any]) -> bool:
+    """
+    Whether the Critic can be skipped: a simple request (triage or fast
+    worker) answered with no tool call, or only read-only ones, on trusted
+    context. Nothing was changed, so there is nothing to check but the text;
+    on a slow model (a CPU) the Critic's call is a third of the wait.
+    AEHUB_CRITIC_SIMPLE=check keeps the Critic for these too.
+    """
+    from app.core.runtime_config import config_value
+
+    if (config_value("AEHUB_CRITIC_SIMPLE") or "skip").strip().lower() != "skip":
+        return False
+    if worker_context.get("worker_role") not in SIMPLE_ROLES:
+        return False
+    if worker_context.get("untrusted_context"):
+        return False
+    return all(tool in READ_ONLY_TOOLS for tool in worker_context.get("tools_used", []))
 
 
 
@@ -761,6 +787,9 @@ class AgentRuntime(ToolsMixin, LimitsMixin, ResumeMixin, StateMixin, SubagentsMi
                 break
 
             loop.worker_context["resuming"] = False
+            # The role that answered (for the quick path of simple requests).
+            if step_result.get("role"):
+                loop.worker_context["worker_role"] = str(step_result["role"])
 
             usage_stop = self._record_usage(
                 loop.agent_run,
@@ -927,6 +956,7 @@ class AgentRuntime(ToolsMixin, LimitsMixin, ResumeMixin, StateMixin, SubagentsMi
                 workspace_id=workspace_id,
                 tool=proposal.tool_name,
             )
+            loop.worker_context.setdefault("tools_used", []).append(proposal.tool_name)
 
             try:
                 self._record_observation(
@@ -1105,14 +1135,20 @@ class AgentRuntime(ToolsMixin, LimitsMixin, ResumeMixin, StateMixin, SubagentsMi
                 loop.last_feedback,
             ))
 
+        skipped = _simple_answer(loop.worker_context)
+
         try:
-            checker_decision = await run_interruptible(
-                checker.evaluate(
-                    task=loop.task,
-                    result=loop.worker_result,
-                    trace=trace,
-                ),
-                cancellation_token,
+            checker_decision = (
+                CheckerDecision(status=CheckerDecisionEnum.ACCEPT, issues=[], retry_instruction=None)
+                if skipped
+                else await run_interruptible(
+                    checker.evaluate(
+                        task=loop.task,
+                        result=loop.worker_result,
+                        trace=trace,
+                    ),
+                    cancellation_token,
+                )
             )
 
         except RunInterrupted as exc:
@@ -1184,7 +1220,7 @@ class AgentRuntime(ToolsMixin, LimitsMixin, ResumeMixin, StateMixin, SubagentsMi
             # The Critic's verdicts in the timeline (F8): which attempt
             # out of how many.
             EventDispatcher().dispatch(
-                "checker.accepted",
+                "checker.skipped" if skipped else "checker.accepted",
                 run_id=run_id,
                 session_id=session_id,
                 workspace_id=workspace_id,

@@ -8,6 +8,7 @@ import { cleanup } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 
 import { resetInterface } from "@/lib/i18n";
+import { forgetNucleo } from "@/lib/nucleo/keep";
 
 afterEach(() => {
     cleanup();
@@ -15,6 +16,8 @@ afterEach(() => {
     window.localStorage.clear();
     window.sessionStorage.clear();
     resetInterface();
+    // The Nucleo kept nothing from the test before.
+    forgetNucleo();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.useRealTimers();

@@ -149,16 +149,18 @@ describe("the draft in the Nucleo", () => {
         await waitFor(() => expect(asked).toHaveLength(1));
         expect(asked[0].get("delivery")).toBe("live");
 
-        act(() => stream.emit("answer.delta", { text: "Domani" }));
-        act(() => stream.emit("answer.delta", { text: "Domani piove" }));
+        const id = String(asked[0].get("command_id"));
+        expect(id).toMatch(/^[A-Za-z0-9-]+$/);
+        act(() => stream.emit("answer.delta", { text: "Domani", command_id: id }));
+        act(() => stream.emit("answer.delta", { text: "Domani piove", command_id: id }));
         const draft = await screen.findByTestId("answer-draft");
         expect(draft).toHaveTextContent("bozza · in verifica");
         expect(draft).toHaveTextContent("Domani piove");
 
         // The Critic sent it back: the draft goes.
-        act(() => stream.emit("answer.reset", {}));
+        act(() => stream.emit("answer.reset", { command_id: id }));
         expect(screen.queryByTestId("answer-draft")).not.toBeInTheDocument();
-        act(() => stream.emit("answer.delta", { text: "Domani piove a Milano." }));
+        act(() => stream.emit("answer.delta", { text: "Domani piove a Milano.", command_id: id }));
         expect(await screen.findByTestId("answer-draft")).toHaveTextContent(
             "Domani piove a Milano."
         );
@@ -187,13 +189,15 @@ describe("the draft in the Nucleo", () => {
     it("keeps waiting when a proxy cuts the request, and shows the answer that comes as an event", async () => {
         installEventSource();
         let status = 504;
+        const ids: string[] = [];
         vi.stubGlobal(
             "fetch",
-            vi.fn(async (input: RequestInfo | URL) => {
+            vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
                 const url = new URL(String(input));
                 const json = (body: unknown, code = 200) =>
                     new Response(JSON.stringify(body), { status: code });
                 if (url.pathname === "/api/orchestrator/ask") {
+                    ids.push(String((init?.body as FormData).get("command_id")));
                     // GitHub's port forwarding after about a minute.
                     return new Response("Gateway Timeout", { status });
                 }
@@ -206,30 +210,34 @@ describe("the draft in the Nucleo", () => {
                 return json([]);
             })
         );
+        const cut =
+            "La connessione si è interrotta, ma ÆHub sta ancora lavorando: la risposta arriverà qui.";
 
         render(<Nucleo />);
         const stream = FakeEventSource.instances[0];
         act(() => stream.open());
 
-        // The end of someone else's command (none cut here) is ignored.
-        act(() => stream.emit("answer.final", { reply: { transcription: "estranea" } }));
+        // The end of a command this page did not send is ignored.
+        act(() =>
+            stream.emit("answer.final", {
+                command_id: "other",
+                reply: { transcription: "estranea" },
+            })
+        );
         expect(screen.queryByText("estranea")).not.toBeInTheDocument();
 
         const command = screen.getByRole("textbox", { name: "Comando" });
         fireEvent.change(command, { target: { value: "presentati" } });
         fireEvent.click(screen.getByRole("button", { name: "INVIA" }));
-        expect(
-            await screen.findByText(
-                "La connessione si è interrotta, ma ÆHub sta ancora lavorando: la risposta arriverà qui."
-            )
-        ).toBeInTheDocument();
+        expect(await screen.findByText(cut)).toBeInTheDocument();
         expect(screen.queryByText(/Il comando non è partito/)).not.toBeInTheDocument();
 
         // The drafts still show, then the answer arrives on the stream.
-        act(() => stream.emit("answer.delta", { text: "Sono Aurora" }));
+        act(() => stream.emit("answer.delta", { text: "Sono Aurora", command_id: ids[0] }));
         expect(await screen.findByTestId("answer-draft")).toHaveTextContent("Sono Aurora");
         act(() =>
             stream.emit("answer.final", {
+                command_id: ids[0],
                 reply: { transcription: "Sono Aurora, il tuo assistente." },
             })
         );
@@ -240,14 +248,10 @@ describe("the draft in the Nucleo", () => {
         status = 502;
         fireEvent.change(command, { target: { value: "ancora" } });
         fireEvent.click(screen.getByRole("button", { name: "INVIA" }));
-        await waitFor(() =>
-            expect(
-                screen.getAllByText(
-                    "La connessione si è interrotta, ma ÆHub sta ancora lavorando: la risposta arriverà qui."
-                )
-            ).toHaveLength(2)
+        await waitFor(() => expect(screen.getAllByText(cut)).toHaveLength(2));
+        act(() =>
+            stream.emit("answer.failed", { command_id: ids[1], detail: "Worker failed: timeout" })
         );
-        act(() => stream.emit("answer.failed", { detail: "Worker failed: timeout" }));
         expect(
             await screen.findByText("Il comando non è partito: Worker failed: timeout")
         ).toBeInTheDocument();
@@ -255,19 +259,92 @@ describe("the draft in the Nucleo", () => {
         // A stopped run is a system line, not its raw state.
         fireEvent.change(command, { target: { value: "lungo" } });
         fireEvent.click(screen.getByRole("button", { name: "INVIA" }));
-        await waitFor(() =>
-            expect(
-                screen.getAllByText(
-                    "La connessione si è interrotta, ma ÆHub sta ancora lavorando: la risposta arriverà qui."
-                )
-            ).toHaveLength(3)
-        );
+        await waitFor(() => expect(screen.getAllByText(cut)).toHaveLength(3));
         act(() =>
             stream.emit("answer.final", {
+                command_id: ids[2],
                 reply: { transcription: "", stopped: "Comando fermato dallo stop generale." },
             })
         );
         expect(await screen.findByText("Comando fermato dallo stop generale.")).toBeInTheDocument();
         expect(screen.queryByText(/CANCELLED/)).not.toBeInTheDocument();
+    });
+
+    it("sends more commands while others run, each answer to its own, and keeps it all across pages", async () => {
+        installEventSource();
+        const answers = new Map<string, (body: unknown) => void>();
+        const ids: string[] = [];
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+                const url = new URL(String(input));
+                const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
+                if (url.pathname === "/api/orchestrator/ask") {
+                    const id = String((init?.body as FormData).get("command_id"));
+                    ids.push(id);
+                    return new Promise<Response>((resolve) =>
+                        answers.set(id, (body) => resolve(json(body)))
+                    );
+                }
+                if (url.pathname === "/api/runs/live") {
+                    return json({ halted: false, halt_reason: null, limits: LIMITS, runs: [] });
+                }
+                if (url.pathname === "/api/runs/stats") {
+                    return json({ budget: { month_spent: 0, monthly_budget: 2 } });
+                }
+                return json([]);
+            })
+        );
+
+        const first = render(<Nucleo />);
+        let stream = FakeEventSource.instances.at(-1) as FakeEventSource;
+        act(() => stream.open());
+        const ask = (text: string) => {
+            fireEvent.change(screen.getByRole("textbox", { name: "Comando" }), {
+                target: { value: text },
+            });
+            fireEvent.click(screen.getByRole("button", { name: "INVIA" }));
+        };
+
+        // Two commands, the second sent while the first runs.
+        ask("uno");
+        await waitFor(() => expect(ids).toHaveLength(1));
+        ask("due");
+        await waitFor(() => expect(ids).toHaveLength(2));
+        expect(ids[0]).not.toBe(ids[1]);
+
+        // Each draft goes to its own command.
+        act(() => stream.emit("answer.delta", { text: "bozza uno", command_id: ids[0] }));
+        act(() => stream.emit("answer.delta", { text: "bozza due", command_id: ids[1] }));
+        expect(await screen.findAllByTestId("answer-draft")).toHaveLength(2);
+
+        await act(async () => answers.get(ids[1])?.({ transcription: "risposta due" }));
+        expect(await screen.findByText("risposta due")).toBeInTheDocument();
+        expect(screen.getAllByTestId("answer-draft")).toHaveLength(1);
+        expect(screen.getByTestId("answer-draft")).toHaveTextContent("bozza uno");
+
+        // An engine event in the panel, to see it again after the round trip.
+        act(() =>
+            stream.emit("engine.event", {
+                event_type: "model.called",
+                run_id: "run-1",
+                model: "qwen2.5:3b",
+                role: "triage",
+            })
+        );
+        expect((await screen.findAllByText(/qwen2.5:3b/)).length).toBeGreaterThan(0);
+
+        // To a run's details and back: the conversation and the events are still there.
+        first.unmount();
+        // The first command ends while the Nucleo is not on screen.
+        await act(async () => answers.get(ids[0])?.({ transcription: "risposta uno" }));
+        render(<Nucleo />);
+        stream = FakeEventSource.instances.at(-1) as FakeEventSource;
+        act(() => stream.open());
+        for (const line of ["uno", "due", "risposta due", "risposta uno"]) {
+            expect(screen.getByText(line)).toBeInTheDocument();
+        }
+        expect(screen.getAllByText(/qwen2.5:3b/).length).toBeGreaterThan(0);
+        expect(screen.queryByTestId("answer-draft")).not.toBeInTheDocument();
     });
 });

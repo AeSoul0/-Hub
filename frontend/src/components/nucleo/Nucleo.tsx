@@ -44,6 +44,14 @@ import {
     toEngineEvent,
 } from "@/lib/nucleo/engine";
 import { IMPLEMENTER_ROLES } from "@/lib/nucleo/models";
+import {
+    keepLine,
+    keepNucleo,
+    liveCommands,
+    newCommandId,
+    recallNucleo,
+    type ChatLine,
+} from "@/lib/nucleo/keep";
 import { initialRuns, liveCount, runsReducer, type LiveView } from "@/lib/nucleo/runs";
 import { resumedByVoice, speakInSentences, splitSentences, type SpokenPiece } from "@/lib/nucleo/voice";
 import { startWakeListener, type WakeListener, type WakeStatus } from "@/lib/nucleo/wakeListener";
@@ -56,14 +64,6 @@ import RunsPanel from "./RunsPanel";
 import SidePane from "./SidePane";
 import styles from "./nucleo.module.css";
 
-interface ChatLine {
-    id: number;
-    who: "me" | "aehub" | "system";
-    text: string;
-    channel?: "voice" | "text";
-    // "instant · 8 ms" when the reply came without the model (ADR-035).
-    note?: string;
-}
 
 interface Reply {
     heard?: string;
@@ -233,20 +233,22 @@ export default function Nucleo() {
     useEffect(() => {
         langRef.current = lang;
     }, [lang]);
-    const [state, dispatch] = useReducer(nucleoReducer, initialNucleo);
-    const [chat, setChat] = useState<ChatLine[]>([]);
+    // Back from another page: what was here is here again (keep.ts).
+    const [state, dispatch] = useReducer(nucleoReducer, initialNucleo, (initial) => recallNucleo()?.nucleo ?? initial);
+    const [chat, setChat] = useState<ChatLine[]>(() => recallNucleo()?.chat ?? []);
     const [showChat, setShowChat] = useState(true);
     const [showEvents, setShowEvents] = useState(true);
     const [listening, setListening] = useState(false);
     const [speaking, setSpeaking] = useState(false);
-    const [sending, setSending] = useState(false);
+    // Commands sent and not answered yet: more can be sent meanwhile.
+    const [inFlight, setInFlight] = useState(() => liveCommands.size);
+    const sending = inFlight > 0;
     const [text, setText] = useState("");
-    // The answer while the model writes it (N1); only while a command waits.
-    const [draft, setDraft] = useState("");
-    const waiting = useRef(false);
-    // The request was cut by a proxy (GitHub's port forwarding after about a
-    // minute) while the command goes on: its end arrives as an event.
-    const adrift = useRef(false);
+    // The answer of each command while the model writes it (N1), by command id.
+    const [drafts, setDrafts] = useState<Record<string, string>>({});
+    // Whether this page is on screen: a reply that comes after it was left
+    // goes to the memory, for when you come back.
+    const mounted = useRef(false);
     // A newer answer stops the voice of the older one.
     const voiceTurn = useRef(0);
     // The worker role for the next commands; "" lets triage pick (F8).
@@ -256,8 +258,8 @@ export default function Nucleo() {
     const [deciding, setDeciding] = useState(false);
     const [budget, setBudget] = useState<Budget | null>(null);
     const [spark, setSpark] = useState({ count: 0, amber: false });
-    const [runs, runsDispatch] = useReducer(runsReducer, initialRuns);
-    const [rightTab, setRightTab] = useState<"events" | "runs">("events");
+    const [runs, runsDispatch] = useReducer(runsReducer, initialRuns, (initial) => recallNucleo()?.runs ?? initial);
+    const [rightTab, setRightTab] = useState<"events" | "runs">(() => recallNucleo()?.tab ?? "events");
     const [confirmStop, setConfirmStop] = useState(false);
     const liveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     // The wake word (N2): only with the voice on and a word chosen.
@@ -272,10 +274,41 @@ export default function Nucleo() {
 
     const level = useRef<() => number>(silence);
     const recording = useRef<Recording | null>(null);
-    const chatId = useRef(0);
+    const chatId = useRef(chat.reduce((top, entry) => Math.max(top, entry.id), 0));
     const top = useRef<HTMLElement>(null);
-    const chatList = useStickToBottom(`${chat.length}:${draft.length}`);
+    const draftLength = Object.values(drafts).reduce((total, text) => total + text.length, 0);
+    const chatList = useStickToBottom(`${chat.length}:${draftLength}`);
     const logList = useStickToBottom(state.log.length);
+
+    // What is on screen is kept for when you come back from another page.
+    useEffect(() => {
+        keepNucleo({ nucleo: state, chat, runs, tab: rightTab });
+    }, [state, chat, runs, rightTab]);
+
+    useEffect(() => {
+        mounted.current = true;
+        return () => {
+            mounted.current = false;
+            // Their requests answer to a page that is gone: the ends come as events.
+            for (const command of liveCommands.values()) {
+                command.adrift = true;
+            }
+        };
+    }, []);
+
+    /** A command answered (or failed): false when its end was already shown. */
+    const finish = useCallback((id: string) => {
+        if (!liveCommands.delete(id)) {
+            return false;
+        }
+        setInFlight(liveCommands.size);
+        setDrafts((current) => {
+            const next = { ...current };
+            delete next[id];
+            return next;
+        });
+        return true;
+    }, []);
 
     const say = useCallback((who: ChatLine["who"], line: string, channel?: ChatLine["channel"], note?: string) => {
         chatId.current += 1;
@@ -372,7 +405,6 @@ export default function Nucleo() {
 
     const handleReply = useCallback(
         async (reply: Reply) => {
-            setDraft("");
             if (reply.stopped) {
                 say("system", reply.stopped);
                 return;
@@ -407,12 +439,14 @@ export default function Nucleo() {
             "answer.failed",
         ],
         (event) => {
+            const commandId = String(event.data.command_id ?? "");
             if (event.type === "answer.final" || event.type === "answer.failed") {
-                if (adrift.current) {
-                    adrift.current = false;
-                    waiting.current = false;
-                    setDraft("");
+                // Only for a command whose request no longer brings the answer.
+                if (liveCommands.get(commandId)?.adrift && finish(commandId)) {
                     if (event.type === "answer.final") {
+                        if (typeof event.data.heard === "string" && event.data.heard) {
+                            say("me", event.data.heard, "voice");
+                        }
                         void handleReply(event.data.reply as Reply);
                     } else {
                         say("system", `${TEXT[langRef.current].commandFailed} ${String(event.data.detail ?? "")}`);
@@ -421,13 +455,17 @@ export default function Nucleo() {
                 return;
             }
             if (event.type === "answer.delta") {
-                if (waiting.current) {
-                    setDraft(String(event.data.text ?? ""));
+                if (liveCommands.has(commandId)) {
+                    setDrafts((current) => ({ ...current, [commandId]: String(event.data.text ?? "") }));
                 }
                 return;
             }
             if (event.type === "answer.reset") {
-                setDraft("");
+                setDrafts((current) => {
+                    const next = { ...current };
+                    delete next[commandId];
+                    return next;
+                });
                 return;
             }
 
@@ -514,48 +552,81 @@ export default function Nucleo() {
     // Leaving the page closes the microphone.
     useEffect(() => () => recording.current?.cancel(), []);
 
-    /** A gateway cut the request: wait for the command's end on the event stream. */
-    const cutByProxy = (response: Response) => {
+    /** A new command, answered by its request or, when that is cut, by its events. */
+    const startCommand = () => {
+        const id = newCommandId();
+        liveCommands.set(id, { adrift: false });
+        setInFlight(liveCommands.size);
+        return id;
+    };
+
+    /** A gateway cut the request (GitHub's port forwarding, after about a minute): wait for the events. */
+    const cutByProxy = (id: string, response: Response) => {
         if (response.status !== 502 && response.status !== 504) {
             return false;
         }
-        adrift.current = true;
-        say("system", t.stillWorking);
+        const command = liveCommands.get(id);
+        if (command) {
+            command.adrift = true;
+            say("system", t.stillWorking);
+        }
         return true;
+    };
+
+    /** The reply of a command, here or, when the page was left, in the memory. */
+    const deliver = async (id: string, reply: Reply, heard?: string) => {
+        if (!finish(id)) {
+            return;
+        }
+        if (!mounted.current) {
+            if (heard) {
+                keepLine({ who: "me", text: heard, channel: "voice" });
+            }
+            if (reply.stopped || reply.transcription) {
+                keepLine({ who: reply.stopped ? "system" : "aehub", text: reply.stopped || reply.transcription || "" });
+            }
+            return;
+        }
+        if (heard) {
+            say("me", heard, "voice");
+        }
+        await handleReply(reply);
+    };
+
+    const failed = (id: string, line: string) => {
+        if (!finish(id)) {
+            return;
+        }
+        if (mounted.current) {
+            say("system", line);
+        } else {
+            keepLine({ who: "system", text: line });
+        }
     };
 
     const send = async (command: string) => {
         // The first command is a click: the moment to ask for notifications (ADR-037).
         askNotifyPermissionOnce();
-        setSending(true);
         say("me", command, "text");
+        const id = startCommand();
         const form = new FormData();
         form.append("text", command);
         form.append("delivery", "live");
+        form.append("command_id", id);
         if (role) {
             form.append("role", role);
         }
-        waiting.current = true;
-        setDraft("");
         try {
             const response = await fetchApi("/api/orchestrator/ask", { method: "POST", body: form });
-            if (cutByProxy(response)) {
+            if (cutByProxy(id, response)) {
                 return;
             }
             if (!response.ok) {
                 throw new Error(await detailOf(response));
             }
-            waiting.current = false;
-            setSending(false);
-            await handleReply(await response.json());
+            await deliver(id, await response.json());
         } catch (error) {
-            setDraft("");
-            say("system", `${t.commandFailed} ${errorOf(error)}`);
-        } finally {
-            if (!adrift.current) {
-                waiting.current = false;
-            }
-            setSending(false);
+            failed(id, `${t.commandFailed} ${errorOf(error)}`);
         }
     };
 
@@ -587,38 +658,28 @@ export default function Nucleo() {
             return;
         }
 
-        setSending(true);
+        const id = startCommand();
         try {
             const audio = await current.stop();
             const form = new FormData();
             form.append("file", audio, "voice.webm");
             form.append("delivery", "live");
-            waiting.current = true;
-            setDraft("");
+            form.append("command_id", id);
             const response = await fetchApi("/api/orchestrator/listen", { method: "POST", body: form });
-            if (cutByProxy(response)) {
+            if (cutByProxy(id, response)) {
                 return;
             }
-            waiting.current = false;
             if (!response.ok) {
                 throw new Error(await detailOf(response));
             }
             const reply: Reply = await response.json();
             if (!reply.heard) {
-                say("system", t.nothingHeard);
+                failed(id, t.nothingHeard);
                 return;
             }
-            say("me", reply.heard, "voice");
-            setSending(false);
-            await handleReply(reply);
+            await deliver(id, reply, reply.heard);
         } catch (error) {
-            setDraft("");
-            say("system", `${t.voiceFailed} ${errorOf(error)}`);
-        } finally {
-            if (!adrift.current) {
-                waiting.current = false;
-            }
-            setSending(false);
+            failed(id, `${t.voiceFailed} ${errorOf(error)}`);
         }
     };
 
@@ -740,10 +801,11 @@ export default function Nucleo() {
     }, [wakeWord, wakeThreshold, onWake]);
 
     const mode = orbMode(state, { listening, speaking, sending }, now);
-    const busy = sending || listening;
+    // Only recording blocks a new command: more can be sent while others run.
+    const busy = listening;
 
     // Not while a command is recorded, sent or spoken: the reply must not wake it.
-    const voiceBusy = busy || speaking;
+    const voiceBusy = busy || sending || speaking;
     useEffect(() => {
         busyRef.current = voiceBusy;
         if (voiceBusy) {
@@ -821,7 +883,7 @@ export default function Nucleo() {
 
             <SidePane id="nucleo-chat" side="left" title={t.conversationTitle} count={chat.length} hidden={!showChat} ceiling={top}>
                 <ol className={styles.stream} ref={chatList}>
-                    {chat.length === 0 && !draft ? (
+                    {chat.length === 0 && draftLength === 0 ? (
                         <li className={styles.empty}>{t.emptyChat}</li>
                     ) : (
                         chat.map((line) => (
@@ -835,12 +897,14 @@ export default function Nucleo() {
                             </li>
                         ))
                     )}
-                    {draft && (
-                        <li className={`${styles.msg} ${styles.draft}`} aria-live="polite" data-testid="answer-draft">
-                            <span className={styles.who}>ÆHub · {t.draft}</span>
-                            <p>{draft}</p>
-                        </li>
-                    )}
+                    {Object.entries(drafts)
+                        .filter(([, text]) => text)
+                        .map(([id, text]) => (
+                            <li key={id} className={`${styles.msg} ${styles.draft}`} aria-live="polite" data-testid="answer-draft">
+                                <span className={styles.who}>ÆHub · {t.draft}</span>
+                                <p>{text}</p>
+                            </li>
+                        ))}
                 </ol>
             </SidePane>
 
@@ -906,7 +970,6 @@ export default function Nucleo() {
                         className={styles.mic}
                         aria-pressed={listening}
                         aria-label={listening ? t.sendVoice : t.speak}
-                        disabled={sending}
                         onClick={() => void toggleMic()}
                     >
                         <svg viewBox="0 0 24 24" aria-hidden="true">

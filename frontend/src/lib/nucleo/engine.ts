@@ -121,6 +121,7 @@ const TEXT = catalog({
             max === undefined ? `attempt ${attempt}` : `attempt ${attempt} of ${max}`,
         role: (role: string) => `role ${role}`,
         accepted: "accepted",
+        skipped: "simple answer, not checked",
         rejected: "rejected",
         failed: "failed",
         retry: "new attempt",
@@ -133,6 +134,7 @@ const TEXT = catalog({
             max === undefined ? `tentativo ${attempt}` : `tentativo ${attempt} di ${max}`,
         role: (role: string) => `ruolo ${role}`,
         accepted: "accettato",
+        skipped: "risposta semplice, senza controllo",
         rejected: "respinto",
         failed: "bocciato",
         retry: "nuovo tentativo",
@@ -166,6 +168,9 @@ export function describe(event: EngineEvent, lang: Lang = "en"): Omit<LogLine, "
             break;
         case "checker.accepted":
             detail = [attemptText(event, lang), t.accepted].filter(Boolean).join(" · ");
+            break;
+        case "checker.skipped":
+            detail = t.skipped;
             break;
         case "checker.rejected":
             detail = [attemptText(event, lang), t.rejected, instruction].filter(Boolean).join(" · ");

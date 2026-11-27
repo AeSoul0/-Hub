@@ -35,9 +35,12 @@ _current: ContextVar[Optional["DraftStream"]] = ContextVar("aehub_answer_draft",
 class DraftStream:
     """The text the model has written so far for one command, published as a draft."""
 
-    def __init__(self, session_id: str, workspace_id: str) -> None:
+    def __init__(self, session_id: str, workspace_id: str, command_id: str = "") -> None:
         self.session_id = session_id
         self.workspace_id = workspace_id
+        # The Nucleo's id of the command, so drafts of commands running
+        # together go to the right one.
+        self.command_id = command_id
         self.text = ""
         self.published = ""
         self._last = 0.0
@@ -45,6 +48,8 @@ class DraftStream:
     async def _publish(self, event_type: str, data: dict) -> None:
         from app.core.event_bus import event_bus
 
+        if self.command_id:
+            data = {**data, "command_id": self.command_id}
         try:
             await event_bus.publish(self.session_id, event_type, data, workspace_id=self.workspace_id)
         except Exception as exc:  # noqa: BLE001 - a lost draft costs nothing: the answer still arrives
