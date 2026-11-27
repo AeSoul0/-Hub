@@ -36,6 +36,7 @@ import { chime, playReply, startRecording, type Recording } from "@/lib/nucleo/a
 import {
     initialNucleo,
     MODE_LABELS,
+    commandMoons,
     modeDetail,
     nucleoReducer,
     orbMode,
@@ -817,6 +818,11 @@ export default function Nucleo() {
     const appClass = [styles.app, showChat ? "" : styles.noLeft, showEvents ? "" : styles.noRight].join(" ");
     const spent = budget?.month_spent;
     const running = Math.max(state.activeRuns.length, liveCount(runs));
+    // Commands running together: one moon each, next to the subagents' moons.
+    const commandsRunning = runs.runs.filter(
+        (run) => !run.parentId && (run.status === "running" || run.status === "waiting" || run.status === "cancelling"),
+    );
+    const orbMoons = [...commandMoons(commandsRunning), ...state.moons];
 
     return (
         <div className={appClass}>
@@ -909,14 +915,14 @@ export default function Nucleo() {
             </SidePane>
 
             <main className={styles.core}>
-                <Orb mode={mode} moons={state.moons} level={() => level.current()} spark={spark} />
+                <Orb mode={mode} moons={orbMoons} level={() => level.current()} spark={spark} />
                 <span className={`${styles.tick} ${styles.tl}`} />
                 <span className={`${styles.tick} ${styles.tr}`} />
                 <span className={`${styles.tick} ${styles.bl}`} />
                 <span className={`${styles.tick} ${styles.br}`} />
                 <div className={styles.state} data-mode={mode} aria-live="polite">
                     <strong>{MODE_LABELS[lang][mode]}</strong>
-                    <span>{listening && byWordNow ? t.wake.speak : modeDetail(mode, state, lang)}</span>
+                    <span>{listening && byWordNow ? t.wake.speak : modeDetail(mode, state, lang, commandsRunning.length)}</span>
                 </div>
                 <ApprovalPrompt pending={approvals} busy={deciding} onDecide={decide} />
             </main>

@@ -9,9 +9,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import Nucleo from "@/components/nucleo/Nucleo";
 import { clampHeight, MIN_HEIGHT } from "@/components/nucleo/SidePane";
 import {
+    commandMoons,
     describe as describeEvent,
     initialNucleo,
     LOG_LIMIT,
+    modeDetail,
     nucleoReducer,
     orbMode,
     resumedReply,
@@ -105,6 +107,26 @@ describe("what the sphere does", () => {
 
         const back = nucleoReducer(spawned, { type: "engine", event: engine("subagent.completed", { run_id: "sub-1" }), now: 0 });
         expect(back.moons).toEqual([]);
+    });
+
+    it("gives each command its moon when several run together", () => {
+        // One command: the sphere itself is the command.
+        expect(commandMoons([{ id: "a", task: "presentati" }])).toEqual([]);
+        expect(
+            commandMoons([
+                { id: "a", task: "presentati" },
+                { id: "b", task: "scrivi una storia lunga" },
+                { id: "c", task: null },
+            ])
+        ).toEqual([
+            { id: "command:a", label: "presentati" },
+            { id: "command:b", label: "scrivi una st…" },
+            { id: "command:c", label: "#3" },
+        ]);
+        const thinking = apply(engine("run.started"));
+        expect(modeDetail("thinking", thinking, "it", 2)).toBe("2 comandi al lavoro");
+        const withSub = apply(engine("subagent.spawned", { run_id: "sub-1", role: "research" }));
+        expect(modeDetail("thinking", withSub, "it", 3)).toBe("3 comandi al lavoro · 1 sub-agenti al lavoro");
     });
 
     it("puts the user first: listening, speaking, then approvals", () => {

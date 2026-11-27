@@ -335,6 +335,7 @@ const MODE_TEXT = catalog({
         idle: "Speak or type a command",
         listening: "microphone on · press again to send",
         subagents: (count: number) => `${count} subagents at work`,
+        commands: (count: number) => `${count} commands at work`,
         working: "the engine is working",
         waiting: (count: number) => (count === 1 ? "1 action waiting" : `${count} actions waiting`),
         speaking: "local voice",
@@ -343,14 +344,36 @@ const MODE_TEXT = catalog({
         idle: "Parla o scrivi un comando",
         listening: "microfono acceso · premi di nuovo per inviare",
         subagents: (count: number) => `${count} sub-agenti al lavoro`,
+        commands: (count: number) => `${count} comandi al lavoro`,
         working: "il motore lavora",
         waiting: (count: number) => (count === 1 ? "1 azione in attesa" : `${count} azioni in attesa`),
         speaking: "voce locale",
     },
 });
 
-export function modeDetail(mode: OrbMode, state: NucleoState, lang: Lang = "en"): string {
+/**
+ * The commands running together, as moons of the sphere (like subagents):
+ * with one the sphere itself is the command; from two on, each has its moon,
+ * named by the start of its text.
+ */
+export function commandMoons(commands: { id: string; task: string | null }[]): Moon[] {
+    if (commands.length < 2) {
+        return [];
+    }
+    return commands.map((command, index) => {
+        const text = (command.task ?? "").trim();
+        return {
+            id: `command:${command.id}`,
+            label: text ? (text.length > 14 ? `${text.slice(0, 13)}…` : text) : `#${index + 1}`,
+        };
+    });
+}
+
+export function modeDetail(mode: OrbMode, state: NucleoState, lang: Lang = "en", commands = 0): string {
     const t = MODE_TEXT[lang];
+    if (mode === "thinking" && commands > 1) {
+        return state.moons.length ? `${t.commands(commands)} · ${t.subagents(state.moons.length)}` : t.commands(commands);
+    }
     switch (mode) {
         case "idle":
             return t.idle;
