@@ -198,6 +198,15 @@ async def execute_slash_command(
 # reply carries no audio.
 DELIVERIES = ("full", "live")
 _live: ContextVar[bool] = ContextVar("aehub_live_delivery", default=False)
+# The Nucleo's id of a live command: its drafts and its end carry it, so
+# commands sent one after another, still running together, are told apart.
+_command: ContextVar[str] = ContextVar("aehub_command_id", default="")
+_COMMAND_ID = re.compile(r"[A-Za-z0-9-]{1,64}")
+
+
+def command_id_of(raw: str) -> str:
+    """A command id from the page, or "" when it is not one."""
+    return raw if _COMMAND_ID.fullmatch(raw or "") else ""
 
 
 async def _voice(text: str) -> tuple[str, str]:
@@ -335,6 +344,11 @@ async def _publish_outcome(args: tuple, kwargs: dict, event_type: str, data: dic
     """
     session_id = kwargs.get("session_id", args[3] if len(args) > 3 else "")
     principal = kwargs.get("principal", args[4] if len(args) > 4 else None)
+    if _command.get():
+        data = {**data, "command_id": _command.get()}
+    if event_type == "answer.final" and kwargs.get("input_channel") == "voice" and args:
+        # What was heard, for a voice command whose request was cut.
+        data = {**data, "heard": str(args[0])}
     try:
         await event_bus.publish(
             str(session_id or ""),
@@ -346,30 +360,39 @@ async def _publish_outcome(args: tuple, kwargs: dict, event_type: str, data: dic
         logger.warning("The %s event of a live command was not published.", event_type)
 
 
-async def generate_ai_response(*args: Any, delivery: str = "full", **kwargs: Any) -> dict[str, Any]:
-    """See _generate_ai_response; "live" delivery opens the draft and leaves the voice to the Nucleo."""
+async def generate_ai_response(
+    *args: Any, delivery: str = "full", command_id: str = "", **kwargs: Any
+) -> dict[str, Any]:
+    """
+    See _generate_ai_response; "live" delivery opens the draft and leaves
+    the voice to the Nucleo. command_id is the page's id of a live command:
+    its drafts and its end carry it.
+    """
     if delivery not in DELIVERIES:
         raise ValueError(f"Unknown delivery '{delivery}'.")
     live = delivery == "live"
     token = _live.set(live)
+    command_token = _command.set(command_id_of(command_id) if live else "")
     try:
-        reply = await _generate_ai_response(*args, delivery=delivery, **kwargs)
-    except Exception as exc:
+        try:
+            reply = await _generate_ai_response(*args, delivery=delivery, **kwargs)
+        except Exception as exc:
+            if live:
+                await _publish_outcome(args, kwargs, "answer.failed", {"detail": str(exc)})
+            raise
         if live:
-            await _publish_outcome(args, kwargs, "answer.failed", {"detail": str(exc)})
-        raise
+            reply["speak"] = "sentences"
+            # Without the audio: the Nucleo speaks the text itself.
+            await _publish_outcome(
+                args,
+                kwargs,
+                "answer.final",
+                {"reply": {key: value for key, value in reply.items() if key not in ("audio_base64", "audio_mime")}},
+            )
+        return reply
     finally:
         _live.reset(token)
-    if live:
-        reply["speak"] = "sentences"
-        # Without the audio: the Nucleo speaks the text itself.
-        await _publish_outcome(
-            args,
-            kwargs,
-            "answer.final",
-            {"reply": {key: value for key, value in reply.items() if key not in ("audio_base64", "audio_mime")}},
-        )
-    return reply
+        _command.reset(command_token)
 
 
 async def _generate_ai_response(
@@ -482,7 +505,7 @@ async def _generate_ai_response(
     from app.agent_engine.streaming import DraftStream, streaming_answer
 
     draft = (
-        DraftStream(session_id, getattr(principal, "workspace_id", "") or "")
+        DraftStream(session_id, getattr(principal, "workspace_id", "") or "", _command.get())
         if delivery == "live"
         else None
     )
@@ -585,6 +608,7 @@ async def process_orchestration_voice(
     file: UploadFile = File(...),
     ui_context: str = Form(default=""),
     delivery: str = Form(default="full"),
+    command_id: str = Form(default=""),
     x_session_id: str = Header(
         default="default-session"
     ),
@@ -648,6 +672,7 @@ async def process_orchestration_voice(
             principal,
             input_channel="voice",
             delivery=delivery if delivery in DELIVERIES else "full",
+            command_id=command_id,
         )
     except Exception as exc:
         raise HTTPException(
@@ -673,6 +698,7 @@ async def process_orchestration_text(
     ui_context: str = Form(default=""),
     role: str = Form(default=""),
     delivery: str = Form(default="full"),
+    command_id: str = Form(default=""),
     image: UploadFile = File(default=None),
     x_session_id: str = Header(
         default="default-session"
@@ -741,6 +767,7 @@ async def process_orchestration_text(
             principal,
             role=role or None,
             delivery=delivery if delivery in DELIVERIES else "full",
+            command_id=command_id,
         )
 
     except Exception as exc:

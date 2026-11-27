@@ -235,3 +235,31 @@ async def test_a_stopped_run_is_one_line_not_its_state(monkeypatch, published):
         reply = await orchestrator.generate_ai_response("x", "", "", "s", principal=OWNER, delivery="live")
         assert reply["stopped"] == line
         assert reply["transcription"] == ""
+
+
+async def test_commands_running_together_are_told_apart(monkeypatch, published):
+    """The page's command id goes with the drafts and the end of its command."""
+    monkeypatch.setattr(orchestrator, "_decision_reply", AsyncMock(return_value=None))
+    monkeypatch.setattr(orchestrator, "_instant_reply", AsyncMock(return_value=None))
+
+    class Engine:
+        async def ainvoke(self, state: Dict[str, Any], config: Any = None) -> Dict[str, Any]:
+            draft = current_draft()
+            await draft.delta("Ciao")
+            await draft.flush()
+            return {"messages": [{"content": "Ciao!"}]}
+
+    monkeypatch.setattr(orchestrator, "get_aurora_app", AsyncMock(return_value=Engine()))
+    await orchestrator.generate_ai_response(
+        "ciao", "", "", "s", principal=OWNER, delivery="live", command_id="c-1", input_channel="voice"
+    )
+    answers = [(kind, data) for kind, data, _ in published if kind.startswith("answer.")]
+    assert answers[0] == ("answer.delta", {"text": "Ciao", "command_id": "c-1"})
+    assert answers[-1][1]["command_id"] == "c-1"
+    # A voice command says what was heard, for a request that was cut.
+    assert answers[-1][1]["heard"] == "ciao"
+
+    # Anything that is not an id is dropped.
+    published.clear()
+    await orchestrator.generate_ai_response("ciao", "", "", "s", principal=OWNER, delivery="live", command_id="<x>")
+    assert all("command_id" not in data for kind, data, _ in published if kind.startswith("answer."))

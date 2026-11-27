@@ -40,6 +40,7 @@ The model, price and limit variables (`OPENAI_MODEL`, `AEHUB_CHECKER_MODEL`, `AE
 | --- | --- | --- |
 | `AEHUB_MODEL_ROLES` | Models per role (spec 4.1) as JSON: `{"architect": ["openrouter:<model>", "openai:<model>"], "critic": ["local:<model>"], ...}`. Roles: `architect`, `research`, `critic`, `fast_worker`, `triage`. The first entry is the primary model, the others are fallbacks. Providers: `openai`, `openrouter`, `local`, `groq`, `anthropic`, `google` (ADR-032). | every role uses `OPENAI_MODEL` on `openai` |
 | `AEHUB_CHECKER_MODEL` | Critic model when `AEHUB_MODEL_ROLES` does not set `critic`. The Critic must differ from every Implementer model, otherwise agent runs are refused. | none |
+| `AEHUB_CRITIC_SIMPLE` | `skip`: a simple request (triage or fast-worker role) answered with no tool call, or only read-only ones (`search_documents`), on trusted context, is not sent to the Critic (the timeline shows `checker.skipped`). `check`: the Critic checks these too | `skip` |
 | `OPENAI_API_KEY` / `OPENROUTER_API_KEY` / `GROQ_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` | Keys of the providers (keyring); a provider shows up in the role editor once it has its key | none |
 | `OPENAI_BASE_URL` / `OPENROUTER_BASE_URL` | Another address for the OpenAI or OpenRouter API | the provider's own |
 | `AEHUB_LOCAL_BASE_URL` | OpenAI-compatible local server for the `local` provider (Ollama, LM Studio); also in Settings, key `AEHUB_LOCAL_API_KEY` in the keyring | `http://localhost:11434/v1` |

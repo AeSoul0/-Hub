@@ -350,6 +350,8 @@ async def test_onboarding_from_empty_database_to_first_completed_run(
     fake_model,
     monkeypatch,
 ):
+    # The first run goes through the Critic too (a simple answer would skip it).
+    monkeypatch.setenv("AEHUB_CRITIC_SIMPLE", "check")
     agent_infrastructure.use_skills()
     admin = settings_client(ADMIN)
 

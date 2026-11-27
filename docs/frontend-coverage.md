@@ -300,6 +300,7 @@ F10 (2026-11-24, aggiornato in P1): l'elenco viene dal codice (`tests/security/t
 | `ELEVENLABS_API_KEY` | chiave della voce cloud, nel keyring | 5 |
 | `XAI_API_KEY` | chiave della voce SpaceXAI, nel keyring | 5 |
 | `AEHUB_LOCAL_API_KEY` | chiave del server locale, nel keyring | 24 |
+| `AEHUB_CRITIC_SIMPLE` | `check` fa controllare dal Critic anche le richieste semplici senza strumenti che scrivono (di default `skip`: si salta; nel timeline `checker.skipped`) | 20 |
 | `AEHUB_LOCAL_TIMEOUT_SECONDS` | attesa massima di una risposta del server locale (600 nel Codespace con Ollama, dallo script) | 24 |
 | `AEHUB_ANSWER_TIMEOUT_SECONDS` | attesa massima della risposta a un comando nel Nucleo (900 nel Codespace con Ollama, dallo script) | 24 |
 | `AEHUB_MQTT_PASSWORD` | password del broker, nel keyring | 40 |
