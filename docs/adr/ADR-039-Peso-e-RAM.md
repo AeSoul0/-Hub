@@ -53,11 +53,43 @@ Misure su Linux, 2026-11-26:
   - `tests/agent_engine/test_embedder_onnx.py`: pooling, taglio a 256 token, nome, modello senza ONNX, rilascio dopo l'inattività;
   - `frontend/tests/system.test.tsx`: il nome dei modelli in memoria.
 - **App desktop (sospesa):** parte ancora con l'embedder `hash`. Può passare a quello ONNX senza aggiungere pacchetti, quando la si riprende.
-- **Resta da fare:**
-  - un'immagine del backend più piccola, che oggi parte dall'immagine di Playwright con Chromium;
-  - la misura delle immagini su Docker. La CI ora stampa la dimensione di entrambe.
+- **Fatto in N8 (sotto):** l'immagine del backend più piccola e la misura delle immagini e dello stack su Docker.
 
 ## Alternatives considered
 - **`fastembed`:** fa la stessa cosa, ma è una dipendenza in più, con un suo catalogo di modelli e una sua cache. Bastano le librerie già installate.
 - **Il modello quantizzato int8:** più leggero, ma i vettori cambiano un po' e quelli salvati non varrebbero più allo stesso modo. Si può offrire come scelta in futuro, con un nome diverso.
 - **Servire l'export statico dal backend anche in Docker,** come fa l'app desktop: toglierebbe un container, ma cambia porte, origini e avvio dello stack. Il server standalone è un cambio interno all'immagine.
+
+## N8: immagine del backend più leggera (2026-11-27)
+
+### Decision
+1. **Base Python 3.12 slim** (`python:3.12-slim-bookworm`) invece dell'immagine di Microsoft Playwright, che porta Chromium, Firefox, WebKit e le loro librerie di sistema.
+2. **Il browser solo se serve:**
+   - si costruisce con `AEHUB_BROWSER=1`, dal `.env` principale (`docker compose build backend`);
+   - allora l'immagine installa il pacchetto Playwright (`requirements-browser.txt`, tolto da `requirements.txt`), la sola *headless shell* di Chromium con le sue librerie, e `libatomic1` per il Node di Playwright;
+   - senza (il predefinito) la skill browser non offre il suo strumento (`browser_available()`), quindi il modello non propone un browser che non c'è. La ricerca web resta.
+   - Fuori da Docker (Codespace, app desktop, sviluppo) Playwright si installa come prima, con `requirements-browser.txt`.
+3. **Healthcheck con Python** (`urllib`), perché l'immagine slim non ha curl: nel dockerfile e in `docker-compose.yaml`.
+4. **CI:** costruisce l'immagine senza browser (la skill non offre strumenti) e quella con il browser. In quella con il browser, Chromium deve partire e leggere una pagina, e la skill deve offrire il suo strumento. Stampa la dimensione di entrambe.
+
+### Misure (Docker 29 su Linux, 2026-11-27)
+
+| Cosa | Prima (immagine Playwright) | Dopo (slim, senza browser) |
+|---|---|---|
+| Immagine del backend | 4,87 GB | 1,20 GB |
+| Ambiente Python (`/opt/venv`) | — | 740 MB (era 907 MB con Playwright) |
+| Backend dopo l'import e le skill | 100 MB | 100 MB |
+
+Lo stack avviato (backend slim, PostgreSQL con pgvector, Redis), a riposo dopo l'avvio:
+
+| Container | RAM |
+|---|---|
+| Backend | 95 MB |
+| PostgreSQL | 38 MB |
+| Redis | 4 MB |
+
+- **La RAM non cambia:** Chromium occupa memoria solo quando la skill lo usa. Il guadagno è il disco e il download (3,7 GB in meno) e una build più rapida.
+- **Il frontend** resta come in O1: 42 MB di file, circa 84 MB di RAM. Con il backend e i servizi lo stack sta sotto i 250 MB a riposo, sui 7,7 GB del PC dell'utente.
+- **Il più grande** ora sono le librerie della voce e dei modelli locali: PyAV di faster-whisper (130 MB), CTranslate2 (85 MB), ONNX Runtime (80 MB), Piper (47 MB). Servono alla voce locale e restano.
+- **Non misurata da qui:** l'immagine con il browser, perché questa sessione non raggiunge i mirror Debian (`deb.debian.org`). La costruisce e la prova la CI; la stima è di circa +400 MB.
+
