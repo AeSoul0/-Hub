@@ -56,6 +56,8 @@ const TEXT = catalog({
         exists: "exists",
         missing: "does not exist",
         formats: "Formats",
+        agentFolders: "Agents' folders",
+        agentFoldersHelp: "Indexed too, with their full path in the citations. They are chosen in TOOLS.",
         folderHelp:
             "The folder is chosen at start, by the launcher or with AEHUB_ALLOWED_DIRS. The index also updates by itself when the agent searches.",
         syncNow: "Synchronize now",
@@ -104,6 +106,8 @@ const TEXT = catalog({
         exists: "esiste",
         missing: "non esiste",
         formats: "Formati",
+        agentFolders: "Cartelle degli agenti",
+        agentFoldersHelp: "Indicizzate anche loro, con il percorso completo nelle citazioni. Si scelgono in STRUMENTI.",
         folderHelp:
             "La cartella si sceglie all'avvio, dal launcher o da AEHUB_ALLOWED_DIRS. L'indice si aggiorna anche da solo quando l'agente cerca.",
         syncNow: "Sincronizza ora",
@@ -136,7 +140,7 @@ function message(err: unknown, lang: Lang): string {
 
 function syncSummary(report: SyncReport, lang: Lang): string {
     const t = TEXT[lang];
-    if (!report.root_exists) {
+    if (!report.root_exists && !(report.folders ?? []).length) {
         return t.noFolder;
     }
     const parts = [
@@ -314,6 +318,24 @@ export default function DocumentsPage() {
                                 {view.root_exists ? t.exists : t.missing}
                             </span>
                         </dd>
+                        {(view.folders ?? []).length > 0 && (
+                            <>
+                                <dt>{t.agentFolders}</dt>
+                                <dd>
+                                    <ul className={styles.mono} aria-label={t.agentFolders}>
+                                        {(view.folders ?? []).map((folder) => (
+                                            <li key={folder.path}>
+                                                {folder.path}{" "}
+                                                <span className={styles.badge} data-tone={folder.exists ? "ok" : "bad"}>
+                                                    {folder.exists ? t.exists : t.missing}
+                                                </span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                    <span className={styles.help}>{t.agentFoldersHelp}</span>
+                                </dd>
+                            </>
+                        )}
                         <dt>{t.formats}</dt>
                         <dd className={styles.mono}>{view.suffixes.join(" ")}</dd>
                     </dl>

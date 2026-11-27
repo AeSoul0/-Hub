@@ -1448,6 +1448,7 @@ class AgentRuntime(ToolsMixin, LimitsMixin, ResumeMixin, StateMixin, SubagentsMi
             workspace_id=workspace_id,
             principal_id=principal.id,
             query=validated_description,
+            session_id=session_id,
         )
 
         worker_context: Dict[str, Any] = {

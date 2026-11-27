@@ -30,7 +30,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from sqlalchemy import func, literal_column
+from sqlalchemy import func, literal_column, or_
 
 from app.core import db as core_db
 from app.core.runtime_config import config_value
@@ -48,6 +48,16 @@ CHUNK_OVERLAP = 150
 MAX_QUERY_TERMS = 32
 # Rows scanned by the Python ranking path (non-PostgreSQL databases).
 FALLBACK_SCAN_LIMIT = 2000
+# Long conversations (N3): past SUMMARY_AFTER runs kept one by one in a
+# session, the oldest SUMMARY_BATCH become one summary, built from their
+# own text (no model call, no cost); the newest RECENT_TURNS go into every
+# run of the session, so a follow-up ("e domani?") knows what came before.
+SUMMARY_AFTER = 30
+SUMMARY_BATCH = 15
+SUMMARY_SOURCE = "summary"
+RECENT_TURNS = 3
+_SUMMARY_TASK_CHARS = 120
+_SUMMARY_RESULT_CHARS = 200
 
 _QUERY_TERM_PATTERN = re.compile(r"[^\W_]+", re.UNICODE)
 
@@ -67,6 +77,18 @@ STOPWORDS = frozenset(
     più piu già gia ancora molto poco tutto tutti tutte dove quando quale
     """.split()
 )
+
+
+def _summary_line(episode: str) -> str:
+    """One run of a summary: "- <task> -> <result>", each cut short, on one line."""
+    task, _, result = episode.partition("\nResult:")
+    task = " ".join(task.removeprefix("Task:").split())
+    result = " ".join(result.split())
+
+    def cut(text: str, size: int) -> str:
+        return text if len(text) <= size else text[: size - 1].rstrip() + "…"
+
+    return f"- {cut(task, _SUMMARY_TASK_CHARS)} -> {cut(result, _SUMMARY_RESULT_CHARS) or '(no result)'}"
 
 
 class MemoryKind(str, Enum):
@@ -585,6 +607,85 @@ class MemoryStore:
             rows = query.order_by(MemoryChunk.created_at.desc()).limit(limit).all()
 
             return [self._hit(row) for row in rows]
+
+    def recent_episodes(self, session_id: Optional[str], limit: int = RECENT_TURNS) -> List[MemoryHit]:
+        """
+        The last runs of a session (their episodes), oldest first: what was
+        just asked and answered.
+        """
+        if not session_id or limit <= 0:
+            return []
+
+        with self._session() as db:
+            rows = (
+                self._scope(db.query(MemoryChunk))
+                .filter(
+                    MemoryChunk.kind == MemoryKind.EPISODE.value,
+                    MemoryChunk.session_id == session_id,
+                    or_(MemoryChunk.source.is_(None), MemoryChunk.source != SUMMARY_SOURCE),
+                )
+                .order_by(MemoryChunk.created_at.desc())
+                .limit(limit * 4)
+                .all()
+            )
+
+            latest: List[MemoryChunk] = []
+            runs: set = set()
+            for row in rows:
+                run = row.run_id or row.id
+                if run in runs:
+                    continue
+                runs.add(run)
+                latest.append(row)
+                if len(latest) >= limit:
+                    break
+
+            return [self._hit(row) for row in reversed(latest)]
+
+    def condense_session(self, session_id: Optional[str]) -> int:
+        """
+        Past SUMMARY_AFTER runs in a session, its oldest SUMMARY_BATCH runs
+        become one summary memory ("- task -> result" per run) and their
+        episodes are removed. Returns the number of runs summarized.
+        """
+        if not session_id:
+            return 0
+
+        with self._session() as db:
+            rows = (
+                self._scope(db.query(MemoryChunk))
+                .filter(
+                    MemoryChunk.kind == MemoryKind.EPISODE.value,
+                    MemoryChunk.session_id == session_id,
+                    or_(MemoryChunk.source.is_(None), MemoryChunk.source != SUMMARY_SOURCE),
+                )
+                .order_by(MemoryChunk.created_at.asc())
+                .all()
+            )
+
+            runs: Dict[str, List[MemoryChunk]] = {}
+            for row in rows:
+                runs.setdefault(row.run_id or row.id, []).append(row)
+
+            if len(runs) <= SUMMARY_AFTER:
+                return 0
+
+            batch = list(runs.values())[:SUMMARY_BATCH]
+            lines = [_summary_line(" ".join(row.content for row in chunks)) for chunks in batch]
+            first = batch[0][0].created_at
+            last = batch[-1][-1].created_at
+            span = f"{first:%Y-%m-%d} – {last:%Y-%m-%d}" if first and last else ""
+            summary = f"Summary of {len(batch)} earlier exchanges ({span}):\n" + "\n".join(lines)
+            # One untrusted run makes the whole summary untrusted.
+            trusted = all(row.trusted for chunks in batch for row in chunks)
+
+            for chunks in batch:
+                for row in chunks:
+                    db.delete(row)
+            db.commit()
+
+        self.add(summary, MemoryKind.EPISODE, trusted=trusted, source=SUMMARY_SOURCE, session_id=session_id)
+        return len(batch)
 
     def preferences(self, limit: int = 50) -> List[MemoryHit]:
         """

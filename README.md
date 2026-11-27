@@ -21,6 +21,11 @@
 - **Your files, where you say.** The agents list, find, read, write and move files in the working folder and in the folders you add on STRUMENTI; replacing or deleting a file waits for your approval. ÆHub's own files, hidden files (`.ssh`, `.env`) and AppData stay out of reach (ADR-036).
 - **Answers as they are written.** In the Nucleo the answer appears while the model writes it, marked as a draft until the Critic accepts it; the accepted answer is then spoken sentence by sentence, the next one prepared while one plays (ADR-040).
 - **Hands-free.** Choose a wake word on the VOCE page ("Hey Jarvis", "Alexa", "Hey Mycroft", or your own "Aurora" model): the Nucleo listens for it in the page, then records the command until you stop speaking. No audio is recorded or sent anywhere before the word (ADR-041).
+- **A memory that follows the conversation.**
+  - **Follow-ups:** every command sees the last turns of the conversation, so "and tomorrow?" knows what came before.
+  - **Long conversations:** their oldest turns become one summary.
+  - **Documents:** search with cited sources covers the working folder and the folders you give the agents.
+  - **Italian:** a multilingual embedding model, better for Italian, can be chosen on MEMORIA (ADR-042).
 - **Approvals that reach you.** A run that waits for you asks one short question ("May I delete old.txt? Yes or no."); a plain "yes" or "no", spoken or typed, decides it and Aurora answers in a word. A system notification and the tab title tell you when a request waits and ÆHub is not in front (ADR-037).
 - **Instant commands.** "Open Spotify", "open the downloads folder", "accendi la luce della cucina": simple commands run at once through the Tool Gateway, without the model, in milliseconds. The apps are the ones you list in Settings → Apps; anything else goes to the engine (ADR-035).
 - **An interface for everything.** The Nucleo (home) and the Control Plane cover every route and setting of the backend (`docs/frontend-coverage.md`). They are in English by default, or in Italian (Settings → Language, or ask Aurora); the voice keeps the language of the voice you choose, and a notice says when the two differ (ADR-034).

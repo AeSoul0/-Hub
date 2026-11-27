@@ -86,9 +86,12 @@ MAX_TOKENS = 256
 ONNX_FILE = "onnx/model.onnx"
 TOKENIZER_FILE = "tokenizer.json"
 
-# The default model, pinned (O1): the fp32 ONNX export of
-# sentence-transformers/all-MiniLM-L6-v2 at one commit, each file checked.
-# The CI checks this commit and these hashes against the hub.
+# The models offered, pinned (O1, N3): an ONNX export at one commit, each
+# file checked. The CI checks these commits and hashes against the hub.
+# - all-MiniLM-L6-v2 (the default): English, fp32, ~90 MB;
+# - paraphrase-multilingual-MiniLM-L12-v2: 50+ languages, much better for
+#   Italian; its int8 export (~120 MB instead of ~470 MB in fp32), for a PC
+#   with little RAM. Same 384 dimensions, mean pooling.
 PINNED_MODELS: Dict[str, Dict[str, Any]] = {
     "all-MiniLM-L6-v2": {
         "repository": "Xenova/all-MiniLM-L6-v2",
@@ -96,6 +99,15 @@ PINNED_MODELS: Dict[str, Dict[str, Any]] = {
         "files": {
             ONNX_FILE: "759c3cd2b7fe7e93933ad23c4c9181b7396442a2ed746ec7c1d46192c469c46e",
             TOKENIZER_FILE: "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0",
+        },
+    },
+    "paraphrase-multilingual-MiniLM-L12-v2": {
+        "repository": "Xenova/paraphrase-multilingual-MiniLM-L12-v2",
+        "revision": "2c4055b12046f11709e9df2c122e59ffbdc2f900",
+        "onnx": "onnx/model_quantized.onnx",
+        "files": {
+            "onnx/model_quantized.onnx": "66fc00f5f29afcaff34092e1bdd20008ca3918265a82fb9695a551e510cc4ebc",
+            TOKENIZER_FILE: "b60b6b43406a48bf3638526314f3d232d97058bc93472ff2de930d43686fa441",
         },
     },
 }
@@ -178,13 +190,14 @@ class SentenceTransformerEmbedder:
         from tokenizers import Tokenizer
 
         source = model_source(self.model_name)
+        onnx_file = source.get("onnx", ONNX_FILE)
         try:
-            model_path = _download(source, ONNX_FILE)
+            model_path = _download(source, onnx_file)
         except RuntimeError:
             raise
         except Exception as exc:  # noqa: BLE001 - said in words: a model without an ONNX export, or no network
             raise RuntimeError(
-                f"Embedding model {source['repository']}@{source['revision']}: {ONNX_FILE} not available ({exc}). "
+                f"Embedding model {source['repository']}@{source['revision']}: {onnx_file} not available ({exc}). "
                 "Choose a model that publishes an ONNX export, or AEHUB_EMBEDDER=hash."
             ) from exc
 
