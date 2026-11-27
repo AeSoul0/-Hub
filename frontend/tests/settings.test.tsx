@@ -633,26 +633,43 @@ describe("First-run setup", () => {
         render(<SetupPage />);
 
         expect(await screen.findByText("PRIMO AVVIO")).toBeInTheDocument();
-        expect(screen.getByText("OpenAI")).toBeInTheDocument();
+        expect(screen.getAllByRole("button", { name: /^\d\. / }).map((step) => step.textContent)).toEqual([
+            "1. Modello",
+            "2. Cartelle",
+            "3. Voce e controllo",
+        ]);
+        expect(screen.getAllByText("OpenAI").length).toBeGreaterThan(0);
 
-        // Models: the Critic is set, the API accepts it, the wizard moves on.
-        fireEvent.click(screen.getByRole("button", { name: "Continua" }));
+        // 1. The model: the Critic is set, the API accepts it, the wizard moves on.
         fireEvent.change(await screen.findByLabelText("Critic predefinito"), {
             target: { value: "critic-model" },
         });
         fireEvent.click(screen.getByRole("button", { name: "Salva e continua" }));
 
-        await waitFor(() =>
-            expect(screen.getByRole("button", { name: "Salta per ora" })).toBeInTheDocument()
-        );
-        const put = fetch.mock.calls.find(([, init]) => init?.method === "PUT");
-        expect(JSON.parse(String(put?.[1]?.body))).toEqual({
+        // 2. The folders: a relative path is refused, a full one is saved.
+        const folder = await screen.findByLabelText("Un'altra cartella per gli agenti (facoltativa)");
+        const put = fetch.mock.calls.filter(([, init]) => init?.method === "PUT");
+        expect(JSON.parse(String(put[0]?.[1]?.body))).toEqual({
             values: { AEHUB_CHECKER_MODEL: "critic-model" },
         });
+        fireEvent.change(folder, { target: { value: "Documenti" } });
+        expect(screen.getByRole("alert")).toHaveTextContent("percorso completo");
+        expect(screen.getByRole("button", { name: "Salva e continua" })).toBeDisabled();
+        fireEvent.change(folder, { target: { value: "/home/me/Documenti" } });
+        fireEvent.click(screen.getByRole("button", { name: "Salva e continua" }));
 
-        fireEvent.click(screen.getByRole("button", { name: "5. Controllo" }));
+        // 3. The voice and the check.
+        const off = await screen.findByRole("radio", { name: "Spenta" });
+        const puts = () => fetch.mock.calls.filter(([, init]) => init?.method === "PUT");
+        expect(JSON.parse(String(puts()[1]?.[1]?.body))).toEqual({
+            values: { AEHUB_AGENT_FOLDERS: JSON.stringify(["/home/me/Documenti"]) },
+        });
+        fireEvent.click(off);
+        await waitFor(() => expect(puts()).toHaveLength(3));
+        expect(JSON.parse(String(puts()[2]?.[1]?.body))).toEqual({ values: { AEHUB_VOICE: "off" } });
+
         const finish = screen.getByRole("button", { name: "Finisci il primo avvio" });
-        expect(finish).toBeEnabled();
+        await waitFor(() => expect(finish).toBeEnabled());
         fireEvent.click(finish);
 
         expect(await screen.findByText("PRIMO AVVIO COMPLETATO")).toBeInTheDocument();
@@ -680,7 +697,7 @@ describe("First-run setup", () => {
 
         render(<SetupPage />);
 
-        fireEvent.click(await screen.findByRole("button", { name: "5. Controllo" }));
+        fireEvent.click(await screen.findByRole("button", { name: "3. Voce e controllo" }));
         expect(screen.getByRole("button", { name: "Finisci il primo avvio" })).toBeDisabled();
         expect(screen.getByText(/OPENAI_API_KEY is not set/)).toBeInTheDocument();
     });

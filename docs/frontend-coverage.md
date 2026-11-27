@@ -99,7 +99,7 @@ Il tag `v1.0.0` arriva quando questa tabella è al **100%** (fine di F10) e dopo
 | # | Funzione del backend | Nell'interfaccia | Stato | Milestone |
 |---|---|---|---|---|
 | 41 | Accesso e uscita | schermata di accesso; Esci | ✓ | M11 |
-| 42 | Primo avvio | Control Plane → Primo avvio | ✓ | M12, F4 |
+| 42 | Primo avvio in tre passi: modello (lingua, chiave, modello e Critic), cartelle, voce e controllo; prezzi, budget e ruoli restano ai valori predefiniti | Control Plane → Primo avvio | ✓ | M12, F4, N6 |
 | 43 | Stato di database (con la revisione dello schema), sidecar, bus degli eventi e aggiornamenti | Control Plane → SISTEMA, Stato e Aggiornamenti | ✓ | F9, D1 |
 | 44 | Parametri di avvio in sola lettura (database, Redis, bus, host e nomi dell'API, origini, cartelle dei dati e dei modelli, ambiente, tracce, indirizzi di OpenAI e OpenRouter) | Control Plane → SISTEMA, Parametri di avvio | ✓ | F9, F10 |
 | 45 | Flight recorder: ricerca ed esportazione | Control Plane → SISTEMA, Flight recorder | ✓ | F9 |
