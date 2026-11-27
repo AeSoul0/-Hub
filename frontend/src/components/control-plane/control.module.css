@@ -154,7 +154,7 @@
 .h2 span {
     font-family: var(--font-code);
     letter-spacing: 0;
-    color: var(--faint);
+    color: var(--hint);
 }
 /* Paths and ids have no spaces: they may break anywhere rather than widen the page. */
 .muted {
@@ -164,7 +164,7 @@
     overflow-wrap: anywhere;
 }
 .faint {
-    color: var(--faint);
+    color: var(--hint);
 }
 .error {
     color: var(--danger);
@@ -465,7 +465,7 @@
     min-width: 200px;
 }
 .sub {
-    color: var(--faint);
+    color: var(--hint);
     font-family: var(--font-code);
     font-size: 10.5px;
     display: block;
@@ -559,7 +559,7 @@
     border-bottom: 0;
 }
 .timeline time {
-    color: var(--faint);
+    color: var(--hint);
     font-variant-numeric: tabular-nums;
 }
 .tick {
@@ -675,7 +675,7 @@
 .source {
     font-family: var(--font-code);
     font-size: 10.5px;
-    color: var(--faint);
+    color: var(--hint);
 }
 .help {
     color: var(--dim);
@@ -722,7 +722,7 @@ textarea.input {
     text-decoration: underline;
 }
 .linkBtn:disabled {
-    color: var(--faint);
+    color: var(--hint);
     cursor: default;
     text-decoration: none;
 }
@@ -793,7 +793,7 @@ textarea.input {
     content: counter(step);
     font-family: var(--font-code);
     font-size: 11px;
-    color: var(--faint);
+    color: var(--hint);
     text-align: right;
 }
 .chain li[data-conflict="true"] .input {

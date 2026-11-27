@@ -36,6 +36,7 @@
 - **Past conversations.** The Nucleo's HISTORY tab lists your conversations, searches their commands and answers, and opens one to go on with it: the agents remember that conversation, not the others; "New conversation" starts from nothing (ADR-045).
 - **Approvals that reach you.** A run that waits for you asks one short question ("May I delete old.txt? Yes or no."); a plain "yes" or "no", spoken or typed, decides it and Aurora answers in a word. A system notification and the tab title tell you when a request waits and ÆHub is not in front (ADR-037).
 - **Instant commands.** "Open Spotify", "open the downloads folder", "accendi la luce della cucina": simple commands run at once through the Tool Gateway, without the model, in milliseconds. The apps are the ones you list in Settings → Apps; anything else goes to the engine (ADR-035).
+- **Accessible.** Every control works with the keyboard and has a name for screen readers, the text colors meet WCAG AA contrast, and an automatic check (axe-core) runs in CI (ADR-045).
 - **An interface for everything.** The Nucleo (home) and the Control Plane cover every route and setting of the backend (`docs/frontend-coverage.md`). They are in English by default, or in Italian (Settings → Language, or ask Aurora); the voice keeps the language of the voice you choose, and a notice says when the two differ (ADR-034).
 
 It is not a multi-user service: there is one owner, and every port listens on `127.0.0.1`.

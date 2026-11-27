@@ -37,5 +37,11 @@ Il sistema ÆHub/A.U.R.O.R.A. opera in un modello **LAN-first**. Tuttavia, i con
 | **T08** | Comandi del computer (volume, blocco, screenshot) usati per eseguire altro. | Esecuzione arbitraria (Critical) | Comandi fissi per sistema, liste di argomenti, mai una shell; l'azione è un enum; nessuno strumento del computer in un container (ADR-043). |
 | **T09** | Indirizzi e chiavi del Codespace: un altro sito che chiama l'API. | Accesso non autorizzato (High) | Porta privata di GitHub (solo il proprietario), `AEHUB_ALLOWED_HOSTS` e `AEHUB_ALLOWED_ORIGINS` con il solo host del Codespace, `https://localhost:<porta>` aggiunto per la riscrittura di GitHub; chiavi come segreti Codespaces (variabili d'ambiente), mai su file. |
 
+### Aggiornamento N6 (2026-11-27, ADR-045)
+
+| ID | Minaccia | Impatto | Mitigazione |
+|---|---|---|---|
+| **T10** | Un client manda l'id di una conversazione per leggere o continuare quella di un altro. | Divulgazione (Medium) | La sessione è sempre `<principal autenticato>~<id>`: l'id da solo non porta fuori dalle sessioni del chiamante. L'elenco e i turni leggono solo le run del principal e dello spazio di lavoro del chiamante, mai quelle dei subagenti. Un id che non è lettere, cifre e trattini (al massimo 64) torna alla sessione del principal. |
+
 ## 4. Policy "Fail Closed"
 In caso di fallimento del database, mancata decodifica del token, token scaduto, o policy engine non raggiungibile, la `HTTPException(401)` o `403` viene generata di default. Non esiste un "fallback privileged".
