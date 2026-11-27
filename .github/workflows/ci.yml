@@ -355,6 +355,29 @@ jobs:
             exit 1
           fi
 
+      # N8 (ADR-039): the browser is in the image only with AEHUB_BROWSER=1.
+      # Without it the browser skill offers no tool; with it Chromium's
+      # headless shell must start and read a page.
+      - name: Check the Browser Skill Follows the Image
+        run: |
+          docker run --rm -e AEHUB_EMBEDDER=hash aehub-backend:ci python -c "from app.skills.browser_skill import BrowserSkill; assert BrowserSkill().tools == [], 'the browser tool is offered without a browser'"
+          docker build --build-arg AEHUB_BROWSER=1 --file backend/dockerfile --tag aehub-backend:ci-browser backend
+          docker image ls aehub-backend:ci-browser --format 'Backend image with the browser: {{.Size}}'
+          docker run --rm aehub-backend:ci-browser python -c "
+          import asyncio
+          from playwright.async_api import async_playwright
+          async def main():
+              async with async_playwright() as p:
+                  browser = await p.chromium.launch(headless=True)
+                  page = await browser.new_page()
+                  await page.set_content('<p>chromium ok</p>')
+                  print(await page.inner_text('p'))
+                  await browser.close()
+          asyncio.run(main())
+          from app.skills.browser_skill import BrowserSkill
+          assert BrowserSkill().tools, 'the browser tool is missing with the browser'
+          "
+
       - name: Build Frontend Image
         run: |
           docker build --file frontend/dockerfile --tag aehub-frontend:ci frontend

@@ -167,3 +167,17 @@ def test_a_public_page_cannot_reach_a_private_address(sites):
 
     assert {"/page", "/go", "/hop"} <= set(public.hits)
     assert private.hits == []
+
+
+def test_an_image_built_without_the_browser_offers_no_browser_tool(monkeypatch):
+    """N8 (ADR-039): Chromium is in the Docker image only with AEHUB_BROWSER=1."""
+    skill = browser_skill.BrowserSkill()
+    monkeypatch.setenv("AEHUB_IN_CONTAINER", "1")
+    monkeypatch.setenv("AEHUB_BROWSER", "0")
+    assert skill.tools == [] and skill.get_tool_metadata() == {}
+    monkeypatch.setenv("AEHUB_BROWSER", "1")
+    assert list(skill.get_tool_metadata()) == ["browse_and_extract"]
+    # Outside a container (desktop, codespace) the browser is the one installed there.
+    monkeypatch.delenv("AEHUB_IN_CONTAINER")
+    monkeypatch.setenv("AEHUB_BROWSER", "0")
+    assert skill.tools == [browser_skill.browse_and_extract]

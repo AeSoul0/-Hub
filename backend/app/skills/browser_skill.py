@@ -7,11 +7,16 @@ framework-agnostic asynchronous Python callable. Every request the page makes
 (redirects, images, scripts, fetch, WebSocket) passes the same SSRF check as
 the first URL, so a public page cannot point the browser at this computer or
 its network.
+
+The Docker image has Chromium only when built with AEHUB_BROWSER=1 (N8,
+ADR-039); without it the skill offers no tool, so the model never proposes
+a browser that is not there.
 """
 
 from __future__ import annotations
 import asyncio
 import logging
+import os
 from urllib.parse import urljoin
 
 from typing import Callable, Dict, List
@@ -178,6 +183,13 @@ async def browse_and_extract(url: str) -> str:
 # ==============================================================================
 
 
+def browser_available() -> bool:
+    """False in a Docker image built without the browser (AEHUB_BROWSER=0)."""
+    if os.getenv("AEHUB_IN_CONTAINER") != "1":
+        return True
+    return (os.getenv("AEHUB_BROWSER") or "1").strip() == "1"
+
+
 class BrowserSkill(BaseSkill):
     """
     Provides controlled browser navigation and rendered page extraction.
@@ -202,12 +214,14 @@ class BrowserSkill(BaseSkill):
         """
         Return the executable browser tools.
         """
-        return [browse_and_extract]
+        return [browse_and_extract] if browser_available() else []
 
     def get_tool_metadata(self) -> Dict[str, ToolMetadata]:
         """
         Return the security and execution metadata for browser tools.
         """
+        if not browser_available():
+            return {}
         return {
             "browse_and_extract": ToolMetadata(
                 name="browse_and_extract",

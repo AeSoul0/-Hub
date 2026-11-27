@@ -284,6 +284,8 @@ The launcher (`scripts/aehub.py`, Python standard library only) keeps every secr
 
 On Windows the launcher talks to Credential Manager directly. Elsewhere it needs the `keyring` package (`pip install keyring`), which it also prefers on Windows when installed; both read the same entries (service `aehub`). `start.ps1` runs `setup` on the first start and `up` afterwards.
 
+**The browser skill** (reading web pages with Chromium) needs Chromium in the backend image, which by default leaves it out to stay small. To add it, put `AEHUB_BROWSER=1` in the root `.env` and rebuild with `docker compose build backend`; web search works either way (ADR-039).
+
 Keys passed by the launcher win over `backend/.env`, which now holds only non-secret settings. Running `docker compose up` by hand starts the backend without keys (it exits without a login key); put them in your shell environment or use the launcher.
 
 ### One-command demo

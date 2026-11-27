@@ -32,6 +32,7 @@ Environment only (`backend/.env`, the root `.env` for Compose).
 | `POSTGRES_URL` | PostgreSQL with pgvector | none (Compose builds it from `POSTGRES_PASSWORD`) |
 | `REDIS_URL` | Event bus and cache; `memory://` keeps them in the process | `redis://localhost:6379/0` |
 | `NEXT_PUBLIC_API_URL` | Address of the API for the frontend (build time) | `http://127.0.0.1:3002` |
+| `AEHUB_BROWSER` | Build time, root `.env`: `1` adds Chromium (headless shell) to the backend image for the browser skill; `0` leaves it out and the skill offers no tool (ADR-039) | `0` |
 
 ## Engine, tools, memory, voice and home
 
