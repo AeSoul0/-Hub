@@ -4,6 +4,8 @@
 
 Questa guida è per l'uso di tutti i giorni. Per installarlo leggi il [README](../README.md).
 
+**Su Windows** si avvia con un doppio clic su `AEHub.cmd` (nella cartella di ÆHub) o, dopo il primo avvio, sull'icona **ÆHub** del desktop: avvia Docker Desktop se serve, aspetta che ÆHub sia pronto e apre il browser. Per fermarlo: `AEHub.cmd -Stop`.
+
 ---
 
 ## 1. Le due schermate
