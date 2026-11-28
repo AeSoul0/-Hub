@@ -27,10 +27,25 @@ POSTGRES_URL = os.getenv(
     "postgresql://aehub_user:aehub_pass@localhost:5432/aehub_db",
 )
 
+# Seconds to wait for PostgreSQL to answer a new connection (N9). Without it
+# libpq waits for the operating system's TCP timeout: on Windows tens of
+# seconds for each address of "localhost", and a request stalled for minutes
+# while the database container was still starting.
+CONNECT_TIMEOUT_SECONDS = 5
+
+
+def connect_args(url: str) -> dict:
+    """The driver options of the engine: a connection timeout for PostgreSQL, unless the URL sets one."""
+    if not url.startswith("postgresql") or "connect_timeout=" in url:
+        return {}
+    return {"connect_timeout": CONNECT_TIMEOUT_SECONDS}
+
+
 # Shared synchronous SQLAlchemy engine.
 engine = create_engine(
     POSTGRES_URL,
     pool_pre_ping=True,
+    connect_args=connect_args(POSTGRES_URL),
 )
 
 # Centralized session factory used by application services and persistence
@@ -59,6 +74,7 @@ def get_db() -> Generator[Session, None, None]:
 __all__ = [
     "Base",
     "POSTGRES_URL",
+    "connect_args",
     "engine",
     "SessionLocal",
     "get_db",

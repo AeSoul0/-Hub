@@ -121,6 +121,14 @@ def test_list_find_and_read(folders):
     assert "PDF that could not be read" in run(files_skill.read_file(str(folders.mine / "report.pdf")))
 
 
+def test_windows_line_ends_read_as_newlines(folders):
+    """N9: a file written on Windows (CRLF, as Notepad does) reads like any other."""
+    note = folders.mine / "nota.txt"
+    note.write_bytes(b"Prima riga.\r\nSeconda riga.\r\n")
+
+    assert run(files_skill.read_file(str(note))) == "Prima riga.\nSeconda riga.\n"
+
+
 def test_search_inside_text_files_and_pdfs(folders):
     """N4: the lines that contain a text, in text files and PDF pages, with where they are."""
     from tests.agent_engine.test_documents import _pdf

@@ -2,11 +2,30 @@
 @file backend/app/domain/models/memory.py
 @description Memory model: the long-term memory chunks of the agent (M6).
 """
+import threading
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy import DDL, Boolean, Column, String, DateTime, Text, event, func, literal_column
 from pgvector.sqlalchemy import Vector
 from app.domain.models.identity import Base
+
+_last_stamp = datetime.min
+_stamp_lock = threading.Lock()
+
+
+def created_now() -> datetime:
+    """
+    The time of a new chunk, strictly later than the previous one of this
+    process (N9). On Windows the clock of Python 3.12 moves in steps of about
+    15 ms: the episodes of a fast conversation got the same time and came
+    back in any order.
+    """
+    global _last_stamp
+    with _stamp_lock:
+        now = datetime.utcnow()
+        _last_stamp = now if now > _last_stamp else _last_stamp + timedelta(microseconds=1)
+        return _last_stamp
+
 
 class MemoryChunk(Base):
     """
@@ -38,7 +57,7 @@ class MemoryChunk(Base):
     embedder = Column(String, nullable=True)
     trusted = Column(Boolean, nullable=False, default=True)
     source = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=created_now, index=True)
 
 
 def memory_tsvector(content_column):

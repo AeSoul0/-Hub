@@ -34,7 +34,7 @@ from sqlalchemy import func, literal_column, or_
 
 from app.core import db as core_db
 from app.core.runtime_config import config_value
-from app.domain.models.memory import MemoryChunk, memory_tsvector
+from app.domain.models.memory import MemoryChunk, created_now, memory_tsvector
 from app.memory.embeddings import Embedder, cosine_similarity, get_embedder
 
 
@@ -412,7 +412,7 @@ class MemoryStore:
                         embedder=embedder_name,
                         trusted=bool(trusted),
                         source=source,
-                        created_at=datetime.utcnow(),
+                        created_at=created_now(),
                     )
                 )
                 stored += 1

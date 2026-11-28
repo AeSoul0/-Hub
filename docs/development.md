@@ -64,13 +64,17 @@ make eval
 
 ### Unit and integration tests
 
-The backend tests are in `tests/` (pytest; most need PostgreSQL with pgvector at `POSTGRES_URL`). They cover:
+The backend tests are in `tests/` (pytest). A few need PostgreSQL with pgvector at `POSTGRES_URL`, Redis, an MQTT broker or Docker; without them they skip with their reason. They cover:
 * **Agent engine:** tool loop, human approval and resume, guardrails, budget and limits, routing and failover, the Pydantic AI adapter, Context Manager and memory.
 * **Security:** SSRF, path traversal, secret redaction, the sandbox, the session and origin checks.
 * **API surface:** the exact list of HTTP and WebSocket routes (`tests/security/test_api_surface.py`).
 * **Frontend and backend agree:** every address the frontend calls is a real route with the right method (`tests/security/test_frontend_api_routes.py`), and every route, setting and variable has its row in `docs/frontend-coverage.md` (`tests/security/test_frontend_coverage.py`).
 * **Database:** the Alembic revisions build the schema from scratch and upgrade an old database (`tests/database/`).
 * **Desktop:** the sidecar and, with `AEHUB_BROWSER_SMOKE=1`, a Playwright run of the static frontend in Chromium (`tests/desktop/`).
+
+CI runs them twice:
+* **On Linux** (`build-and-test`), with PostgreSQL, Redis and an MQTT broker. Here a missing database is an error.
+* **On Windows** (`backend-windows`, N9), the system of the user's PC, for its paths, line ends and clock. That runner has no Linux service containers, so the tests that need a database skip there. `AEHUB_TEST_NO_POSTGRES=1` tells the migration tests that the database is missing on purpose.
 
 The frontend has component and hook tests (Vitest, Testing Library, jsdom) in `frontend/tests/`:
 
