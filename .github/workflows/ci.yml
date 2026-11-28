@@ -468,12 +468,18 @@ jobs:
 
       - name: Run the Backend Tests on Windows
         working-directory: backend
+        # No database here: on Windows a refused connection takes seconds
+        # (it is retried), for each address of "localhost". One address and
+        # a short timeout keep the tests that look for it quick; the backend's
+        # own default is 5 seconds (app/core/db.py).
         env:
+          POSTGRES_URL: postgresql://aehub_user:password@127.0.0.1:5432/aehub_db?connect_timeout=2
+          REDIS_URL: redis://127.0.0.1:6379/0
           AEHUB_SECRET_KEY: ci-test-secret-key
           AEHUB_TELEMETRY_CONSOLE: "0"
           PYTHONPATH: .
         run: |
-          pytest ../tests/ -rs --import-mode=importlib
+          pytest ../tests/ -rs --durations=25 --import-mode=importlib
 
   desktop-windows:
     if: github.event_name == 'workflow_dispatch' || (startsWith(github.ref, 'refs/tags/v') && vars.DESKTOP_RELEASE == 'on')

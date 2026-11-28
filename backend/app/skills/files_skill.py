@@ -166,7 +166,9 @@ def _read(path: str) -> str:
         data = handle.read(MAX_READ_BYTES + 1)
     if b"\x00" in data[:8000]:
         return f"{file} is a binary file ({_size(file.stat().st_size)}): it cannot be read as text."
-    text = data[:MAX_READ_BYTES].decode("utf-8", errors="replace")
+    # Windows line ends (CRLF, as Notepad writes them) read as "\n": the agent
+    # sees the same text on every system.
+    text = data[:MAX_READ_BYTES].decode("utf-8", errors="replace").replace("\r\n", "\n")
     if len(data) > MAX_READ_BYTES:
         text += f"\n\n[Only the first {MAX_READ_BYTES // 1000} KB of {_size(file.stat().st_size)}]"
     return text
