@@ -76,7 +76,7 @@ Misure su Linux, 2026-11-26:
 
 | Cosa | Prima (immagine Playwright) | Dopo (slim, senza browser) |
 |---|---|---|
-| Immagine del backend | 4,87 GB | 1,20 GB |
+| Immagine del backend | 4,87 GB | 1,20 GB (2,3 GB con il browser) |
 | Ambiente Python (`/opt/venv`) | — | 740 MB (era 907 MB con Playwright) |
 | Backend dopo l'import e le skill | 100 MB | 100 MB |
 
@@ -91,5 +91,5 @@ Lo stack avviato (backend slim, PostgreSQL con pgvector, Redis), a riposo dopo l
 - **La RAM non cambia:** Chromium occupa memoria solo quando la skill lo usa. Il guadagno è il disco e il download (3,7 GB in meno) e una build più rapida.
 - **Il frontend** resta come in O1: 42 MB di file, circa 84 MB di RAM. Con il backend e i servizi lo stack sta sotto i 250 MB a riposo, sui 7,7 GB del PC dell'utente.
 - **Il più grande** ora sono le librerie della voce e dei modelli locali: PyAV di faster-whisper (130 MB), CTranslate2 (85 MB), ONNX Runtime (80 MB), Piper (47 MB). Servono alla voce locale e restano.
-- **Non misurata da qui:** l'immagine con il browser, perché questa sessione non raggiunge i mirror Debian (`deb.debian.org`). La costruisce e la prova la CI; la stima è di circa +400 MB.
+- **L'immagine con il browser** (`AEHUB_BROWSER=1`): 2,3 GB, misurata dalla CI (#167), dove Chromium parte e legge una pagina. Più della stima di +400 MB: con la headless shell `--with-deps` installa le librerie grafiche e i font. Resta meno della metà dei 4,87 GB di prima. Da questa sessione non si costruiva, perché non raggiunge i mirror Debian.
 
