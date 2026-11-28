@@ -38,3 +38,12 @@ def test_chunks_written_in_the_same_clock_step_keep_their_order(monkeypatch):
     assert stamps == sorted(stamps) and len(set(stamps)) == 5
     assert stamps[0] == frozen
     assert memory.MemoryChunk.__table__.c.created_at.default.arg.__name__ == "created_now"
+
+
+def test_the_store_stamps_its_chunks_with_that_time():
+    from pathlib import Path
+
+    from app.memory import store
+
+    source = Path(store.__file__).read_text(encoding="utf-8")
+    assert "created_at=created_now()" in source and "created_at=datetime.utcnow()" not in source

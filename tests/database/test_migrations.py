@@ -52,7 +52,10 @@ def empty_database():
     except OperationalError as exc:
         admin.dispose()
 
-        if os.getenv("CI"):
+        # In CI the database is there and a missing one is an error, except
+        # in the Windows job, whose runner has no PostgreSQL with pgvector
+        # (backend-windows: AEHUB_TEST_NO_POSTGRES=1; the Linux job runs these).
+        if os.getenv("CI") and os.getenv("AEHUB_TEST_NO_POSTGRES") != "1":
             raise
         pytest.skip(f"PostgreSQL is not reachable: {exc.orig}")
 
