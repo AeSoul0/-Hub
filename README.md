@@ -125,7 +125,9 @@ The launcher (`scripts/aehub.py`, Python standard library only) keeps every secr
 | `secrets` | Which keys are set (never their values). |
 | `login-key` | Prints the Control Plane login key. |
 
-On Windows the launcher talks to Credential Manager directly. Elsewhere it needs the `keyring` package (`pip install keyring`), which it also prefers on Windows when installed; both read the same entries (service `aehub`). `start.ps1` runs `setup` on the first start and `up` afterwards.
+On Windows the launcher talks to Credential Manager directly. Elsewhere it needs the `keyring` package (`pip install keyring`), which it also prefers on Windows when installed; both read the same entries (service `aehub`).
+
+**On Windows, with a double click:** open `AEHub.cmd` in the repository folder. It starts Docker Desktop if it is not running, runs `setup` on the first start (keys to Credential Manager, working folder) and `up` afterwards, waits until ÆHub answers and opens it in the browser (the first time on the setup page). It also puts an **ÆHub** icon on the desktop, so the next start is one double click there. `AEHub.cmd -Stop` (or `.\start.ps1 -Stop`) stops it; `-NoBrowser` and `-NoShortcut` skip the browser and the icon. Docker Desktop and Python 3 must be installed.
 
 **The browser skill** (reading web pages with Chromium) needs Chromium in the backend image, which by default leaves it out to stay small. To add it, put `AEHUB_BROWSER=1` in the root `.env` and rebuild with `docker compose build backend`; web search works either way (ADR-039).
 

@@ -409,6 +409,35 @@ jobs:
   # user's choice, 2026-11-25). It also runs when the workflow is started by
   # hand, to check the build without publishing. On pull requests and pushes
   # to main it is always skipped (2026-11-04).
+  # N11: the double-click start on Windows (AEHub.cmd -> start.ps1). Both
+  # Windows PowerShell 5.1 (what a double click runs) and PowerShell 7 must
+  # parse the script, and it must keep its UTF-8 BOM, without which 5.1
+  # reads the accents as ANSI.
+  windows-launcher:
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Parse start.ps1 in Windows PowerShell and PowerShell 7
+        shell: pwsh
+        run: |
+          $check = '$e = $null; $t = $null; [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path start.ps1), [ref]$t, [ref]$e) | Out-Null; if ($e.Count) { $e | ForEach-Object { Write-Host $_.Message }; exit 1 }; "parsed by " + $PSVersionTable.PSVersion'
+          foreach ($shell in @("powershell", "pwsh")) {
+            & $shell -NoProfile -Command $check
+            if ($LASTEXITCODE -ne 0) { throw "$shell cannot parse start.ps1" }
+          }
+          $bytes = [System.IO.File]::ReadAllBytes((Resolve-Path start.ps1))
+          if ($bytes[0] -ne 0xEF -or $bytes[1] -ne 0xBB -or $bytes[2] -ne 0xBF) { throw "start.ps1 lost its UTF-8 BOM" }
+
+      - name: The help of start.ps1 and the double-click wrapper
+        shell: cmd
+        run: |
+          powershell -NoProfile -Command "Get-Help .\start.ps1 | Out-String" | findstr /C:"double click"
+          findstr /C:"start.ps1" AEHub.cmd
+
   desktop-windows:
     if: github.event_name == 'workflow_dispatch' || (startsWith(github.ref, 'refs/tags/v') && vars.DESKTOP_RELEASE == 'on')
     runs-on: windows-latest
